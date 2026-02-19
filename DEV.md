@@ -9,13 +9,11 @@
 ## Project layout
 
 ```
-crates/exhash-core/src/
-  lib.rs          public API + error type
+src/
+  lib.rs          public API, error type, module declarations
+  engine.rs       edit engine producing EditResult
   lnhash.rs       lnhash hashing/formatting/parsing
   parse.rs        command parsing (script, strs, and args modes)
-  engine.rs       edit engine producing EditResult
-src/
-  lib.rs          re-exports exhash-core + PyO3 module
   python.rs       PyO3 bindings
   bin/exhash.rs   CLI editor (atomic in-place edit, dry-run, stdin mode)
   bin/lnhashview.rs  CLI viewer
@@ -35,12 +33,10 @@ tests/
 tools/build.sh
 ```
 
-This builds release binaries, copies them to `python/exhash.data/scripts/`, and runs `maturin develop --release`. The native binaries get installed into your venv's `bin/`.
-
-For development (debug mode, no binaries):
+This builds binaries (debug by default) and copies them to `python/exhash.data/scripts/`. Pass `release` for optimized builds:
 
 ```bash
-maturin develop
+tools/build.sh release
 ```
 
 ## Testing
