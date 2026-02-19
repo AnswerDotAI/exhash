@@ -6,7 +6,8 @@ Cargo.lock
 __pycache__/
 *.pyc
 *.so
-python/exhash.data/scripts/
+python/exhash.data/scripts/*
+!python/exhash.data/scripts/.gitkeep
 *.pyd
 .DS_Store
 .env
