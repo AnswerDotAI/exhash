@@ -1,0 +1,29 @@
+[workspace]
+members = ["crates/exhash-core"]
+resolver = "2"
+
+[package]
+name = "exhash"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Verified line-addressed file editor using lnhash addresses"
+
+[lib]
+name = "exhash"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "exhash"
+path = "src/bin/exhash.rs"
+
+[[bin]]
+name = "lnhashview"
+path = "src/bin/lnhashview.rs"
+
+[dependencies]
+exhash-core = { path = "crates/exhash-core" }
+pyo3 = { version = "0.23", optional = true }
+
+[features]
+extension-module = ["pyo3", "pyo3/extension-module"]
