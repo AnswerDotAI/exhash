@@ -4,6 +4,9 @@ version = "0.1.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Verified line-addressed file editor using lnhash addresses"
+repository = "https://github.com/AnswerDotAI/exhash"
+homepage = "https://github.com/AnswerDotAI/exhash"
+documentation = "https://github.com/AnswerDotAI/exhash"
 
 [lib]
 name = "exhash"
