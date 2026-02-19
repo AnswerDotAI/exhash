@@ -7,16 +7,63 @@ use std::process;
 use exhash::{edit_text, parse_commands_from_args};
 
 fn usage() {
-    eprintln!(
-        "Usage: exhash [--dry-run] [--stdin] <file|-> [commands...]\n\n\
-         Default mode edits <file> in-place.\n\
-         - Commands are passed as separate argv tokens.\n\
-         - Multiline text for a/i/c is read from stdin until a line with just '.'\n\
-           (as in ex/ed).\n\n\
-         With --dry-run, no file is written; stdout shows what would change.\n\
-         With --stdin, <file> must be '-' and input is read from stdin;\n\
-         output is the entire edited file in lnhash format.\n"
-    );
+    eprintln!("\
+Usage: exhash [-h] [--dry-run] [--stdin] <file|-> [commands...]
+
+Verified line-addressed file editor using lnhash addresses.
+
+ADDRESSING
+  Commands use lnhash addresses: lineno|hash| where hash is a 4-char
+  hex content hash. Use lnhashview to get addresses:
+    lnhashview file.txt          show all lines with addresses
+    lnhashview file.txt 10 20    show lines 10-20
+
+  Single:   12|a3f2|cmd
+  Range:    12|a3f2|,15|b1c3|cmd
+  Special:  0|0000| targets before line 1 (only with a or i)
+
+COMMANDS
+  s/pat/rep/[flags]  Substitute (regex). Flags: g=all, i=case-insensitive
+  d                  Delete line(s)
+  a                  Append text after line (reads text block)
+  i                  Insert text before line (reads text block)
+  c                  Change/replace line(s) with text block
+  j                  Join with next line; with range, joins all lines in range
+  m dest             Move line(s) after dest address
+  t dest             Copy line(s) after dest address
+  >[n]               Indent n levels (default 1, 4 spaces each)
+  <[n]               Dedent n levels (default 1)
+  sort               Sort lines alphabetically
+  p                  Print (include lines in output without changing them)
+  g/pat/cmd          Global: run cmd on matching lines
+  g!/pat/cmd         Inverted global: run cmd on non-matching lines
+  v/pat/cmd          Same as g!
+
+TEXT BLOCKS (a/i/c)
+  Text is read from stdin, terminated by a line containing just '.'
+  Use '..' to insert a literal '.' line.
+
+OPTIONS
+  --dry-run  Don't write; show what would change on stdout
+  --stdin    Read input from stdin (file arg must be '-');
+             outputs full file in lnhash format.
+             Text blocks (a/i/c) not supported in this mode.
+  -h, --help Show this help
+
+OUTPUT
+  Modified/added lines are printed as: hash  content
+
+EXAMPLES
+  lnhashview file.txt
+  exhash file.txt '12|abcd|s/foo/bar/g'
+  exhash file.txt '2|beef|,4|cafe|d'
+  printf 'line1\\nline2\\n.\\n' | exhash file.txt '5|d1e2|a'
+  exhash file.txt '0|0000|i' <<< $'header\\n.'
+  exhash file.txt '2|aa|,3|bb|m5|cc|'
+  exhash file.txt '1|ab|,10|ef|g/TODO/d'
+  exhash --dry-run file.txt '3|1234|s/old/new/'
+  cat file.txt | exhash --stdin - '1|abcd|s/foo/bar/'
+");
 }
 
 fn is_binary(bytes: &[u8]) -> bool {
