@@ -1,12 +1,8 @@
 # exhash — Verified Line-Addressed File Editor
 
-This repository contains:
+exhash combines Can Bölük's very clever [line number + hash editing system](https://blog.can.ac/2026/02/12/the-harness-problem/) with the powerful and expressive syntax of the classic [ex editor](https://en.wikipedia.org/wiki/Ex_(text_editor)).
 
-- **`crates/exhash-core`**: the Rust library
-- **`src/bin/`**: two native CLIs (`exhash`, `lnhashview`)
-- **`python/exhash`**: PyO3 bindings exposing the string-based engine
-
-Install via pip to get both the Python API and native CLI binaries:
+Install via pip to get both a convenient Python API, and native CLI binaries:
 
 ```bash
 pip install exhash
@@ -20,7 +16,7 @@ cargo install exhash
 
 ## lnhash format
 
-`lineno|hash|` where `hash` is the lower 16 bits of Rust's `DefaultHasher` over the line content.
+We refer to an *lnhash* as a tag of the form `lineno|hash|`, where `hash` is the lower 16 bits of Rust's `DefaultHasher` over the line content. exhash is just like ex, except that addresses *must* be in lnhash format. Addresses like `%`, `.`, etc are not permitted.
 
 ## CLI
 
@@ -29,7 +25,9 @@ The native Rust binaries are installed into your PATH via pip.
 ### View
 
 ```bash
+# Shows every line prefixed with its lnhash
 lnhashview path/to/file.txt
+# Optional line number range to show
 lnhashview path/to/file.txt 10 20
 ```
 
