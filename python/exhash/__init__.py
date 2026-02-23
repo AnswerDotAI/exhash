@@ -1,14 +1,12 @@
 from .exhash import line_hash, lnhash, lnhashview, exhash as _exhash
 
 class EditResult:
-    def __init__(self, r):
-        self.lines, self.hashes, self.modified, self.deleted = r.lines, r.hashes, r.modified, r.deleted
+    def __init__(self, r): self.lines, self.hashes, self.modified, self.deleted = r.lines, r.hashes, r.modified, r.deleted
     def text(self): return '\n'.join(self.lines)
     def view(self): return '\n'.join(f"{h}  {l}" for h, l in zip(self.hashes, self.lines))
-    def __repr__(self):
-        return '\n'.join(f"{self.hashes[i-1]}  {self.lines[i-1]}" for i in self.modified if i-1 < len(self.hashes))
+    def __repr__(self): return '\n'.join(f"{self.hashes[i-1]}  {self.lines[i-1]}" for i in self.modified if i-1 < len(self.hashes))
 
-def exhash(text, *cmds):
+def exhash(text:str, cmds:list[str]):
     """Verified line-addressed editor. Apply commands to `text`, return `EditResult`.
 
     Commands use lnhash addresses: ``lineno|hash|cmd`` where hash is a 4-char
@@ -48,14 +46,18 @@ def exhash(text, *cmds):
       .view()    output in lnhash format
       repr()     shows only modified lines in lnhash format
 
+    `cmds` is a required list of command strings. For `a`/`i`/`c`, include the
+    text block in the same command string after a newline.
+
     Examples::
 
       from exhash import exhash, lnhash, lnhashview
       text = "foo\\nbar\\n"
       addr = lnhash(1, "foo")           # "1|a1b2|"
-      res = exhash(text, f"{addr}s/foo/baz/")
+      res = exhash(text, [f"{addr}s/foo/baz/"])
       print(res)                         # "1|c2da|  baz" (modified lines only)
       res.text()                         # "baz\\nbar"
-      res = exhash(text, f"{addr}a\\nnew line 1\\nnew line 2")
+      res = exhash(text, [f"{addr}a\\nnew line 1\\nnew line 2"])
     """
+    if not isinstance(cmds, list): raise TypeError('cmds must be a list[str]')
     return EditResult(_exhash(text, *cmds))

@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Rust toolchain (stable)
-- Python 3.8+
+- Python 3.10+
 - [maturin](https://github.com/PyO3/maturin): `pip install maturin`
 
 ## Project layout

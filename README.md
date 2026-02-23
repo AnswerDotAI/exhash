@@ -77,20 +77,20 @@ view = lnhashview(text)  # ["1|a1b2|  foo", "2|c3d4|  bar"]
 
 ### Editing
 
-`exhash(text, *cmds)` takes the text and one or more command strings. For `a`/`i`/`c` commands, lines after the command are the text block (no `.` terminator needed):
+`exhash(text, cmds)` takes the text and a required list of command strings (use `[]` for no-op). For `a`/`i`/`c` commands, lines after the command are the text block (no `.` terminator needed):
 
 ```py
 addr = lnhash(1, "foo")  # "1|a1b2|"
-res = exhash(text, f"{addr}s/foo/baz/")
+res = exhash(text, [f"{addr}s/foo/baz/"])
 print(res.text())      # "baz\nbar"
 print(res.modified)    # [1]
 
 # Multiple commands
 a1, a2 = lnhash(1, "foo"), lnhash(2, "bar")
-res = exhash(text, f"{a1}s/foo/FOO/", f"{a2}s/bar/BAR/")
+res = exhash(text, [f"{a1}s/foo/FOO/", f"{a2}s/bar/BAR/"])
 
 # Append multiline text (no dot terminator)
-res = exhash(text, f"{addr}a\nnew line 1\nnew line 2")
+res = exhash(text, [f"{addr}a\nnew line 1\nnew line 2"])
 ```
 
 ### EditResult
