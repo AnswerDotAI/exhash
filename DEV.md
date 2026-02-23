@@ -49,15 +49,28 @@ cargo test && pytest -q
 
 Publishing is handled by GitHub Actions in `.github/workflows/ci.yml` and is triggered by pushing a tag matching `v*`.
 
-1. Bump `version` in `pyproject.toml` and commit to `main`.
-2. Tag that commit with the same version and push the tag:
+Release flow is: release first, then bump.
+
+1. Confirm tests pass:
 
 ```bash
-git tag v0.1.4
-git push origin v0.1.4
+cargo test && pytest -q
 ```
 
-The workflow builds wheels/sdist, creates a GitHub Release, and publishes to PyPI.
+2. Confirm the release version matches in both:
+   - `pyproject.toml` (`[project].version`)
+   - `Cargo.toml` (`[package].version`)
+
+3. Tag that commit and push the tag:
+
+```bash
+git tag v0.1.3
+git push origin v0.1.3
+```
+
+4. After publish succeeds, bump both files to the next dev version (for example `0.1.4`) and commit/push to `main` (no tag).
+
+No local build is required for release; CI runs the release build, creates a GitHub Release, and publishes to PyPI.
 
 ## How the binary distribution works
 
