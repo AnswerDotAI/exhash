@@ -45,6 +45,20 @@ tools/build.sh release
 cargo test && pytest -q
 ```
 
+## Release
+
+Publishing is handled by GitHub Actions in `.github/workflows/ci.yml` and is triggered by pushing a tag matching `v*`.
+
+1. Bump `version` in `pyproject.toml` and commit to `main`.
+2. Tag that commit with the same version and push the tag:
+
+```bash
+git tag v0.1.4
+git push origin v0.1.4
+```
+
+The workflow builds wheels/sdist, creates a GitHub Release, and publishes to PyPI.
+
 ## How the binary distribution works
 
 Maturin's `data` option in `pyproject.toml` points to `python/exhash.data/`. Files in the `scripts/` subdirectory are installed as standalone executables when the wheel is installed via pip. The build script compiles the Rust `[[bin]]` targets and copies them there before building the wheel.
