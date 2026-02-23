@@ -68,7 +68,7 @@ git tag v0.1.3
 git push origin v0.1.3
 ```
 
-4. After publish succeeds, bump both files to the next dev version (for example `0.1.4`) and commit/push to `main` (no tag).
+4. After pushing the release tag, bump both files to the next dev version (for example `0.1.4`) and commit/push to `main` (no tag). No need to wait for publish to finish first.
 
 No local build is required for release; CI runs the release build, creates a GitHub Release, and publishes to PyPI.
 
