@@ -105,6 +105,8 @@ def test_exhash_multiline_non_text_cmd_raises():
     addr = lnhash(1, "a")
     with pytest.raises(ValueError): exhash(text, [f"{addr}d\nextra"])
 
-def test_exhash_cmds_must_be_list():
-    addr = lnhash(1, "a")
-    with pytest.raises(TypeError): exhash("a\n", f"{addr}d")
+def test_exhash_accepts_tuple_cmds():
+    text = "a\nb\n"
+    a1, a2 = lnhash(1, "a"), lnhash(2, "b")
+    res = exhash(text, (f"{a1}s/a/A/", f"{a2}s/b/B/"))
+    assert res.lines == ["A", "B"]

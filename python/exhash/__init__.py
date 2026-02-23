@@ -59,5 +59,4 @@ def exhash(text:str, cmds:list[str]):
       res.text()                         # "baz\\nbar"
       res = exhash(text, [f"{addr}a\\nnew line 1\\nnew line 2"])
     """
-    if not isinstance(cmds, list): raise TypeError('cmds must be a list[str]')
     return EditResult(_exhash(text, *cmds))
