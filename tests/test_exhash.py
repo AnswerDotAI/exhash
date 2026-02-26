@@ -1,5 +1,5 @@
 import pytest
-from exhash import line_hash, lnhash, lnhashview, exhash
+from exhash import line_hash, lnhash, lnhashview, exhash, exhash_result
 
 def test_line_hash_returns_4_hex():
     h = line_hash("hello")
@@ -27,86 +27,98 @@ def test_lnhashview_empty(): assert lnhashview("") == []
 
 def test_exhash_noop():
     res = exhash("foo\nbar\n", [])
-    assert res.lines == ["foo", "bar"]
-    assert res.text() == "foo\nbar"
-    assert res.modified == []
-    assert res.deleted == []
+    assert res["lines"] == ["foo", "bar"]
+    assert '\n'.join(res["lines"]) == "foo\nbar"
+    assert res["modified"] == []
+    assert res["deleted"] == []
 
 def test_exhash_substitute():
     text = "foo\nbar\n"
     addr = lnhash(1, "foo")
     res = exhash(text, [f"{addr}s/foo/baz/"])
-    assert res.lines == ["baz", "bar"]
-    assert res.modified == [1]
-    assert len(res.hashes) == 2
+    assert res["lines"] == ["baz", "bar"]
+    assert res["modified"] == [1]
+    assert len(res["hashes"]) == 2
 
 def test_exhash_delete():
     text = "a\nb\nc\n"
     addr = lnhash(2, "b")
     res = exhash(text, [f"{addr}d"])
-    assert res.lines == ["a", "c"]
-    assert 2 in res.deleted
+    assert res["lines"] == ["a", "c"]
+    assert 2 in res["deleted"]
 
 def test_exhash_append():
     text = "a\nb\n"
     addr = lnhash(1, "a")
     res = exhash(text, [f"{addr}a\nx\ny"])
-    assert res.lines == ["a", "x", "y", "b"]
-    assert res.modified == [2, 3]
+    assert res["lines"] == ["a", "x", "y", "b"]
+    assert res["modified"] == [2, 3]
 
 def test_exhash_insert():
     text = "a\nb\n"
     addr = lnhash(2, "b")
     res = exhash(text, [f"{addr}i\nx"])
-    assert res.lines == ["a", "x", "b"]
-    assert res.modified == [2]
+    assert res["lines"] == ["a", "x", "b"]
+    assert res["modified"] == [2]
 
 def test_exhash_stale_hash_raises():
     text = "hello\nworld\n"
     addr = lnhash(1, "wrong")
     with pytest.raises(ValueError): exhash(text, [f"{addr}d"])
 
-def test_exhash_repr_shows_modified():
+def test_exhash_result_is_dict():
     text = "foo\nbar\n"
     addr = lnhash(1, "foo")
     res = exhash(text, [f"{addr}s/foo/baz/"])
-    r = repr(res)
-    assert "baz" in r
-    assert "bar" not in r
-    assert r == f"{lnhash(1, 'baz')}  baz"
+    assert isinstance(res, dict)
+    assert set(res.keys()) == {"lines", "hashes", "modified", "deleted"}
 
-def test_exhash_repr_noop_empty(): assert repr(exhash("foo\n", [])) == ""
+
+def test_exhash_result_formats_modified():
+    text = "foo\nbar\n"
+    addr = lnhash(1, "foo")
+    res = exhash(text, [f"{addr}s/foo/baz/"])
+    assert exhash_result([res]) == f"{lnhash(1, 'baz')}  baz"
+
+
+def test_exhash_result_no_modifications_is_empty(): assert exhash_result([exhash("foo\n", [])]) == ""
+
+
+def test_exhash_result_requires_list_of_dict():
+    with pytest.raises(TypeError): exhash_result(dict(lines=[], hashes=[], modified=[]))
+    with pytest.raises(TypeError): exhash_result([1])
+
 
 def test_exhash_view():
     text = "foo\nbar\n"
     res = exhash(text, [])
-    assert res.view() == f"{lnhash(1, 'foo')}  foo\n{lnhash(2, 'bar')}  bar"
+    view = '\n'.join(f"{h}  {l}" for h, l in zip(res["hashes"], res["lines"]))
+    assert view == f"{lnhash(1, 'foo')}  foo\n{lnhash(2, 'bar')}  bar"
 
 def test_exhash_result_hashes_match():
     text = "foo\nbar\n"
     res = exhash(text, [])
-    for i, (h, line) in enumerate(zip(res.hashes, res.lines)): assert h == lnhash(i + 1, line)
+    for i, (h, line) in enumerate(zip(res["hashes"], res["lines"])): assert h == lnhash(i + 1, line)
 
 def test_exhash_multiple_cmds():
     text = "a\nb\nc\n"
     a1, a3 = lnhash(1, "a"), lnhash(3, "c")
     res = exhash(text, [f"{a1}s/a/A/", f"{a3}s/c/C/"])
-    assert res.lines == ["A", "b", "C"]
-    assert res.modified == [1, 3]
+    assert res["lines"] == ["A", "b", "C"]
+    assert res["modified"] == [1, 3]
 
 def test_exhash_append_trailing_newline():
     text = "a\nb\n"
     addr = lnhash(1, "a")
     res = exhash(text, [f"{addr}a\nx\n"])
-    assert res.lines == ["a", "x", "", "b"]
+    assert res["lines"] == ["a", "x", "", "b"]
 
 def test_exhash_multiline_non_text_cmd_raises():
     text = "a\nb\n"
     addr = lnhash(1, "a")
     with pytest.raises(ValueError): exhash(text, [f"{addr}d\nextra"])
 
-def test_exhash_accepts_tuple_cmds():
+def test_exhash_requires_list_cmds():
     text = "a\nb\n"
     a1, a2 = lnhash(1, "a"), lnhash(2, "b")
-    res = exhash(text, (f"{a1}s/a/A/", f"{a2}s/b/B/"))
-    assert res.lines == ["A", "B"]
+    with pytest.raises(TypeError): exhash(text, (f"{a1}s/a/A/", f"{a2}s/b/B/"))

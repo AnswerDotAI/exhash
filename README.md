@@ -65,7 +65,7 @@ In `--stdin` mode, multiline `a/i/c` text blocks are not available.
 ## Python API
 
 ```py
-from exhash import exhash, lnhash, lnhashview, line_hash
+from exhash import exhash, exhash_result, lnhash, lnhashview, line_hash
 ```
 
 ### Viewing
@@ -82,8 +82,8 @@ view = lnhashview(text)  # ["1|a1b2|  foo", "2|c3d4|  bar"]
 ```py
 addr = lnhash(1, "foo")  # "1|a1b2|"
 res = exhash(text, [f"{addr}s/foo/baz/"])
-print(res.text())      # "baz\nbar"
-print(res.modified)    # [1]
+print(res["lines"])    # ["baz", "bar"]
+print(res["modified"]) # [1]
 
 # Multiple commands
 a1, a2 = lnhash(1, "foo"), lnhash(2, "bar")
@@ -93,15 +93,14 @@ res = exhash(text, [f"{a1}s/foo/FOO/", f"{a2}s/bar/BAR/"])
 res = exhash(text, [f"{addr}a\nnew line 1\nnew line 2"])
 ```
 
-### EditResult
+### Result dict
 
-- `.lines` — list of output lines
-- `.hashes` — lnhash for each output line
-- `.modified` — 1-based line numbers of modified/added lines
-- `.deleted` — 1-based line numbers of removed lines (in original)
-- `.text()` — joined output
-- `.view()` — output in lnhash format
-- `repr()` — shows only modified lines in lnhash format
+- `lines` — list of output lines
+- `hashes` — lnhash for each output line
+- `modified` — 1-based line numbers of modified/added lines
+- `deleted` — 1-based line numbers of removed lines (in original)
+
+`exhash_result([res1, res2, ...])` renders modified lines in lnhash format, matching the old `repr(EditResult)` style.
 
 ## Tests
 

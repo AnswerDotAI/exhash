@@ -1,13 +1,35 @@
-from .exhash import line_hash, lnhash, lnhashview, exhash as _exhash
+from .exhash import line_hash as _line_hash, lnhash as _lnhash, lnhashview as _lnhashview, exhash as _exhash
 
-class EditResult:
-    def __init__(self, r): self.lines, self.hashes, self.modified, self.deleted = r.lines, r.hashes, r.modified, r.deleted
-    def text(self): return '\n'.join(self.lines)
-    def view(self): return '\n'.join(f"{h}  {l}" for h, l in zip(self.hashes, self.lines))
-    def __repr__(self): return '\n'.join(f"{self.hashes[i-1]}  {self.lines[i-1]}" for i in self.modified if i-1 < len(self.hashes))
+def line_hash(line:str) -> str:
+    'Return a 4-char lowercase hex hash for a single line of text.'
+    return _line_hash(line)
 
-def exhash(text:str, cmds:list[str]):
-    """Verified line-addressed editor. Apply commands to `text`, return `EditResult`.
+
+def lnhash(lineno:int, line:str) -> str:
+    'Return an lnhash address ``lineno|hash|`` for ``line`` at 1-based ``lineno``.'
+    return _lnhash(lineno, line)
+
+
+def lnhashview(text:str) -> list[str]:
+    'Return lines formatted as ``lineno|hash|  content`` for each line in ``text``.'
+    return _lnhashview(text)
+
+
+def exhash_result(results:list[dict]) -> str:
+    """Format modified lines from exhash result dicts in lnhash view format."""
+    if not isinstance(results, list): raise TypeError("results must be a list[dict]")
+    out = []
+    for r in results:
+        if not isinstance(r, dict): raise TypeError("results must be a list[dict]")
+        lines, hashes, modified = r.get("lines"), r.get("hashes"), r.get("modified")
+        if not isinstance(lines, list) or not isinstance(hashes, list) or not isinstance(modified, list):
+            raise TypeError("each result must include list fields: lines, hashes, modified")
+        out += [f"{hashes[i-1]}  {lines[i-1]}" for i in modified if isinstance(i, int) and 0 < i <= len(hashes)]
+    return '\n'.join(out)
+
+
+def exhash(text:str, cmds:list[str]) -> dict:
+    """Verified line-addressed editor. Apply commands to `text`, return a result dict.
 
     Commands use lnhash addresses: ``lineno|hash|cmd`` where hash is a 4-char
     hex content hash. Use ``lnhashview(text)`` or ``lnhash(lineno, line)`` to
@@ -37,14 +59,11 @@ def exhash(text:str, cmds:list[str]):
     For a/i/c, remaining lines in the command string are the text block
     (no '.' terminator needed, unlike the CLI).
 
-    Returns EditResult with:
-      .lines     list of output lines
-      .hashes    lnhash for each output line
-      .modified  1-based line numbers of modified/added lines
-      .deleted   1-based line numbers of removed lines (in original)
-      .text()    joined output
-      .view()    output in lnhash format
-      repr()     shows only modified lines in lnhash format
+    Returns a dict with:
+      lines     list of output lines
+      hashes    lnhash for each output line
+      modified  1-based line numbers of modified/added lines
+      deleted   1-based line numbers of removed lines (in original)
 
     `cmds` is a required list of command strings. For `a`/`i`/`c`, include the
     text block in the same command string after a newline.
@@ -55,8 +74,9 @@ def exhash(text:str, cmds:list[str]):
       text = "foo\\nbar\\n"
       addr = lnhash(1, "foo")           # "1|a1b2|"
       res = exhash(text, [f"{addr}s/foo/baz/"])
-      print(res)                         # "1|c2da|  baz" (modified lines only)
-      res.text()                         # "baz\\nbar"
+      print(res["lines"])                # ["baz", "bar"]
+      "\\n".join(res["lines"])           # "baz\\nbar"
       res = exhash(text, [f"{addr}a\\nnew line 1\\nnew line 2"])
     """
-    return EditResult(_exhash(text, *cmds))
+    r = _exhash(text, *cmds)
+    return dict(lines=r.lines, hashes=r.hashes, modified=r.modified, deleted=r.deleted)

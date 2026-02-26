@@ -18,7 +18,7 @@ src/
   bin/exhash.rs   CLI editor (atomic in-place edit, dry-run, stdin mode)
   bin/lnhashview.rs  CLI viewer
 python/exhash/
-  __init__.py     Python wrapper (EditResult class, exhash function)
+  __init__.py     Python wrapper functions with typed/docstring API (+ exhash_result helper)
 python/exhash.data/scripts/
   exhash          native binary (built, not checked in)
   lnhashview      native binary (built, not checked in)
