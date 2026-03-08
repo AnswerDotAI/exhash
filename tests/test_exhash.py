@@ -107,6 +107,11 @@ def test_exhash_multiple_cmds():
     assert res["lines"] == ["A", "b", "C"]
     assert res["modified"] == [1, 3]
 
+def test_exhash_rechecks_hash_before_each_command():
+    text = "a\nb\nc\n"
+    a2, a3 = lnhash(2, "b"), lnhash(3, "c")
+    with pytest.raises(ValueError, match="stale"): exhash(text, [f"{a2}i\nx", f"{a3}d"])
+
 def test_exhash_append_trailing_newline():
     text = "a\nb\n"
     addr = lnhash(1, "a")
@@ -118,7 +123,8 @@ def test_exhash_multiline_non_text_cmd_raises():
     addr = lnhash(1, "a")
     with pytest.raises(ValueError): exhash(text, [f"{addr}d\nextra"])
 
-def test_exhash_requires_list_cmds():
+def test_exhash_accepts_tuple_cmds():
     text = "a\nb\n"
     a1, a2 = lnhash(1, "a"), lnhash(2, "b")
-    with pytest.raises(TypeError): exhash(text, (f"{a1}s/a/A/", f"{a2}s/b/B/"))
+    res = exhash(text, (f"{a1}s/a/A/", f"{a2}s/b/B/"))
+    assert res["lines"] == ["A", "B"]

@@ -48,6 +48,8 @@ EOF
 exhash --dry-run file.txt '12|abcd|d'
 ```
 
+When passing multiple commands, each command's lnhashes are verified immediately before that command runs.
+
 For `a/i/c` commands, provide the text block on stdin:
 
 ```bash
@@ -77,7 +79,7 @@ view = lnhashview(text)  # ["1|a1b2|  foo", "2|c3d4|  bar"]
 
 ### Editing
 
-`exhash(text, cmds)` takes the text and a required list of command strings (use `[]` for no-op). For `a`/`i`/`c` commands, lines after the command are the text block (no `.` terminator needed):
+`exhash(text, cmds)` takes the text and a required iterable of command strings (use `[]` for no-op). For `a`/`i`/`c` commands, lines after the command are the text block (no `.` terminator needed):
 
 ```py
 addr = lnhash(1, "foo")  # "1|a1b2|"
@@ -88,6 +90,9 @@ print(res["modified"]) # [1]
 # Multiple commands
 a1, a2 = lnhash(1, "foo"), lnhash(2, "bar")
 res = exhash(text, [f"{a1}s/foo/FOO/", f"{a2}s/bar/BAR/"])
+
+# Hashes are checked just-in-time per command.
+# If earlier commands change/shift a later target line, recompute lnhash first.
 
 # Append multiline text (no dot terminator)
 res = exhash(text, [f"{addr}a\nnew line 1\nnew line 2"])

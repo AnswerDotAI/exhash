@@ -17,6 +17,7 @@ ADDRESSING
   hex content hash. Use lnhashview to get addresses:
     lnhashview file.txt          show all lines with addresses
     lnhashview file.txt 10 20    show lines 10-20
+  With multiple commands, hashes are checked immediately before each command runs.
 
   Single:   12|a3f2|cmd
   Range:    12|a3f2|,15|b1c3|cmd

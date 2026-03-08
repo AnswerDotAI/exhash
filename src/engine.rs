@@ -61,6 +61,62 @@ impl Engine {
         self.apply_subcommand(start, end, cmd.has_comma, &cmd.cmd)
     }
 
+    fn verify_command(&self, cmd: &Command) -> Result<(), EditError> {
+        self.verify_lnhash(cmd.addr1, &cmd.cmd)?;
+        if let Some(a2) = cmd.addr2 {
+            self.verify_lnhash(a2, &cmd.cmd)?;
+        }
+        self.verify_subcommand_refs(&cmd.cmd)?;
+        Ok(())
+    }
+
+    fn verify_subcommand_refs(&self, cmd: &Subcommand) -> Result<(), EditError> {
+        match cmd {
+            Subcommand::Move { dest } | Subcommand::Copy { dest } => {
+                self.verify_lnhash_basic(*dest)?;
+                Ok(())
+            }
+            Subcommand::Global { cmd, .. } => self.verify_subcommand_refs(cmd),
+            _ => Ok(()),
+        }
+    }
+
+    fn verify_lnhash(&self, addr: crate::LnHash, cmd: &Subcommand) -> Result<(), EditError> {
+        if addr.lineno == 0 {
+            // Only valid for i/a, enforced by parser.
+            if addr.hash != 0 {
+                return Err(EditError::new("0|0000| must have hash 0000"));
+            }
+            match cmd {
+                Subcommand::Append(_) | Subcommand::Insert(_) => Ok(()),
+                _ => Err(EditError::new("0|0000| is only valid with i or a")),
+            }
+        } else {
+            self.verify_lnhash_basic(addr)
+        }
+    }
+
+    fn verify_lnhash_basic(&self, addr: crate::LnHash) -> Result<(), EditError> {
+        if addr.lineno == 0 {
+            return Err(EditError::new("address 0 is not allowed here"));
+        }
+        if addr.lineno > self.lines.len() {
+            return Err(EditError::new(format!(
+                "address out of range: {} > {}",
+                addr.lineno,
+                self.lines.len()
+            )));
+        }
+        let actual = line_hash_u16(&self.lines[addr.lineno - 1].text);
+        if actual != addr.hash {
+            return Err(EditError::new(format!(
+                "stale lnhash at line {}: expected {:04x}, got {:04x}",
+                addr.lineno, addr.hash, actual
+            )));
+        }
+        Ok(())
+    }
+
     fn apply_subcommand(
         &mut self,
         start: usize,
@@ -441,14 +497,14 @@ impl Engine {
 
 /// Apply `commands` to the input text.
 ///
-/// All lnhashes in the command list are verified against `input` before any edits are applied.
+/// Each command's lnhashes are verified against the current text immediately before that
+/// command is applied.
 pub fn edit_text(input: &str, commands: &[Command]) -> Result<EditResult, EditError> {
     let input_lines: Vec<String> = input.lines().map(|l| l.to_string()).collect();
 
-    verify_all(&input_lines, commands)?;
-
     let mut eng = Engine::new(input_lines);
     for c in commands {
+        eng.verify_command(c)?;
         eng.apply_command(c)?;
     }
 
@@ -474,64 +530,6 @@ pub fn edit_text(input: &str, commands: &[Command]) -> Result<EditResult, EditEr
         modified,
         deleted,
     })
-}
-
-fn verify_all(input_lines: &[String], commands: &[Command]) -> Result<(), EditError> {
-    for c in commands {
-        verify_lnhash(input_lines, c.addr1, &c.cmd)?;
-        if let Some(a2) = c.addr2 {
-            verify_lnhash(input_lines, a2, &c.cmd)?;
-        }
-        verify_subcommand_refs(input_lines, &c.cmd)?;
-    }
-    Ok(())
-}
-
-fn verify_subcommand_refs(input_lines: &[String], cmd: &Subcommand) -> Result<(), EditError> {
-    match cmd {
-        Subcommand::Move { dest } | Subcommand::Copy { dest } => {
-            verify_lnhash_basic(input_lines, *dest)?;
-            Ok(())
-        }
-        Subcommand::Global { cmd, .. } => verify_subcommand_refs(input_lines, cmd),
-        _ => Ok(()),
-    }
-}
-
-fn verify_lnhash(input_lines: &[String], addr: crate::LnHash, cmd: &Subcommand) -> Result<(), EditError> {
-    if addr.lineno == 0 {
-        // Only valid for i/a, enforced by parser.
-        if addr.hash != 0 {
-            return Err(EditError::new("0|0000| must have hash 0000"));
-        }
-        match cmd {
-            Subcommand::Append(_) | Subcommand::Insert(_) => Ok(()),
-            _ => Err(EditError::new("0|0000| is only valid with i or a")),
-        }
-    } else {
-        verify_lnhash_basic(input_lines, addr)
-    }
-}
-
-fn verify_lnhash_basic(input_lines: &[String], addr: crate::LnHash) -> Result<(), EditError> {
-    if addr.lineno == 0 {
-        return Err(EditError::new("address 0 is not allowed here"));
-    }
-    if addr.lineno > input_lines.len() {
-        return Err(EditError::new(format!(
-            "address out of range: {} > {}",
-            addr.lineno,
-            input_lines.len()
-        )));
-    }
-    let actual = line_hash_u16(&input_lines[addr.lineno - 1]);
-    if actual != addr.hash {
-        return Err(EditError::new(format!(
-            "stale lnhash at line {}: expected {:04x}, got {:04x}",
-            addr.lineno, addr.hash, actual
-        )));
-    }
-    Ok(())
 }
 
 fn build_regex(pattern: &str, case_insensitive: bool) -> Result<Regex, EditError> {
@@ -780,18 +778,16 @@ mod tests {
     }
 
     #[test]
-    fn multi_command_line_numbers_shift() {
+    fn multi_command_rechecks_hashes_after_each_command() {
         let input = "a\nb\nc\n";
-        // Insert X before line 2, then delete line 3 (which was originally 2 before insertion? actually after insertion, line3 is original b)
+        // Insert X before line 2, then try to delete original line 3 by stale lnhash.
         let script = format!(
             "{}i\nX\n.\n{}d\n",
             addr(2, "b"),
             addr(3, "c")
         );
         let cmds = parse_commands_from_script(&script).unwrap();
-        let res = edit_text(input, &cmds).unwrap();
-        // After insertion: a, X, b, c. Then delete line3 -> b removed.
-        assert_eq!(res.lines, vec!["a".to_string(), "X".to_string(), "c".to_string()]);
-        assert_eq!(res.deleted, vec![2]);
+        let err = edit_text(input, &cmds).unwrap_err();
+        assert!(err.message().contains("stale lnhash at line 3"));
     }
 }

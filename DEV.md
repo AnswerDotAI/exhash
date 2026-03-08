@@ -45,6 +45,10 @@ tools/build.sh release
 cargo test && pytest -q
 ```
 
+## Hash verification timing
+
+`edit_text` verifies lnhashes command-by-command against the current in-memory buffer, immediately before each command executes (not all upfront). If an earlier command shifts or rewrites a later target line, that later command will fail with a stale-hash error unless you recompute addresses.
+
 ## Release
 
 Publishing is handled by GitHub Actions in `.github/workflows/ci.yml` and is triggered by pushing a tag matching `v*`.

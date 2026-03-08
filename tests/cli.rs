@@ -131,6 +131,30 @@ fn exhash_rejects_stale_lnhash_and_leaves_file_unchanged() {
 }
 
 #[test]
+fn exhash_rechecks_hashes_between_commands() {
+    let dir = mk_temp_dir("exhash_stale_between_commands");
+    let file = dir.join("f.txt");
+    write_file(&file, "a\nb\n");
+
+    let a1 = format_lnhash(1, "a");
+    let cmd1 = format!("{}s/a/A/", a1);
+    let cmd2 = format!("{}d", a1);
+
+    let bin = env!("CARGO_BIN_EXE_exhash");
+    let out = Command::new(bin)
+        .arg(&file)
+        .arg(cmd1)
+        .arg(cmd2)
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8(out.stderr).unwrap().contains("stale lnhash"));
+
+    // No partial write on command failure.
+    assert_eq!(read_file(&file), "a\nb\n");
+}
+
+#[test]
 fn exhash_multiline_append_from_stdin() {
     let dir = mk_temp_dir("exhash_multiline");
     let file = dir.join("f.txt");

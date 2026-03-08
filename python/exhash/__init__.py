@@ -16,7 +16,7 @@ def lnhashview(text:str) -> list[str]:
 
 
 def exhash_result(results:list[dict]) -> str:
-    """Format modified lines from exhash result dicts in lnhash view format."""
+    'Format modified lines from exhash result dicts in lnhash view format.'
     if not isinstance(results, list): raise TypeError("results must be a list[dict]")
     out = []
     for r in results:
@@ -34,6 +34,8 @@ def exhash(text:str, cmds:list[str]) -> dict:
     Commands use lnhash addresses: ``lineno|hash|cmd`` where hash is a 4-char
     hex content hash. Use ``lnhashview(text)`` or ``lnhash(lineno, line)`` to
     get addresses.
+    Each command's hashes are verified against current text immediately before
+    that command executes.
 
     Addressing:
       Single:   ``12|a3f2|cmd``
@@ -65,8 +67,8 @@ def exhash(text:str, cmds:list[str]) -> dict:
       modified  1-based line numbers of modified/added lines
       deleted   1-based line numbers of removed lines (in original)
 
-    `cmds` is a required list of command strings. For `a`/`i`/`c`, include the
-    text block in the same command string after a newline.
+    `cmds` is a required iterable of command strings. For `a`/`i`/`c`, include
+    the text block in the same command string after a newline.
 
     Examples::
 
