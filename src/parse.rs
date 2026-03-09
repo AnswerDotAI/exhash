@@ -17,6 +17,7 @@ pub struct Command {
 pub enum Subcommand {
     Delete,
     Substitute(Subst),
+    Transliterate { source: String, dest: String },
     Append(Vec<String>),
     Insert(Vec<String>),
     Change(Vec<String>),
@@ -216,6 +217,10 @@ where
             let (subst, trailing) = parse_substitute(rest)?;
             Ok((Subcommand::Substitute(subst), trailing))
         }
+        'y' => {
+            let ((source, dest), trailing) = parse_transliterate(rest)?;
+            Ok((Subcommand::Transliterate { source, dest }, trailing))
+        }
         'a' => {
             let text = read_text()?;
             Ok((Subcommand::Append(text), rest))
@@ -344,6 +349,24 @@ fn parse_substitute(rest: &str) -> Result<(Subst, &str), EditError> {
     ))
 }
 
+fn parse_transliterate(rest: &str) -> Result<((String, String), &str), EditError> {
+    let rest = rest.trim_start();
+    if !rest.starts_with('/') {
+        return Err(EditError::new("transliterate requires /source/dest/"));
+    }
+
+    let (source, after_source) = parse_delimited(rest, '/')?;
+    let (dest, trailing) = scan_to_delim(after_source, '/')?;
+
+    if source.chars().count() != dest.chars().count() {
+        return Err(EditError::new(
+            "transliterate source and destination must have the same number of characters",
+        ));
+    }
+
+    Ok(((source, dest), trailing))
+}
+
 /// Parse a `/.../` delimited string from the start of `input`.
 ///
 /// Returns (decoded, rest_after_closing_delim).
@@ -363,7 +386,12 @@ fn parse_delimited<'a>(input: &'a str, delim: char) -> Result<(String, &'a str),
     for ch in chars {
         consumed += ch.len_utf8();
         if escaped {
-            out.push(ch);
+            if ch == delim {
+                out.push(ch);
+            } else {
+                out.push('\\');
+                out.push(ch);
+            }
             escaped = false;
             continue;
         }
@@ -390,10 +418,27 @@ fn scan_to_delim<'a>(input: &'a str, delim: char) -> Result<(String, &'a str), E
     let mut consumed = 0;
     for ch in input.chars() {
         consumed += ch.len_utf8();
-        if escaped { out.push(ch); escaped = false; continue; }
-        if ch == '\\' { escaped = true; continue; }
-        if ch == delim { return Ok((out, &input[consumed..])); }
+        if escaped {
+            if ch == delim {
+                out.push(ch);
+            } else {
+                out.push('\\');
+                out.push(ch);
+            }
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == delim {
+            return Ok((out, &input[consumed..]));
+        }
         out.push(ch);
+    }
+    if escaped {
+        out.push('\\');
     }
     Ok((out, ""))
 }
@@ -510,5 +555,77 @@ mod tests {
             }
             _ => panic!("expected global"),
         }
+    }
+
+    #[test]
+    fn parse_substitute_preserves_rust_regex_escapes() {
+        let cmd = format!("{}s/\\d+/X/", addr(1, "a1"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Substitute(s) => {
+                assert_eq!(s.pattern, "\\d+");
+                assert_eq!(s.replacement, "X");
+            }
+            _ => panic!("expected substitute"),
+        }
+    }
+
+    #[test]
+    fn parse_substitute_preserves_rust_replacement_groups() {
+        let cmd = format!("{}s/(a)(b)/$2$1/", addr(1, "ab"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Substitute(s) => {
+                assert_eq!(s.pattern, "(a)(b)");
+                assert_eq!(s.replacement, "$2$1");
+            }
+            _ => panic!("expected substitute"),
+        }
+    }
+
+    #[test]
+    fn parse_substitute_supports_escaped_delimiter() {
+        let cmd = format!("{}s/a\\/b/c\\/d/", addr(1, "a/b"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Substitute(s) => {
+                assert_eq!(s.pattern, "a/b");
+                assert_eq!(s.replacement, "c/d");
+            }
+            _ => panic!("expected substitute"),
+        }
+    }
+
+    #[test]
+    fn parse_transliterate_basic() {
+        let cmd = format!("{}y/abc/ABC/", addr(1, "abc"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Transliterate { source, dest } => {
+                assert_eq!(source, "abc");
+                assert_eq!(dest, "ABC");
+            }
+            _ => panic!("expected transliterate"),
+        }
+    }
+
+    #[test]
+    fn parse_transliterate_supports_escaped_delimiter() {
+        let cmd = format!("{}y/a\\/b/A_B/", addr(1, "a/b"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Transliterate { source, dest } => {
+                assert_eq!(source, "a/b");
+                assert_eq!(dest, "A_B");
+            }
+            _ => panic!("expected transliterate"),
+        }
+    }
+
+    #[test]
+    fn parse_transliterate_requires_equal_char_counts() {
+        let cmd = format!("{}y/ab/XYZ/", addr(1, "ab"));
+        let err = parse_commands_from_script(&cmd).unwrap_err();
+        assert!(err.message().contains("same number of characters"));
     }
 }

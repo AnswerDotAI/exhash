@@ -37,6 +37,9 @@ lnhashview path/to/file.txt 10 20
 # Substitute on one line
 exhash file.txt '12|abcd|s/foo/bar/g'
 
+# Transliterate characters on one line
+exhash file.txt '12|abcd|y/abc/ABC/'
+
 # Append multiline text (terminated by a single dot)
 exhash file.txt '12|abcd|a' <<'EOF'
 new line 1
@@ -47,6 +50,13 @@ EOF
 # Dry-run
 exhash --dry-run file.txt '12|abcd|d'
 ```
+
+Substitute uses Rust regex syntax:
+
+- Pattern syntax is from [`regex`](https://docs.rs/regex/latest/regex/)
+- Replacement syntax is from [`regex::Replacer`](https://docs.rs/regex/latest/regex/struct.Regex.html#method.replace), e.g. `$1`, `$0`, `${name}`
+- `\/` escapes the command delimiter in pattern/replacement
+- Transliteration uses `y/src/dst/` and requires source/destination to have equal character counts
 
 When passing multiple commands, each command's lnhashes are verified immediately before that command runs.
 

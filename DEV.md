@@ -87,3 +87,6 @@ The Rust core has three parsing functions:
 - `parse_commands_from_strs(&[&str])` — for the Python API; each string is one command, text blocks are the remaining lines (no `.` terminator)
 - `parse_commands_from_script(&str)` — for script strings; commands separated by newlines, text blocks terminated by `.`
 - `parse_commands_from_args(&[String], &mut BufRead)` — for the CLI; each arg is a command, text blocks read from stdin terminated by `.`
+
+Substitute parsing keeps Rust regex escapes intact (`\d`, `\w`, etc.) while still allowing escaped command delimiters (`\/`) in pattern and replacement.
+Transliteration uses `y/src/dst/` and validates equal character counts at parse time.

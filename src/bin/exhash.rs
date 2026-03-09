@@ -24,7 +24,9 @@ ADDRESSING
   Special:  0|0000| targets before line 1 (only with a or i)
 
 COMMANDS
-  s/pat/rep/[flags]  Substitute (regex). Flags: g=all, i=case-insensitive
+  s/pat/rep/[flags]  Substitute using Rust regex syntax.
+                     Replacement supports $1, $0, ${{name}}. Flags: g=all, i=case-insensitive
+  y/src/dst/         Transliterate chars in-place (source and destination lengths must match)
   d                  Delete line(s)
   a                  Append text after line (reads text block)
   i                  Insert text before line (reads text block)
@@ -57,6 +59,7 @@ OUTPUT
 EXAMPLES
   lnhashview file.txt
   exhash file.txt '12|abcd|s/foo/bar/g'
+  exhash file.txt '12|abcd|y/abc/ABC/'
   exhash file.txt '2|beef|,4|cafe|d'
   printf 'line1\\nline2\\n.\\n' | exhash file.txt '5|d1e2|a'
   exhash file.txt '0|0000|i' <<< $'header\\n.'

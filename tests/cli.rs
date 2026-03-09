@@ -84,6 +84,26 @@ fn exhash_inplace_substitute_and_stdout_modified_only() {
 }
 
 #[test]
+fn exhash_inplace_transliterate_and_stdout_modified_only() {
+    let dir = mk_temp_dir("exhash_translit");
+    let file = dir.join("f.txt");
+    write_file(&file, "abc\ncab\n");
+
+    let a1 = format_lnhash(1, "abc");
+    let cmd = format!("{}y/abc/ABC/", a1);
+
+    let bin = env!("CARGO_BIN_EXE_exhash");
+    let out = Command::new(bin).arg(&file).arg(cmd).output().unwrap();
+    assert!(out.status.success());
+
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let expected = format!("{}  ABC\n", format_lnhash(1, "ABC"));
+    assert_eq!(stdout, expected);
+
+    assert_eq!(read_file(&file), "ABC\ncab\n");
+}
+
+#[test]
 fn exhash_dry_run_does_not_write() {
     let dir = mk_temp_dir("exhash_dry_run");
     let file = dir.join("f.txt");

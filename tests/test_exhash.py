@@ -35,41 +35,72 @@ def test_exhash_noop():
 def test_exhash_substitute():
     text = "foo\nbar\n"
     addr = lnhash(1, "foo")
-    res = exhash(text, [f"{addr}s/foo/baz/"])
+    res = exhash(text, [addr+"s/foo/baz/"])
     assert res["lines"] == ["baz", "bar"]
     assert res["modified"] == [1]
     assert len(res["hashes"]) == 2
 
+def test_exhash_substitute_rust_capture_groups():
+    text = "abc123def\n"
+    addr = lnhash(1, "abc123def")
+    res = exhash(text, [addr+"s/([a-z]+)([0-9]+)([a-z]+)/$1-<$2>-$3/"])
+    assert res["lines"] == ["abc-<123>-def"]
+
+def test_exhash_substitute_rust_whole_match():
+    text = "abc123def\n"
+    addr = lnhash(1, "abc123def")
+    res = exhash(text, [addr+"s/[0-9]+/[$0]/"])
+    assert res["lines"] == ["abc[123]def"]
+
+def test_exhash_substitute_rust_named_capture_groups():
+    text = "abc123def\n"
+    addr = lnhash(1, "abc123def")
+    res = exhash(text, [addr+"s/(?P<head>[a-z]+)(?P<num>[0-9]+)(?P<tail>[a-z]+)/${head}<${num}>${tail}/"])
+    assert res["lines"] == ["abc<123>def"]
+
+def test_exhash_substitute_preserves_pattern_escapes():
+    text = "abc123def\n"
+    addr = lnhash(1, "abc123def")
+    res = exhash(text, [addr+"s/\\d+/X/"])
+    assert res["lines"] == ["abcXdef"]
+
+def test_exhash_transliterate_range():
+    text = "abc\ncab\n"
+    a1, a2 = lnhash(1, "abc"), lnhash(2, "cab")
+    res = exhash(text, [f"{a1},{a2}y/abc/ABC/"])
+    assert res["lines"] == ["ABC", "CAB"]
+    assert res["modified"] == [1, 2]
+
 def test_exhash_delete():
     text = "a\nb\nc\n"
     addr = lnhash(2, "b")
-    res = exhash(text, [f"{addr}d"])
+    res = exhash(text, [addr+"d"])
     assert res["lines"] == ["a", "c"]
     assert 2 in res["deleted"]
 
 def test_exhash_append():
     text = "a\nb\n"
     addr = lnhash(1, "a")
-    res = exhash(text, [f"{addr}a\nx\ny"])
+    res = exhash(text, [addr+"a\nx\ny"])
     assert res["lines"] == ["a", "x", "y", "b"]
     assert res["modified"] == [2, 3]
 
 def test_exhash_insert():
     text = "a\nb\n"
     addr = lnhash(2, "b")
-    res = exhash(text, [f"{addr}i\nx"])
+    res = exhash(text, [addr+"i\nx"])
     assert res["lines"] == ["a", "x", "b"]
     assert res["modified"] == [2]
 
 def test_exhash_stale_hash_raises():
     text = "hello\nworld\n"
     addr = lnhash(1, "wrong")
-    with pytest.raises(ValueError): exhash(text, [f"{addr}d"])
+    with pytest.raises(ValueError): exhash(text, [addr+"d"])
 
 def test_exhash_result_is_dict():
     text = "foo\nbar\n"
     addr = lnhash(1, "foo")
-    res = exhash(text, [f"{addr}s/foo/baz/"])
+    res = exhash(text, [addr+"s/foo/baz/"])
     assert isinstance(res, dict)
     assert set(res.keys()) == {"lines", "hashes", "modified", "deleted"}
 
@@ -77,7 +108,7 @@ def test_exhash_result_is_dict():
 def test_exhash_result_formats_modified():
     text = "foo\nbar\n"
     addr = lnhash(1, "foo")
-    res = exhash(text, [f"{addr}s/foo/baz/"])
+    res = exhash(text, [addr+"s/foo/baz/"])
     assert exhash_result([res]) == f"{lnhash(1, 'baz')}  baz"
 
 
@@ -115,13 +146,13 @@ def test_exhash_rechecks_hash_before_each_command():
 def test_exhash_append_trailing_newline():
     text = "a\nb\n"
     addr = lnhash(1, "a")
-    res = exhash(text, [f"{addr}a\nx\n"])
+    res = exhash(text, [addr+"a\nx\n"])
     assert res["lines"] == ["a", "x", "", "b"]
 
 def test_exhash_multiline_non_text_cmd_raises():
     text = "a\nb\n"
     addr = lnhash(1, "a")
-    with pytest.raises(ValueError): exhash(text, [f"{addr}d\nextra"])
+    with pytest.raises(ValueError): exhash(text, [addr+"d\nextra"])
 
 def test_exhash_accepts_tuple_cmds():
     text = "a\nb\n"

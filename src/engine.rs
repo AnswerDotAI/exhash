@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use regex::{Regex, RegexBuilder};
 
@@ -127,6 +127,7 @@ impl Engine {
         match sub {
             Subcommand::Delete => self.delete_range(start, end),
             Subcommand::Substitute(s) => self.substitute_range(start, end, s),
+            Subcommand::Transliterate { source, dest } => self.transliterate_range(start, end, source, dest),
             Subcommand::Append(text) => self.append_after(start, end, text),
             Subcommand::Insert(text) => self.insert_before(start, text),
             Subcommand::Change(text) => self.change_range(start, end, text),
@@ -194,6 +195,20 @@ impl Engine {
                 }
                 re.replace(&old, s.replacement.as_str()).to_string()
             };
+            if new != old {
+                self.lines[idx].text = new;
+                self.lines[idx].modified = true;
+            }
+        }
+        Ok(())
+    }
+
+    fn transliterate_range(&mut self, start: usize, end: usize, source: &str, dest: &str) -> Result<(), EditError> {
+        let (s_idx, e_idx) = self.resolve_range(start, end)?;
+        let map: HashMap<char, char> = source.chars().zip(dest.chars()).collect();
+        for idx in s_idx..=e_idx {
+            let old = self.lines[idx].text.clone();
+            let new: String = old.chars().map(|ch| map.get(&ch).copied().unwrap_or(ch)).collect();
             if new != old {
                 self.lines[idx].text = new;
                 self.lines[idx].modified = true;
@@ -632,6 +647,16 @@ mod tests {
         let res = edit_text(input, &cmds).unwrap();
         assert_eq!(res.lines, vec!["bar bar".to_string()]);
         assert_eq!(res.modified, vec![1]);
+    }
+
+    #[test]
+    fn transliterate_range() {
+        let input = "abc\ncab\n";
+        let cmd = format!("{},{}y/abc/ABC/", addr(1, "abc"), addr(2, "cab"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        let res = edit_text(input, &cmds).unwrap();
+        assert_eq!(res.lines, vec!["ABC".to_string(), "CAB".to_string()]);
+        assert_eq!(res.modified, vec![1, 2]);
     }
 
     #[test]

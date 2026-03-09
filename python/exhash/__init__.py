@@ -43,7 +43,9 @@ def exhash(text:str, cmds:list[str]) -> dict:
       Special:  ``0|0000|`` targets before line 1 (only with a or i)
 
     Commands:
-      s/pat/rep/[flags]  Substitute (regex). Flags: g=all, i=case-insensitive
+      s/pat/rep/[flags]  Substitute using Rust regex syntax.
+                         Replacement supports $1, $0, ${name}. Flags: g=all, i=case-insensitive
+      y/src/dst/         Transliterate chars in-place (source and destination lengths must match)
       d                  Delete line(s)
       a                  Append text after line
       i                  Insert text before line
