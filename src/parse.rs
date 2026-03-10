@@ -34,6 +34,7 @@ pub enum Subcommand {
     Dedent { levels: usize },
     Sort,
     Print,
+    Read { path: String },
 }
 
 #[derive(Debug, Clone)]
@@ -160,10 +161,10 @@ where
             return Err(EditError::new("0|0000| is not allowed in ranges"));
         }
         match cmd {
-            Subcommand::Append(_) | Subcommand::Insert(_) => {}
+            Subcommand::Append(_) | Subcommand::Insert(_) | Subcommand::Read { .. } => {}
             _ => {
                 return Err(EditError::new(
-                    "0|0000| is only allowed with i or a",
+                    "0|0000| is only allowed with i, a, or r",
                 ))
             }
         }
@@ -252,6 +253,13 @@ where
                 ));
             }
             Ok((Subcommand::Copy { dest }, ""))
+        }
+        'r' => {
+            let path = rest.trim().to_string();
+            if path.is_empty() {
+                return Err(EditError::new("r requires a file path"));
+            }
+            Ok((Subcommand::Read { path }, ""))
         }
         'g' => parse_global(rest, false, read_text),
         'v' => parse_global(rest, true, read_text),

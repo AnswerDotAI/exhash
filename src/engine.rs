@@ -88,7 +88,7 @@ impl Engine {
                 return Err(EditError::new("0|0000| must have hash 0000"));
             }
             match cmd {
-                Subcommand::Append(_) | Subcommand::Insert(_) => Ok(()),
+                Subcommand::Append(_) | Subcommand::Insert(_) | Subcommand::Read { .. } => Ok(()),
                 _ => Err(EditError::new("0|0000| is only valid with i or a")),
             }
         } else {
@@ -149,6 +149,7 @@ impl Engine {
             Subcommand::Dedent { levels } => self.dedent_range(start, end, *levels),
             Subcommand::Sort => self.sort_range(start, end),
             Subcommand::Print => self.print_range(start, end),
+            Subcommand::Read { path } => self.read_file(start, end, path),
         }
     }
 
@@ -465,6 +466,13 @@ impl Engine {
             self.lines[idx].modified = true;
         }
         Ok(())
+    }
+
+    fn read_file(&mut self, start: usize, end: usize, path: &str) -> Result<(), EditError> {
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| EditError::new(format!("failed to read file {path:?}: {e}")))?;
+        let lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+        self.append_after(start, end, &lines)
     }
 
     fn global(
