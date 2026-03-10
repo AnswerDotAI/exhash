@@ -159,3 +159,32 @@ def test_exhash_accepts_tuple_cmds():
     a1, a2 = lnhash(1, "a"), lnhash(2, "b")
     res = exhash(text, (f"{a1}s/a/A/", f"{a2}s/b/B/"))
     assert res["lines"] == ["A", "B"]
+
+def test_exhash_read_file(tmp_path):
+    src = tmp_path / "src.txt"
+    src.write_text("x\ny")
+    text = "a\nb\nc\n"
+    addr = lnhash(2, "b")
+    res = exhash(text, [f"{addr}r {src}"])
+    assert res["lines"] == ["a", "b", "x", "y", "c"]
+    assert res["modified"] == [3, 4]
+
+def test_exhash_read_file_at_zero(tmp_path):
+    src = tmp_path / "src.txt"
+    src.write_text("x\ny")
+    text = "a\nb\n"
+    res = exhash(text, ["0|0000|r " + str(src)])
+    assert res["lines"] == ["x", "y", "a", "b"]
+
+def test_exhash_read_file_not_found():
+    text = "a\nb\n"
+    addr = lnhash(1, "a")
+    with pytest.raises(ValueError, match="failed to read"): exhash(text, [f"{addr}r /tmp/nonexistent_exhash_test.txt"])
+
+def test_exhash_read_file_with_other_cmds(tmp_path):
+    src = tmp_path / "src.txt"
+    src.write_text("new line")
+    text = "foo\nbar\nbaz\n"
+    a1, a2 = lnhash(1, "foo"), lnhash(3, "baz")
+    res = exhash(text, [f"{a2}r {src}", f"{a1}s/foo/FOO/"])
+    assert res["lines"] == ["FOO", "bar", "baz", "new line"]
