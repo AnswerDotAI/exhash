@@ -130,6 +130,31 @@ fn exhash_dry_run_does_not_write() {
 }
 
 #[test]
+fn exhash_custom_sw_option_changes_shift_width() {
+    let dir = mk_temp_dir("exhash_custom_sw");
+    let file = dir.join("f.txt");
+    write_file(&file, "a\n");
+
+    let a1 = format_lnhash(1, "a");
+    let cmd = format!("{a1}>1");
+
+    let bin = env!("CARGO_BIN_EXE_exhash");
+    let out = Command::new(bin)
+        .arg("--sw")
+        .arg("2")
+        .arg(&file)
+        .arg(cmd)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let expected = format!("{}    a\n", format_lnhash(1, "  a"));
+    assert_eq!(stdout, expected);
+    assert_eq!(read_file(&file), "  a\n");
+}
+
+#[test]
 fn exhash_rejects_stale_lnhash_and_leaves_file_unchanged() {
     let dir = mk_temp_dir("exhash_stale");
     let file = dir.join("f.txt");

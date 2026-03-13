@@ -4,11 +4,11 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process;
 
-use exhash::{edit_text, parse_commands_from_args};
+use exhash::{edit_text_with_sw, parse_commands_from_args};
 
 fn usage() {
     eprintln!("\
-Usage: exhash [-h] [--dry-run] [--stdin] <file|-> [commands...]
+Usage: exhash [-h] [--dry-run] [--stdin] [--sw N] <file|-> [commands...]
 
 Verified line-addressed file editor using lnhash addresses.
 
@@ -36,8 +36,8 @@ COMMANDS
   j                  Join with next line; with range, joins all lines in range
   m dest             Move line(s) after dest address
   t dest             Copy line(s) after dest address
-  >[n]               Indent n levels (default 1, 4 spaces each)
-  <[n]               Dedent n levels (default 1)
+  >[n]               Indent n levels (default 1, --sw spaces each)
+  <[n]               Dedent n levels (default 1, --sw spaces each)
   sort               Sort lines alphabetically
   p                  Print (include lines in output without changing them)
   g/pat/cmd          Global: run cmd on matching lines
@@ -50,6 +50,7 @@ TEXT BLOCKS (a/i/c)
 
 OPTIONS
   --dry-run  Don't write; show what would change on stdout
+  --sw N     Shift width for < and > (default 4)
   --stdin    Read input from stdin (file arg must be '-');
              outputs full file in lnhash format.
              Text blocks (a/i/c) not supported in this mode.
@@ -125,6 +126,7 @@ fn main() {
 
     let mut dry_run = false;
     let mut stdin_mode = false;
+    let mut sw = 4usize;
 
     let mut idx = 1;
     while idx < args.len() {
@@ -136,6 +138,20 @@ fn main() {
             "--stdin" => {
                 stdin_mode = true;
                 idx += 1;
+            }
+            "--sw" => {
+                let Some(val) = args.get(idx + 1) else {
+                    eprintln!("error: --sw requires an integer argument");
+                    process::exit(2);
+                };
+                sw = match val.parse::<usize>() {
+                    Ok(n) => n,
+                    Err(_) => {
+                        eprintln!("error: invalid --sw value {val:?}");
+                        process::exit(2);
+                    }
+                };
+                idx += 2;
             }
             "--help" | "-h" => {
                 usage();
@@ -184,7 +200,7 @@ fn main() {
             }
         };
 
-        let result = match edit_text(&input, &commands) {
+        let result = match edit_text_with_sw(&input, &commands, sw) {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("error: {e}");
@@ -230,7 +246,7 @@ fn main() {
         }
     };
 
-    let result = match edit_text(&text, &commands) {
+    let result = match edit_text_with_sw(&text, &commands, sw) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("error: {e}");

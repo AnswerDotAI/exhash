@@ -105,6 +105,13 @@ def test_exhash_move_destination_can_use_last_line():
     assert res["lines"] == ["b", "c", "a"]
     assert res["modified"] == [3]
 
+def test_exhash_custom_sw():
+    text = "a\n"
+    a1 = lnhash(1, "a")
+    res = exhash(text, [f"{a1}>1"], sw=2)
+    assert res["lines"] == ["  a"]
+    assert res["modified"] == [1]
+
 def test_exhash_append():
     text = "a\nb\n"
     addr = lnhash(1, "a")

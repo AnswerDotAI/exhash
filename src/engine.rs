@@ -30,10 +30,11 @@ struct Line {
 struct Engine {
     lines: Vec<Line>,
     deleted: BTreeSet<usize>,
+    sw: usize,
 }
 
 impl Engine {
-    fn new(input_lines: Vec<String>) -> Self {
+    fn new(input_lines: Vec<String>, sw: usize) -> Self {
         let lines = input_lines
             .into_iter()
             .enumerate()
@@ -47,6 +48,7 @@ impl Engine {
         Self {
             lines,
             deleted: BTreeSet::new(),
+            sw,
         }
     }
 
@@ -490,10 +492,10 @@ impl Engine {
 
     fn indent_range(&mut self, start: usize, end: usize, levels: usize) -> Result<(), EditError> {
         let (s, e) = self.resolve_range(start, end)?;
-        if levels == 0 {
+        if levels == 0 || self.sw == 0 {
             return Ok(());
         }
-        let prefix = "    ".repeat(levels);
+        let prefix = " ".repeat(self.sw * levels);
         for idx in s..=e {
             let new = format!("{}{}", prefix, self.lines[idx].text);
             self.lines[idx].text = new;
@@ -504,12 +506,12 @@ impl Engine {
 
     fn dedent_range(&mut self, start: usize, end: usize, levels: usize) -> Result<(), EditError> {
         let (s, e) = self.resolve_range(start, end)?;
-        if levels == 0 {
+        if levels == 0 || self.sw == 0 {
             return Ok(());
         }
         for idx in s..=e {
             let old = self.lines[idx].text.clone();
-            let new = dedent(&old, levels);
+            let new = dedent(&old, levels, self.sw);
             if new != old {
                 self.lines[idx].text = new;
                 self.lines[idx].modified = true;
@@ -590,9 +592,13 @@ impl Engine {
 /// Each command's lnhashes are verified against the current text immediately before that
 /// command is applied.
 pub fn edit_text(input: &str, commands: &[Command]) -> Result<EditResult, EditError> {
+    edit_text_with_sw(input, commands, 4)
+}
+
+pub fn edit_text_with_sw(input: &str, commands: &[Command], sw: usize) -> Result<EditResult, EditError> {
     let input_lines: Vec<String> = input.lines().map(|l| l.to_string()).collect();
 
-    let mut eng = Engine::new(input_lines);
+    let mut eng = Engine::new(input_lines, sw);
     for c in commands {
         eng.verify_command(c)?;
         eng.apply_command(c)?;
@@ -634,6 +640,7 @@ fn build_regex(pattern: &str, case_insensitive: bool) -> Result<Regex, EditError
 }
 
 fn join_strings(a: &str, b: &str) -> String {
+    let b = b.trim_start_matches(char::is_whitespace);
     if a.is_empty() {
         return b.to_string();
     }
@@ -641,29 +648,27 @@ fn join_strings(a: &str, b: &str) -> String {
         return a.to_string();
     }
     let a_end_ws = a.chars().last().map(|c| c.is_whitespace()).unwrap_or(false);
-    let b_start_ws = b.chars().next().map(|c| c.is_whitespace()).unwrap_or(false);
-    if a_end_ws || b_start_ws {
+    if a_end_ws {
         format!("{a}{b}")
     } else {
         format!("{a} {b}")
     }
 }
 
-fn dedent(line: &str, levels: usize) -> String {
+fn dedent(line: &str, levels: usize, sw: usize) -> String {
     let mut s = line.to_string();
+    if sw == 0 {
+        return s;
+    }
     for _ in 0..levels {
-        if s.starts_with("    ") {
-            s = s[4..].to_string();
-            continue;
-        }
         if s.starts_with('\t') {
             s = s[1..].to_string();
             continue;
         }
-        // Remove up to 4 leading spaces as one level.
+        // Remove up to `sw` leading spaces as one level.
         let mut removed = 0usize;
         let bytes = s.as_bytes();
-        while removed < 4 && removed < bytes.len() && bytes[removed] == b' ' {
+        while removed < sw && removed < bytes.len() && bytes[removed] == b' ' {
             removed += 1;
         }
         if removed > 0 {
@@ -753,6 +758,15 @@ mod tests {
         assert_eq!(res.lines, vec!["hello world".to_string()]);
         assert_eq!(res.modified, vec![1]);
         assert_eq!(res.deleted, vec![2]);
+    }
+
+    #[test]
+    fn join_single_address_collapses_indented_next_line_to_single_space() {
+        let input = "hello\n    world\n";
+        let cmd = format!("{}j", addr(1, "hello"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        let res = edit_text(input, &cmds).unwrap();
+        assert_eq!(res.lines, vec!["hello world".to_string()]);
     }
 
     #[test]
@@ -855,6 +869,18 @@ mod tests {
     }
 
     #[test]
+    fn indent_and_dedent_with_custom_sw() {
+        let input = "a\n  b\n";
+        let cmd1 = format!("{}>2", addr(1, "a"));
+        let cmd2 = format!("{}<1", addr(2, "  b"));
+        let script = format!("{}\n{}\n", cmd1, cmd2);
+        let cmds = parse_commands_from_script(&script).unwrap();
+        let res = edit_text_with_sw(input, &cmds, 2).unwrap();
+        assert_eq!(res.lines, vec!["    a".to_string(), "b".to_string()]);
+        assert_eq!(res.modified, vec![1, 2]);
+    }
+
+    #[test]
     fn sort_range() {
         let input = "c\na\nb\n";
         let cmd = format!("{},{}sort", addr(1, "c"), addr(3, "b"));
@@ -931,6 +957,17 @@ mod tests {
         let cmds = parse_commands_from_script(&cmd).unwrap();
         let res = edit_text(input, &cmds).unwrap();
         assert_eq!(res.lines, vec!["a b c".to_string()]);
+        assert_eq!(res.deleted, vec![2, 3]);
+        assert_eq!(res.modified, vec![1]);
+    }
+
+    #[test]
+    fn join_range_preserves_outer_whitespace_and_trims_middle_line_prefixes() {
+        let input = "  alpha\n   beta   \n  gamma  \n";
+        let cmd = format!("{},{}j", addr(1, "  alpha"), addr(3, "  gamma  "));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        let res = edit_text(input, &cmds).unwrap();
+        assert_eq!(res.lines, vec!["  alpha beta   gamma  ".to_string()]);
         assert_eq!(res.deleted, vec![2, 3]);
         assert_eq!(res.modified, vec![1]);
     }

@@ -28,7 +28,7 @@ def exhash_result(results:list[dict]) -> str:
     return '\n'.join(out)
 
 
-def exhash(text:str, cmds:list[str]) -> dict:
+def exhash(text:str, cmds:list[str], sw:int=4) -> dict:
     """Verified line-addressed editor. Apply commands to `text`, return a result dict.
 
     Commands primarily use lnhash addresses: ``lineno|hash|cmd`` where hash is
@@ -55,12 +55,14 @@ def exhash(text:str, cmds:list[str]) -> dict:
       j                  Join with next line; with range, joins all
       m dest             Move line(s) after dest address
       t dest             Copy line(s) after dest address
-      >[n]               Indent n levels (default 1, 4 spaces each)
-      <[n]               Dedent n levels (default 1)
+      >[n]               Indent n levels (default 1, `sw` spaces each)
+      <[n]               Dedent n levels (default 1, `sw` spaces each)
       sort               Sort lines alphabetically
       p                  Print (include in output without changing)
       g/pat/cmd          Global: run cmd on matching lines
       g!/pat/cmd         Inverted global (also v/pat/cmd)
+
+    `sw` controls shift width for `<` and `>` and defaults to 4.
 
     For a/i/c, remaining lines in the command string are the text block
     (no '.' terminator needed, unlike the CLI).
@@ -84,5 +86,5 @@ def exhash(text:str, cmds:list[str]) -> dict:
       "\\n".join(res["lines"])           # "baz\\nbar"
       res = exhash(text, [f"{addr}a\\nnew line 1\\nnew line 2"])
     """
-    r = _exhash(text, *cmds)
+    r = _exhash(text, *cmds, sw=sw)
     return dict(lines=r.lines, hashes=r.hashes, modified=r.modified, deleted=r.deleted)

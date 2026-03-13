@@ -36,12 +36,12 @@ fn lnhashview(text: &str) -> Vec<String> {
 }
 
 #[pyfunction]
-#[pyo3(name = "exhash", signature = (text, *cmds))]
-fn py_exhash(text: &str, cmds: Vec<String>) -> PyResult<EditResultPy> {
+#[pyo3(name = "exhash", signature = (text, *cmds, sw=4))]
+fn py_exhash(text: &str, cmds: Vec<String>, sw: usize) -> PyResult<EditResultPy> {
     let cmd_refs: Vec<&str> = cmds.iter().map(|s| s.as_str()).collect();
     let parsed = crate::parse_commands_from_strs(&cmd_refs)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    let res = crate::edit_text(text, &parsed)
+    let res = crate::edit_text_with_sw(text, &parsed, sw)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(res.into())
 }
