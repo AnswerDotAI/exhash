@@ -1,13 +1,22 @@
 use std::io::BufRead;
 
-use crate::lnhash::{parse_lnhash, parse_lnhash_prefix, LnHash};
+use crate::lnhash::{parse_lnhash_prefix, LnHash};
 use crate::EditError;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Address {
+    LnHash(LnHash),
+    /// `$` (last line in current buffer)
+    LastLine,
+    /// `%` (whole file; shorthand for `1,$`)
+    WholeFile,
+}
 
 /// A fully parsed command, including any multiline text blocks.
 #[derive(Debug, Clone)]
 pub struct Command {
-    pub addr1: LnHash,
-    pub addr2: Option<LnHash>,
+    pub addr1: Address,
+    pub addr2: Option<Address>,
     pub has_comma: bool,
     pub cmd: Subcommand,
 }
@@ -22,8 +31,8 @@ pub enum Subcommand {
     Insert(Vec<String>),
     Change(Vec<String>),
     Join,
-    Move { dest: LnHash },
-    Copy { dest: LnHash },
+    Move { dest: Address },
+    Copy { dest: Address },
     /// Global (`g`) and inverted-global (`v`/`g!`).
     Global {
         invert: bool,
@@ -125,13 +134,13 @@ where
     F: FnMut() -> Result<Vec<String>, EditError>,
 {
     let line = line.trim();
-    let (addr1, mut rest) = parse_lnhash_prefix(line)?;
+    let (addr1, mut rest) = parse_address_prefix(line)?;
     let mut has_comma = false;
-    let mut addr2: Option<LnHash> = None;
+    let mut addr2: Option<Address> = None;
 
     if rest.starts_with(',') {
         has_comma = true;
-        let (a2, r2) = parse_lnhash_prefix(&rest[1..])?;
+        let (a2, r2) = parse_address_prefix(&rest[1..])?;
         addr2 = Some(a2);
         rest = r2;
     }
@@ -151,28 +160,39 @@ where
         )));
     }
 
-    // Enforce 0|0000| rules.
-    if addr1.lineno == 0 {
-        if addr1.hash != 0 {
-            return Err(EditError::new("0|0000| must have hash 0000"));
-        }
+    if matches!(addr1, Address::WholeFile) {
         if has_comma || addr2.is_some() {
-            return Err(EditError::new("0|0000| is not allowed in ranges"));
+            return Err(EditError::new("% is already a whole-file range"));
         }
-        match cmd {
-            Subcommand::Append(_) | Subcommand::Insert(_) => {}
-            _ => {
-                return Err(EditError::new(
-                    "0|0000| is only allowed with i or a",
-                ))
+    }
+    if matches!(addr2, Some(Address::WholeFile)) {
+        return Err(EditError::new("% is only allowed as a standalone address"));
+    }
+
+    // Enforce 0|0000| rules.
+    if let Address::LnHash(a1) = addr1 {
+        if a1.lineno == 0 {
+            if a1.hash != 0 {
+                return Err(EditError::new("0|0000| must have hash 0000"));
+            }
+            if has_comma || addr2.is_some() {
+                return Err(EditError::new("0|0000| is not allowed in ranges"));
+            }
+            match cmd {
+                Subcommand::Append(_) | Subcommand::Insert(_) => {}
+                _ => {
+                    return Err(EditError::new(
+                        "0|0000| is only allowed with i or a",
+                    ))
+                }
             }
         }
     }
-    if let Some(a2) = addr2 {
+    if let Some(Address::LnHash(a2)) = addr2 {
         if a2.lineno == 0 {
             return Err(EditError::new("0|0000| is not allowed in ranges"));
         }
-        if addr1.lineno == 0 {
+        if matches!(addr1, Address::LnHash(LnHash { lineno: 0, .. })) {
             return Err(EditError::new("0|0000| is not allowed in ranges"));
         }
     }
@@ -183,6 +203,34 @@ where
         has_comma,
         cmd,
     })
+}
+
+fn parse_address_prefix(input: &str) -> Result<(Address, &str), EditError> {
+    if let Some(rest) = input.strip_prefix('$') {
+        return Ok((Address::LastLine, rest));
+    }
+    if let Some(rest) = input.strip_prefix('%') {
+        return Ok((Address::WholeFile, rest));
+    }
+    let (lh, rest) = parse_lnhash_prefix(input)?;
+    Ok((Address::LnHash(lh), rest))
+}
+
+fn parse_destination_address(input: &str, op: char) -> Result<Address, EditError> {
+    let (addr, rest) = parse_address_prefix(input)?;
+    if !rest.trim().is_empty() {
+        return Err(EditError::new(format!(
+            "unexpected trailing characters after destination: {:?}",
+            rest
+        )));
+    }
+    match addr {
+        Address::LnHash(LnHash { lineno: 0, .. }) => {
+            Err(EditError::new(format!("destination 0|0000| is not allowed for {op}")))
+        }
+        Address::WholeFile => Err(EditError::new(format!("destination % is not allowed for {op}"))),
+        _ => Ok(addr),
+    }
 }
 
 fn parse_subcommand_with_text<'a, F>(
@@ -235,22 +283,12 @@ where
         }
         'm' => {
             let dest_str = rest.trim();
-            let dest = parse_lnhash(dest_str)?;
-            if dest.lineno == 0 {
-                return Err(EditError::new(
-                    "destination 0|0000| is not allowed for m",
-                ));
-            }
+            let dest = parse_destination_address(dest_str, 'm')?;
             Ok((Subcommand::Move { dest }, ""))
         }
         't' => {
             let dest_str = rest.trim();
-            let dest = parse_lnhash(dest_str)?;
-            if dest.lineno == 0 {
-                return Err(EditError::new(
-                    "destination 0|0000| is not allowed for t",
-                ));
-            }
+            let dest = parse_destination_address(dest_str, 't')?;
             Ok((Subcommand::Copy { dest }, ""))
         }
         'g' => parse_global(rest, false, read_text),
@@ -520,6 +558,44 @@ mod tests {
         assert_eq!(parsed.len(), 1);
         assert!(matches!(parsed[0].cmd, Subcommand::Delete));
         assert!(parsed[0].has_comma);
+    }
+
+    #[test]
+    fn parse_whole_file_address() {
+        let parsed = parse_commands_from_script("%d").unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert!(matches!(parsed[0].addr1, Address::WholeFile));
+        assert!(parsed[0].addr2.is_none());
+        assert!(matches!(parsed[0].cmd, Subcommand::Delete));
+    }
+
+    #[test]
+    fn parse_last_line_address_forms() {
+        let parsed = parse_commands_from_script("$d").unwrap();
+        assert!(matches!(parsed[0].addr1, Address::LastLine));
+        assert!(parsed[0].addr2.is_none());
+
+        let cmd = format!("{},$d", addr(1, "a"));
+        let parsed = parse_commands_from_script(&cmd).unwrap();
+        assert!(matches!(parsed[0].addr1, Address::LnHash(_)));
+        assert!(matches!(parsed[0].addr2, Some(Address::LastLine)));
+    }
+
+    #[test]
+    fn parse_last_line_move_destination() {
+        let cmd = format!("{}m$", addr(1, "a"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Move { dest } => assert!(matches!(dest, Address::LastLine)),
+            _ => panic!("expected move"),
+        }
+    }
+
+    #[test]
+    fn parse_rejects_whole_file_move_destination() {
+        let cmd = format!("{}m%", addr(1, "a"));
+        let err = parse_commands_from_script(&cmd).unwrap_err();
+        assert!(err.message().contains("destination % is not allowed"));
     }
 
     #[test]

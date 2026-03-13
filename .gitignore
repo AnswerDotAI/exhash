@@ -1,3 +1,4 @@
+*.dylib.dSYM
 meta/
 tags
 target/
@@ -24,7 +25,3 @@ build/
 dist/
 pip-wheel-metadata/
 .cache/
-ipykernel
-jupyter_kernel_test
-xeus
-xeus-python

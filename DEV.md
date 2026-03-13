@@ -48,6 +48,7 @@ cargo test && pytest -q
 ## Hash verification timing
 
 `edit_text` verifies lnhashes command-by-command against the current in-memory buffer, immediately before each command executes (not all upfront). If an earlier command shifts or rewrites a later target line, that later command will fail with a stale-hash error unless you recompute addresses.
+The `$` (last line) and `%` (whole file) address forms are resolved against the current buffer and do not require hashes.
 
 ## Release
 

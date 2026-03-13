@@ -16,7 +16,13 @@ cargo install exhash
 
 ## lnhash format
 
-We refer to an *lnhash* as a tag of the form `lineno|hash|`, where `hash` is the lower 16 bits of Rust's `DefaultHasher` over the line content. exhash is just like ex, except that addresses *must* be in lnhash format. Addresses like `%`, `.`, etc are not permitted.
+We refer to an *lnhash* as a tag of the form `lineno|hash|`, where `hash` is the lower 16 bits of Rust's `DefaultHasher` over the line content.
+
+Address forms:
+
+- `lineno|hash|` — hash-verified address
+- `$` — last line (no hash)
+- `%` — whole file (`1,$`, no hashes)
 
 ## CLI
 
@@ -49,6 +55,13 @@ EOF
 
 # Dry-run
 exhash --dry-run file.txt '12|abcd|d'
+
+# Last line and whole file shorthands (no hash)
+exhash file.txt '$d'
+exhash file.txt '%j'
+
+# Move a line to EOF using $ as the destination
+exhash file.txt '12|abcd|m$'
 ```
 
 Substitute uses Rust regex syntax:

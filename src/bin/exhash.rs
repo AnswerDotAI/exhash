@@ -21,6 +21,8 @@ ADDRESSING
 
   Single:   12|a3f2|cmd
   Range:    12|a3f2|,15|b1c3|cmd
+  Last:     $cmd
+  Whole:    %cmd   (same as 1,$)
   Special:  0|0000| targets before line 1 (only with a or i)
 
 COMMANDS
@@ -61,6 +63,9 @@ EXAMPLES
   exhash file.txt '12|abcd|s/foo/bar/g'
   exhash file.txt '12|abcd|y/abc/ABC/'
   exhash file.txt '2|beef|,4|cafe|d'
+  exhash file.txt '$d'
+  exhash file.txt '%j'
+  exhash file.txt '12|abcd|m$'
   printf 'line1\\nline2\\n.\\n' | exhash file.txt '5|d1e2|a'
   exhash file.txt '0|0000|i' <<< $'header\\n.'
   exhash file.txt '2|aa|,3|bb|m5|cc|'

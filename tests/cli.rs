@@ -175,6 +175,54 @@ fn exhash_rechecks_hashes_between_commands() {
 }
 
 #[test]
+fn exhash_percent_join_whole_file() {
+    let dir = mk_temp_dir("exhash_percent_join");
+    let file = dir.join("f.txt");
+    write_file(&file, "a\nb\nc\n");
+
+    let bin = env!("CARGO_BIN_EXE_exhash");
+    let out = Command::new(bin).arg(&file).arg("%j").output().unwrap();
+    assert!(out.status.success());
+
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let expected = format!("{}  a b c\n", format_lnhash(1, "a b c"));
+    assert_eq!(stdout, expected);
+    assert_eq!(read_file(&file), "a b c\n");
+}
+
+#[test]
+fn exhash_dollar_deletes_last_line() {
+    let dir = mk_temp_dir("exhash_dollar_delete");
+    let file = dir.join("f.txt");
+    write_file(&file, "a\nb\nc\n");
+
+    let bin = env!("CARGO_BIN_EXE_exhash");
+    let out = Command::new(bin).arg(&file).arg("$d").output().unwrap();
+    assert!(out.status.success());
+    assert_eq!(String::from_utf8(out.stdout).unwrap(), "");
+    assert_eq!(read_file(&file), "a\nb\n");
+}
+
+#[test]
+fn exhash_move_to_last_line_destination() {
+    let dir = mk_temp_dir("exhash_move_last_line_dest");
+    let file = dir.join("f.txt");
+    write_file(&file, "a\nb\nc\n");
+
+    let a1 = format_lnhash(1, "a");
+    let cmd = format!("{a1}m$");
+
+    let bin = env!("CARGO_BIN_EXE_exhash");
+    let out = Command::new(bin).arg(&file).arg(cmd).output().unwrap();
+    assert!(out.status.success());
+
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let expected = format!("{}  a\n", format_lnhash(3, "a"));
+    assert_eq!(stdout, expected);
+    assert_eq!(read_file(&file), "b\nc\na\n");
+}
+
+#[test]
 fn exhash_multiline_append_from_stdin() {
     let dir = mk_temp_dir("exhash_multiline");
     let file = dir.join("f.txt");

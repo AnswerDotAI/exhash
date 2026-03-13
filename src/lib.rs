@@ -12,7 +12,7 @@ mod python;
 
 pub use engine::{edit_text, EditResult};
 pub use lnhash::{format_lnhash, line_hash_u16, parse_lnhash, LnHash};
-pub use parse::{parse_commands_from_args, parse_commands_from_script, parse_commands_from_strs, Command, Subcommand};
+pub use parse::{parse_commands_from_args, parse_commands_from_script, parse_commands_from_strs, Address, Command, Subcommand};
 
 #[derive(Debug, Clone)]
 pub struct EditError {

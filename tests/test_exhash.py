@@ -78,6 +78,33 @@ def test_exhash_delete():
     assert res["lines"] == ["a", "c"]
     assert 2 in res["deleted"]
 
+def test_exhash_percent_whole_file_join():
+    text = "a\nb\nc\n"
+    res = exhash(text, ["%j"])
+    assert res["lines"] == ["a b c"]
+    assert res["deleted"] == [2, 3]
+
+def test_exhash_percent_on_empty_file_is_noop():
+    res = exhash("", ["%s/foo/bar/"])
+    assert res["lines"] == []
+    assert res["modified"] == []
+    assert res["deleted"] == []
+
+def test_exhash_dollar_addr1_and_addr2_forms():
+    text = "a\nb\nc\n"
+    res = exhash(text, ["$d"])
+    assert res["lines"] == ["a", "b"]
+    a2 = lnhash(2, "b")
+    res = exhash(text, [f"{a2},$d"])
+    assert res["lines"] == ["a"]
+
+def test_exhash_move_destination_can_use_last_line():
+    text = "a\nb\nc\n"
+    a1 = lnhash(1, "a")
+    res = exhash(text, [f"{a1}m$"])
+    assert res["lines"] == ["b", "c", "a"]
+    assert res["modified"] == [3]
+
 def test_exhash_append():
     text = "a\nb\n"
     addr = lnhash(1, "a")

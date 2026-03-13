@@ -3,7 +3,7 @@ use std::collections::{BTreeSet, HashMap};
 use regex::{Regex, RegexBuilder};
 
 use crate::lnhash::line_hash_u16;
-use crate::parse::{Command, Subcommand, Subst};
+use crate::parse::{Address, Command, Subcommand, Subst};
 use crate::EditError;
 
 /// Result of applying an edit script.
@@ -51,20 +51,19 @@ impl Engine {
     }
 
     fn apply_command(&mut self, cmd: &Command) -> Result<(), EditError> {
-        let start = cmd.addr1.lineno;
-        let end = cmd.addr2.map(|a| a.lineno).unwrap_or(start);
+        let (start, end, is_range) = self.resolve_command_range(cmd)?;
         if start > end && start != 0 {
             return Err(EditError::new(format!(
                 "invalid range: {start}..{end}"
             )));
         }
-        self.apply_subcommand(start, end, cmd.has_comma, &cmd.cmd)
+        self.apply_subcommand(start, end, is_range, &cmd.cmd)
     }
 
     fn verify_command(&self, cmd: &Command) -> Result<(), EditError> {
-        self.verify_lnhash(cmd.addr1, &cmd.cmd)?;
+        self.verify_address(cmd.addr1, &cmd.cmd)?;
         if let Some(a2) = cmd.addr2 {
-            self.verify_lnhash(a2, &cmd.cmd)?;
+            self.verify_address(a2, &cmd.cmd)?;
         }
         self.verify_subcommand_refs(&cmd.cmd)?;
         Ok(())
@@ -73,11 +72,27 @@ impl Engine {
     fn verify_subcommand_refs(&self, cmd: &Subcommand) -> Result<(), EditError> {
         match cmd {
             Subcommand::Move { dest } | Subcommand::Copy { dest } => {
-                self.verify_lnhash_basic(*dest)?;
+                self.verify_destination(*dest)?;
                 Ok(())
             }
             Subcommand::Global { cmd, .. } => self.verify_subcommand_refs(cmd),
             _ => Ok(()),
+        }
+    }
+
+    fn verify_address(&self, addr: Address, cmd: &Subcommand) -> Result<(), EditError> {
+        match addr {
+            Address::LnHash(lh) => self.verify_lnhash(lh, cmd),
+            Address::LastLine => self.resolve_last_line().map(|_| ()),
+            Address::WholeFile => Ok(()),
+        }
+    }
+
+    fn verify_destination(&self, dest: Address) -> Result<(), EditError> {
+        match dest {
+            Address::LnHash(lh) => self.verify_lnhash_basic(lh),
+            Address::LastLine => self.resolve_last_line().map(|_| ()),
+            Address::WholeFile => Err(EditError::new("destination % is not allowed")),
         }
     }
 
@@ -117,6 +132,54 @@ impl Engine {
         Ok(())
     }
 
+    fn resolve_command_range(&self, cmd: &Command) -> Result<(usize, usize, bool), EditError> {
+        if matches!(cmd.addr1, Address::WholeFile) {
+            if cmd.has_comma || cmd.addr2.is_some() {
+                return Err(EditError::new("% is already a whole-file range"));
+            }
+            return Ok(self.resolve_whole_file_range());
+        }
+
+        let start = self.resolve_address_lineno(cmd.addr1)?;
+        let end = match cmd.addr2 {
+            Some(a) => self.resolve_address_lineno(a)?,
+            None => start,
+        };
+        Ok((start, end, cmd.has_comma))
+    }
+
+    fn resolve_address_lineno(&self, addr: Address) -> Result<usize, EditError> {
+        match addr {
+            Address::LnHash(a) => Ok(a.lineno),
+            Address::LastLine => self.resolve_last_line(),
+            Address::WholeFile => Err(EditError::new("% is only allowed as the first address")),
+        }
+    }
+
+    fn resolve_destination_lineno(&self, dest: Address) -> Result<usize, EditError> {
+        match dest {
+            Address::LnHash(lh) => Ok(lh.lineno),
+            Address::LastLine => self.resolve_last_line(),
+            Address::WholeFile => Err(EditError::new("destination % is not allowed")),
+        }
+    }
+
+    fn resolve_last_line(&self) -> Result<usize, EditError> {
+        if self.lines.is_empty() {
+            Err(EditError::new("address '$' out of range on empty file"))
+        } else {
+            Ok(self.lines.len())
+        }
+    }
+
+    fn resolve_whole_file_range(&self) -> (usize, usize, bool) {
+        if self.lines.is_empty() {
+            (0, 0, true)
+        } else {
+            (1, self.lines.len(), true)
+        }
+    }
+
     fn apply_subcommand(
         &mut self,
         start: usize,
@@ -124,6 +187,9 @@ impl Engine {
         has_comma: bool,
         sub: &Subcommand,
     ) -> Result<(), EditError> {
+        if has_comma && start == 0 && end == 0 {
+            return self.apply_empty_range(sub);
+        }
         match sub {
             Subcommand::Delete => self.delete_range(start, end),
             Subcommand::Substitute(s) => self.substitute_range(start, end, s),
@@ -138,8 +204,8 @@ impl Engine {
                     self.join_with_next(start)
                 }
             }
-            Subcommand::Move { dest } => self.move_range(start, end, dest.lineno),
-            Subcommand::Copy { dest } => self.copy_range(start, end, dest.lineno),
+            Subcommand::Move { dest } => self.move_range(start, end, self.resolve_destination_lineno(*dest)?),
+            Subcommand::Copy { dest } => self.copy_range(start, end, self.resolve_destination_lineno(*dest)?),
             Subcommand::Global {
                 invert,
                 pattern,
@@ -149,6 +215,15 @@ impl Engine {
             Subcommand::Dedent { levels } => self.dedent_range(start, end, *levels),
             Subcommand::Sort => self.sort_range(start, end),
             Subcommand::Print => self.print_range(start, end),
+        }
+    }
+
+    fn apply_empty_range(&mut self, sub: &Subcommand) -> Result<(), EditError> {
+        match sub {
+            Subcommand::Append(text) | Subcommand::Insert(text) | Subcommand::Change(text) => {
+                self.insert_before(0, text)
+            }
+            _ => Ok(()),
         }
     }
 
@@ -678,6 +753,64 @@ mod tests {
         assert_eq!(res.lines, vec!["hello world".to_string()]);
         assert_eq!(res.modified, vec![1]);
         assert_eq!(res.deleted, vec![2]);
+    }
+
+    #[test]
+    fn percent_address_joins_whole_file() {
+        let input = "a\nb\nc\n";
+        let cmds = parse_commands_from_script("%j").unwrap();
+        let res = edit_text(input, &cmds).unwrap();
+        assert_eq!(res.lines, vec!["a b c".to_string()]);
+        assert_eq!(res.deleted, vec![2, 3]);
+        assert_eq!(res.modified, vec![1]);
+    }
+
+    #[test]
+    fn dollar_address_targets_last_line() {
+        let input = "a\nb\nc\n";
+        let cmds = parse_commands_from_script("$d").unwrap();
+        let res = edit_text(input, &cmds).unwrap();
+        assert_eq!(res.lines, vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(res.deleted, vec![3]);
+    }
+
+    #[test]
+    fn dollar_address_can_be_range_end() {
+        let input = "a\nb\nc\n";
+        let cmd = format!("{},$d", addr(2, "b"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        let res = edit_text(input, &cmds).unwrap();
+        assert_eq!(res.lines, vec!["a".to_string()]);
+        assert_eq!(res.deleted, vec![2, 3]);
+    }
+
+    #[test]
+    fn percent_address_on_empty_file_is_noop() {
+        let cmds = parse_commands_from_script("%s/foo/bar/").unwrap();
+        let res = edit_text("", &cmds).unwrap();
+        assert!(res.lines.is_empty());
+        assert!(res.modified.is_empty());
+        assert!(res.deleted.is_empty());
+    }
+
+    #[test]
+    fn move_destination_can_use_last_line() {
+        let input = "a\nb\nc\n";
+        let cmd = format!("{}m$", addr(1, "a"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        let res = edit_text(input, &cmds).unwrap();
+        assert_eq!(res.lines, vec!["b", "c", "a"]);
+        assert_eq!(res.modified, vec![3]);
+    }
+
+    #[test]
+    fn copy_destination_can_use_last_line() {
+        let input = "a\nb\nc\n";
+        let cmd = format!("{}t$", addr(1, "a"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        let res = edit_text(input, &cmds).unwrap();
+        assert_eq!(res.lines, vec!["a", "b", "c", "a"]);
+        assert_eq!(res.modified, vec![4]);
     }
 
     #[test]

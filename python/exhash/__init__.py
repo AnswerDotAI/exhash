@@ -31,15 +31,17 @@ def exhash_result(results:list[dict]) -> str:
 def exhash(text:str, cmds:list[str]) -> dict:
     """Verified line-addressed editor. Apply commands to `text`, return a result dict.
 
-    Commands use lnhash addresses: ``lineno|hash|cmd`` where hash is a 4-char
-    hex content hash. Use ``lnhashview(text)`` or ``lnhash(lineno, line)`` to
-    get addresses.
+    Commands primarily use lnhash addresses: ``lineno|hash|cmd`` where hash is
+    a 4-char hex content hash. Use ``lnhashview(text)`` or
+    ``lnhash(lineno, line)`` to get hashed addresses.
     Each command's hashes are verified against current text immediately before
     that command executes.
 
     Addressing:
       Single:   ``12|a3f2|cmd``
       Range:    ``12|a3f2|,15|b1c3|cmd``
+      Last:     ``$cmd`` (last line)
+      Whole:    ``%cmd`` (whole file, same as ``1,$``)
       Special:  ``0|0000|`` targets before line 1 (only with a or i)
 
     Commands:
