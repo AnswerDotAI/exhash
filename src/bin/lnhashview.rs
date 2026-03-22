@@ -2,7 +2,7 @@ use std::env;
 use std::fs;
 use std::process;
 
-use exhash::format_lnhash;
+use exhash::lnhashview;
 
 fn usage() {
     eprintln!(
@@ -73,42 +73,24 @@ fn main() {
         return;
     }
 
-    let (start_line, end_line) = match (start, end) {
-        (None, None) => (1, lines.len()),
-        (Some(s), None) => (s, s),
-        (Some(s), Some(e)) => (s, e),
+    // When only start is given, CLI shows just that one line
+    let (start, end) = match (start, end) {
+        (Some(s), None) => (Some(s), Some(s)),
         (None, Some(_)) => {
             eprintln!("error: end_line requires start_line");
             process::exit(2);
         }
+        other => other,
     };
 
-    if start_line == 0 {
-        eprintln!("error: start_line is 1-based (must be >= 1)");
-        process::exit(2);
-    }
-
-    if end_line < start_line {
-        eprintln!("error: end_line must be >= start_line");
-        process::exit(2);
-    }
-
-    if end_line > lines.len() {
-        eprintln!(
-            "error: end_line {end_line} is beyond EOF (file has {} line(s))",
-            lines.len()
-        );
-        process::exit(2);
-    }
-
-    for (idx, line) in lines
-        .iter()
-        .enumerate()
-        .skip(start_line - 1)
-        .take(end_line - start_line + 1)
-    {
-        let lineno = idx + 1;
-        let lnh = format_lnhash(lineno, line);
-        println!("{lnh}  {line}");
+    let result = match lnhashview(&lines, start, end) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("error: {e}");
+            process::exit(2);
+        }
+    };
+    for line in result {
+        println!("{line}");
     }
 }

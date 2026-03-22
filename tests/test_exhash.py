@@ -235,3 +235,31 @@ def test_exhash_file_inplace_no_change_on_error(tmp_path):
     f.write_text("foo\nbar\n")
     with pytest.raises(ValueError): exhash_file(str(f), ["99|ffff|s/x/y/"], inplace=True)
     assert f.read_text() == "foo\nbar\n"
+
+def test_lnhashview_start_end():
+    lines = lnhashview("a\nb\nc\nd", start=2, end=3)
+    assert len(lines) == 2
+    assert "b" in lines[0]
+    assert "c" in lines[1]
+    assert lines[0].startswith("2|")
+    assert lines[1].startswith("3|")
+
+def test_lnhashview_start_only():
+    lines = lnhashview("a\nb\nc", start=2)
+    assert len(lines) == 2
+    assert lines[0].startswith("2|")
+
+def test_lnhashview_end_only():
+    lines = lnhashview("a\nb\nc", end=2)
+    assert len(lines) == 2
+    assert lines[0].startswith("1|")
+    assert lines[1].startswith("2|")
+
+def test_lnhashview_file_start_end(tmp_path):
+    from exhash import lnhashview_file
+    f = tmp_path / "test.txt"
+    f.write_text("a\nb\nc\nd\n")
+    lines = lnhashview_file(str(f), start=2, end=3)
+    assert len(lines) == 2
+    assert lines[0].startswith("2|")
+    assert lines[1].startswith("3|")

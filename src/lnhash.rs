@@ -25,6 +25,24 @@ pub fn format_lnhash(lineno: usize, line: &str) -> String {
     format!("{}|{:04x}|", lineno, line_hash_u16(line))
 }
 
+/// Format lines as `lineno|hash|  content` for a range of lines.
+/// `start` and `end` are 1-based inclusive. Pass `None` for defaults (1 and len).
+/// Returns an error if start is 0, end < start, or end > number of lines.
+pub fn lnhashview(lines: &[&str], start: Option<usize>, end: Option<usize>) -> Result<Vec<String>, EditError> {
+    if lines.is_empty() { return Ok(vec![]); }
+    let s = start.unwrap_or(1);
+    let e = end.unwrap_or(lines.len());
+    if s == 0 { return Err(EditError::new("start_line is 1-based (must be >= 1)")); }
+    if e < s { return Err(EditError::new("end_line must be >= start_line")); }
+    if e > lines.len() {
+        return Err(EditError::new(format!("end_line {} is beyond EOF (file has {} line(s))", e, lines.len())));
+    }
+    Ok(lines.iter().enumerate()
+        .skip(s - 1).take(e - s + 1)
+        .map(|(i, l)| format!("{}  {}", format_lnhash(i + 1, l), l))
+        .collect())
+}
+
 /// Parse a `lineno|hash|` address.
 pub fn parse_lnhash(s: &str) -> Result<LnHash, EditError> {
     let (lh, rest) = parse_lnhash_prefix(s)?;

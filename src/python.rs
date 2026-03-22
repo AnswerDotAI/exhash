@@ -28,11 +28,11 @@ fn line_hash(line: &str) -> String { format!("{:04x}", crate::line_hash_u16(line
 fn lnhash(lineno: usize, line: &str) -> String { crate::format_lnhash(lineno, line) }
 
 #[pyfunction]
-fn lnhashview(text: &str) -> Vec<String> {
-    text.lines()
-        .enumerate()
-        .map(|(i, l)| format!("{}  {}", crate::format_lnhash(i + 1, l), l))
-        .collect()
+#[pyo3(signature = (text, start=None, end=None))]
+fn lnhashview(text: &str, start: Option<usize>, end: Option<usize>) -> PyResult<Vec<String>> {
+    let lines: Vec<&str> = text.lines().collect();
+    crate::lnhashview(&lines, start, end)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 #[pyfunction]
