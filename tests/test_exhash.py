@@ -193,3 +193,45 @@ def test_exhash_accepts_tuple_cmds():
     a1, a2 = lnhash(1, "a"), lnhash(2, "b")
     res = exhash(text, (f"{a1}s/a/A/", f"{a2}s/b/B/"))
     assert res["lines"] == ["A", "B"]
+
+def test_exhash_custom_delimiter():
+    text = "a/b\n"
+    addr = lnhash(1, "a/b")
+    res = exhash(text, [f"{addr}s|a/b|c/d|"])
+    assert res["lines"] == ["c/d"]
+
+def test_exhash_literal_newline_in_pattern():
+    text = "foo\nbar\nbaz\n"
+    a1, a2 = lnhash(1, "foo"), lnhash(2, "bar")
+    res = exhash(text, [f"{a1},{a2}s/foo\nbar/replaced/"])
+    assert res["lines"] == ["replaced", "baz"]
+
+def test_exhash_literal_newline_in_replacement():
+    text = "foobar\nbaz\n"
+    addr = lnhash(1, "foobar")
+    res = exhash(text, [f"{addr}s/foobar/foo\nbar/"])
+    assert res["lines"] == ["foo", "bar", "baz"]
+
+def test_exhash_file_read(tmp_path):
+    from exhash import lnhashview_file, exhash_file
+    f = tmp_path / "test.txt"
+    f.write_text("hello\nworld\n")
+    lines = lnhashview_file(str(f))
+    assert len(lines) == 2
+    assert "hello" in lines[0]
+
+def test_exhash_file_inplace(tmp_path):
+    from exhash import exhash_file, lnhash
+    f = tmp_path / "test.txt"
+    f.write_text("foo\nbar\n")
+    addr = lnhash(1, "foo")
+    res = exhash_file(str(f), [f"{addr}s/foo/baz/"], inplace=True)
+    assert res["lines"] == ["baz", "bar"]
+    assert f.read_text() == "baz\nbar\n"
+
+def test_exhash_file_inplace_no_change_on_error(tmp_path):
+    from exhash import exhash_file, lnhash
+    f = tmp_path / "test.txt"
+    f.write_text("foo\nbar\n")
+    with pytest.raises(ValueError): exhash_file(str(f), ["99|ffff|s/x/y/"], inplace=True)
+    assert f.read_text() == "foo\nbar\n"

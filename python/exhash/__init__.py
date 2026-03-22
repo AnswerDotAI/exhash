@@ -53,7 +53,10 @@ def exhash(text:str, cmds:list[str], sw:int=4) -> dict:
     Commands:
       s/pat/rep/[flags]  Substitute using Rust regex syntax.
                          Replacement supports $1, $0, ${name}. Flags: g=all, i=case-insensitive
-      y/src/dst/         Transliterate chars in-place (source and destination lengths must match)
+                         Any non-alphanumeric delimiter works: s@pat@rep@, s|pat|rep|g
+                         Literal newlines in pat/rep are supported (joins/splits lines)
+      y/src/dst/         Transliterate chars in-place (also supports custom delimiters;
+                         source and destination lengths must match)
       d                  Delete line(s)
       a                  Append text after line
       i                  Insert text before line
@@ -65,8 +68,8 @@ def exhash(text:str, cmds:list[str], sw:int=4) -> dict:
       <[n]               Dedent n levels (default 1, `sw` spaces each)
       sort               Sort lines alphabetically
       p                  Print (include in output without changing)
-      g/pat/cmd          Global: run cmd on matching lines
-      g!/pat/cmd         Inverted global (also v/pat/cmd)
+      g/pat/cmd          Global: run cmd on matching lines (custom delimiters ok: g@pat@cmd)
+      g!/pat/cmd         Inverted global (also v/pat/cmd; custom delimiters ok)
 
     `sw` controls shift width for `<` and `>` and defaults to 4.
 

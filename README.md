@@ -72,6 +72,8 @@ Substitute uses Rust regex syntax:
 - Pattern syntax is from [`regex`](https://docs.rs/regex/latest/regex/)
 - Replacement syntax is from [`regex::Replacer`](https://docs.rs/regex/latest/regex/struct.Regex.html#method.replace), e.g. `$1`, `$0`, `${name}`
 - `\/` escapes the command delimiter in pattern/replacement
+- Custom delimiters: `s`, `y`, `g`, `g!`, and `v` all accept any non-alphanumeric char as delimiter instead of `/`, e.g. `s@pat@rep@`, `g@pat@cmd`. Each command in a combo picks its own delimiter independently: `g@a/b@s/old/new/`
+- Literal newlines in pattern/replacement are supported (joins/splits lines as needed)
 - Transliteration uses `y/src/dst/` and requires source/destination to have equal character counts
 
 When passing multiple commands, each command's lnhashes are verified immediately before that command runs.
@@ -93,14 +95,15 @@ In `--stdin` mode, multiline `a/i/c` text blocks are not available.
 ## Python API
 
 ```py
-from exhash import exhash, exhash_result, lnhash, lnhashview, line_hash
+from exhash import exhash, exhash_file, exhash_result, lnhash, lnhashview, lnhashview_file, line_hash
 ```
 
 ### Viewing
 
 ```py
 text = "foo\nbar\n"
-view = lnhashview(text)  # ["1|a1b2|  foo", "2|c3d4|  bar"]
+view = lnhashview(text)       # ["1|a1b2|  foo", "2|c3d4|  bar"]
+view = lnhashview_file("f.py") # same but reads from file
 ```
 
 ### Editing
@@ -125,6 +128,27 @@ res = exhash(text, [f"{addr}a\nnew line 1\nnew line 2"])
 
 # Change shift width for < and >
 res = exhash(text, [f"{addr}>1"], sw=2)
+
+# Custom delimiters (useful when pattern/replacement contains /)
+res = exhash(text, [f"{addr}s|foo|bar|"])
+
+# Literal newlines in pattern/replacement (joins/splits lines)
+a1, a2 = lnhash(1, "foo"), lnhash(2, "bar")
+res = exhash("foo\nbar\n", [f"{a1},{a2}s/foo\nbar/replaced/"])
+```
+
+### File helpers
+
+`exhash_file` and `lnhashview_file` read directly from a file path:
+
+```py
+view = lnhashview_file("file.py")
+
+# Returns result dict, file unchanged
+res = exhash_file("file.py", [f"{addr}s/foo/bar/"])
+
+# With inplace=True, writes back on success; no changes if any command fails
+res = exhash_file("file.py", [f"{addr}s/foo/bar/"], inplace=True)
 ```
 
 ### Result dict

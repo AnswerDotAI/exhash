@@ -261,20 +261,42 @@ impl Engine {
     fn substitute_range(&mut self, start: usize, end: usize, s: &Subst) -> Result<(), EditError> {
         let (s_idx, e_idx) = self.resolve_range(start, end)?;
         let re = build_regex(&s.pattern, s.case_insensitive)?;
-        for idx in s_idx..=e_idx {
-            let old = self.lines[idx].text.clone();
-            let new = if s.global {
-                re.replace_all(&old, s.replacement.as_str()).to_string()
+        let multiline = s.pattern.contains('\n') || s.replacement.contains('\n');
+        if multiline {
+            // Join range into single string, apply substitute, split back
+            let joined: String = (s_idx..=e_idx)
+                .map(|i| self.lines[i].text.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let result = if s.global {
+                re.replace_all(&joined, s.replacement.as_str()).to_string()
             } else {
-                // replace first match
-                if !re.is_match(&old) {
-                    continue;
-                }
-                re.replace(&old, s.replacement.as_str()).to_string()
+                if !re.is_match(&joined) { return Ok(()); }
+                re.replace(&joined, s.replacement.as_str()).to_string()
             };
-            if new != old {
-                self.lines[idx].text = new;
-                self.lines[idx].modified = true;
+            if result == joined { return Ok(()); }
+            let new_lines: Vec<String> = result.split('\n').map(|s| s.to_string()).collect();
+            let origins: Vec<Option<usize>> = (s_idx..=e_idx).map(|i| self.lines[i].origin).collect();
+            let new_line_objs: Vec<Line> = new_lines.into_iter().enumerate().map(|(i, text)| Line {
+                text,
+                origin: origins.get(i).copied().flatten(),
+                modified: true,
+                global_mark: false,
+            }).collect();
+            self.lines.splice(s_idx..=e_idx, new_line_objs);
+        } else {
+            for idx in s_idx..=e_idx {
+                let old = self.lines[idx].text.clone();
+                let new = if s.global {
+                    re.replace_all(&old, s.replacement.as_str()).to_string()
+                } else {
+                    if !re.is_match(&old) { continue; }
+                    re.replace(&old, s.replacement.as_str()).to_string()
+                };
+                if new != old {
+                    self.lines[idx].text = new;
+                    self.lines[idx].modified = true;
+                }
             }
         }
         Ok(())
@@ -684,7 +706,7 @@ fn dedent(line: &str, levels: usize, sw: usize) -> String {
 mod tests {
     use super::*;
     use crate::lnhash::{format_lnhash, line_hash_u16};
-    use crate::parse::parse_commands_from_script;
+    use crate::parse::{parse_commands_from_script, parse_commands_from_strs};
 
     fn addr(lineno: usize, line: &str) -> String {
         format_lnhash(lineno, line)
@@ -984,5 +1006,32 @@ mod tests {
         let cmds = parse_commands_from_script(&script).unwrap();
         let err = edit_text(input, &cmds).unwrap_err();
         assert!(err.message().contains("stale lnhash at line 3"));
+    }
+
+    #[test]
+    fn substitute_multiline_pattern_joins_and_replaces() {
+        let input = "foo\nbar\nbaz\n";
+        let cmd_str = format!("{},{}s/foo\nbar/replaced/", addr(1, "foo"), addr(2, "bar"));
+        let cmds = parse_commands_from_strs(&[&cmd_str]).unwrap();
+        let res = edit_text(input, &cmds).unwrap();
+        assert_eq!(res.lines, vec!["replaced", "baz"]);
+    }
+
+    #[test]
+    fn substitute_newline_in_replacement_splits_line() {
+        let input = "foobar\nbaz\n";
+        let cmd_str = format!("{}s/foobar/foo\nbar/", addr(1, "foobar"));
+        let cmds = parse_commands_from_strs(&[&cmd_str]).unwrap();
+        let res = edit_text(input, &cmds).unwrap();
+        assert_eq!(res.lines, vec!["foo", "bar", "baz"]);
+    }
+
+    #[test]
+    fn substitute_custom_delimiter() {
+        let input = "a/b\n";
+        let cmd = format!("{}s|a/b|c/d|", addr(1, "a/b"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        let res = edit_text(input, &cmds).unwrap();
+        assert_eq!(res.lines, vec!["c/d"]);
     }
 }

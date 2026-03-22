@@ -83,25 +83,26 @@ pub fn parse_commands_from_strs(cmds: &[&str]) -> Result<Vec<Command>, EditError
 }
 
 fn parse_command_with_text_from_str(input: &str) -> Result<Command, EditError> {
+    // Try parsing the full string first — handles commands with literal newlines
+    // inside delimited sections (e.g. s/foo\nbar/baz/ or y with custom delims).
+    let full_err = match parse_command_with_text(input.trim(), || Ok(vec![])) {
+        Ok(cmd) => return Ok(cmd),
+        Err(e) => e,
+    };
+
+    // Fall back to line-split approach for text commands (a/i/c)
     let mut lines = input.split('\n');
-    let first = lines.next().unwrap(); // split always yields at least one
+    let first = lines.next().unwrap();
     let remaining: Vec<String> = lines.map(|l| l.strip_suffix('\r').unwrap_or(l).to_string()).collect();
-    let has_text = !remaining.is_empty();
-    let cmd = parse_command_with_text(first, || {
-        if has_text { Ok(remaining.clone()) }
-        else { Ok(vec![]) }
-    })?;
-    // For non-text commands, extra lines are an error
-    if has_text {
-        match &cmd.cmd {
+    if remaining.is_empty() { return Err(full_err); }
+    let cmd = parse_command_with_text(first, || Ok(remaining.clone()))?;
+    match &cmd.cmd {
+        Subcommand::Append(_) | Subcommand::Insert(_) | Subcommand::Change(_) => {}
+        Subcommand::Global { cmd: sub, .. } => match sub.as_ref() {
             Subcommand::Append(_) | Subcommand::Insert(_) | Subcommand::Change(_) => {}
-            Subcommand::Global { cmd: sub, .. } => match sub.as_ref() {
-                Subcommand::Append(_) | Subcommand::Insert(_) | Subcommand::Change(_) => {}
-                _ if has_text => return Err(EditError::new("unexpected multiline input for this command")),
-                _ => {}
-            },
             _ => return Err(EditError::new("unexpected multiline input for this command")),
-        }
+        },
+        _ => return Err(EditError::new("unexpected multiline input for this command")),
     }
     Ok(cmd)
 }
@@ -323,10 +324,12 @@ where
     F: FnMut() -> Result<Vec<String>, EditError>,
 {
     let rest = rest.trim_start();
-    if !rest.starts_with('/') {
-        return Err(EditError::new("global requires /pat/cmd"));
+    let delim = rest.chars().next()
+        .ok_or_else(|| EditError::new("global requires <delim>pat<delim>cmd"))?;
+    if delim.is_alphanumeric() || delim == '\\' {
+        return Err(EditError::new("global delimiter must not be alphanumeric or backslash"));
     }
-    let (pat, after_pat) = parse_delimited(rest, '/')?;
+    let (pat, after_pat) = parse_delimited(rest, delim)?;
     let cmd_str = after_pat.trim_start();
     if cmd_str.is_empty() {
         return Err(EditError::new("global requires a subcommand"));
@@ -350,12 +353,14 @@ where
 
 fn parse_substitute(rest: &str) -> Result<(Subst, &str), EditError> {
     let rest = rest.trim_start();
-    if !rest.starts_with('/') {
-        return Err(EditError::new("substitute requires /pat/rep/[flags]"));
+    let delim = rest.chars().next()
+        .ok_or_else(|| EditError::new("substitute requires <delim>pat<delim>rep<delim>[flags]"))?;
+    if delim.is_alphanumeric() || delim == '\\' {
+        return Err(EditError::new("substitute delimiter must not be alphanumeric or backslash"));
     }
 
-    let (pat, after_pat) = parse_delimited(rest, '/')?;
-    let (rep, after_rep) = scan_to_delim(after_pat, '/')?;
+    let (pat, after_pat) = parse_delimited(rest, delim)?;
+    let (rep, after_rep) = scan_to_delim(after_pat, delim)?;
 
     let mut global = false;
     let mut case_insensitive = false;
@@ -389,12 +394,14 @@ fn parse_substitute(rest: &str) -> Result<(Subst, &str), EditError> {
 
 fn parse_transliterate(rest: &str) -> Result<((String, String), &str), EditError> {
     let rest = rest.trim_start();
-    if !rest.starts_with('/') {
-        return Err(EditError::new("transliterate requires /source/dest/"));
+    let delim = rest.chars().next()
+        .ok_or_else(|| EditError::new("transliterate requires <delim>source<delim>dest<delim>"))?;
+    if delim.is_alphanumeric() || delim == '\\' {
+        return Err(EditError::new("transliterate delimiter must not be alphanumeric or backslash"));
     }
 
-    let (source, after_source) = parse_delimited(rest, '/')?;
-    let (dest, trailing) = scan_to_delim(after_source, '/')?;
+    let (source, after_source) = parse_delimited(rest, delim)?;
+    let (dest, trailing) = scan_to_delim(after_source, delim)?;
 
     if source.chars().count() != dest.chars().count() {
         return Err(EditError::new(
@@ -634,6 +641,67 @@ mod tests {
     }
 
     #[test]
+    fn parse_global_custom_delimiter() {
+        let cmd = format!("{}g@foo@s/bar/baz/", addr(1, "x"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Global { invert, pattern, cmd } => {
+                assert!(!invert);
+                assert_eq!(pattern, "foo");
+                match cmd.as_ref() {
+                    Subcommand::Substitute(s) => {
+                        assert_eq!(s.pattern, "bar");
+                        assert_eq!(s.replacement, "baz");
+                    }
+                    _ => panic!("expected substitute"),
+                }
+            }
+            _ => panic!("expected global"),
+        }
+    }
+
+    #[test]
+    fn parse_global_same_delim_combo() {
+        // g and s both use /
+        let cmd = format!("{}g/foo/s/bar/baz/g", addr(1, "x"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Global { pattern, cmd, .. } => {
+                assert_eq!(pattern, "foo");
+                match cmd.as_ref() {
+                    Subcommand::Substitute(s) => {
+                        assert_eq!(s.pattern, "bar");
+                        assert_eq!(s.replacement, "baz");
+                        assert!(s.global);
+                    }
+                    _ => panic!("expected substitute"),
+                }
+            }
+            _ => panic!("expected global"),
+        }
+    }
+
+    #[test]
+    fn parse_global_mixed_delim_combo() {
+        // g uses @ (pattern contains /), s uses /
+        let cmd = format!("{}g@a/b@s/old/new/", addr(1, "x"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Global { pattern, cmd, .. } => {
+                assert_eq!(pattern, "a/b");
+                match cmd.as_ref() {
+                    Subcommand::Substitute(s) => {
+                        assert_eq!(s.pattern, "old");
+                        assert_eq!(s.replacement, "new");
+                    }
+                    _ => panic!("expected substitute"),
+                }
+            }
+            _ => panic!("expected global"),
+        }
+    }
+
+    #[test]
     fn parse_substitute_preserves_rust_regex_escapes() {
         let cmd = format!("{}s/\\d+/X/", addr(1, "a1"));
         let cmds = parse_commands_from_script(&cmd).unwrap();
@@ -703,5 +771,98 @@ mod tests {
         let cmd = format!("{}y/ab/XYZ/", addr(1, "ab"));
         let err = parse_commands_from_script(&cmd).unwrap_err();
         assert!(err.message().contains("same number of characters"));
+    }
+
+    #[test]
+    fn parse_substitute_custom_delimiter() {
+        let cmd = format!("{}s@foo@bar@", addr(1, "foo"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Substitute(s) => {
+                assert_eq!(s.pattern, "foo");
+                assert_eq!(s.replacement, "bar");
+            }
+            _ => panic!("expected substitute"),
+        }
+    }
+
+    #[test]
+    fn parse_substitute_custom_delimiter_with_slash_in_content() {
+        let cmd = format!("{}s|a/b|c/d|", addr(1, "a/b"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Substitute(s) => {
+                assert_eq!(s.pattern, "a/b");
+                assert_eq!(s.replacement, "c/d");
+            }
+            _ => panic!("expected substitute"),
+        }
+    }
+
+    #[test]
+    fn parse_substitute_custom_delimiter_with_flags() {
+        let cmd = format!("{}s#foo#bar#gi", addr(1, "foo"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Substitute(s) => {
+                assert_eq!(s.pattern, "foo");
+                assert_eq!(s.replacement, "bar");
+                assert!(s.global);
+                assert!(s.case_insensitive);
+            }
+            _ => panic!("expected substitute"),
+        }
+    }
+
+    #[test]
+    fn parse_substitute_literal_newline_via_strs() {
+        let cmd = format!("{}s/foo\nbar/baz/", addr(1, "foo"));
+        let cmds = parse_commands_from_strs(&[&cmd]).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Substitute(s) => {
+                assert_eq!(s.pattern, "foo\nbar");
+                assert_eq!(s.replacement, "baz");
+            }
+            _ => panic!("expected substitute"),
+        }
+    }
+
+    #[test]
+    fn parse_substitute_literal_newline_in_replacement_via_strs() {
+        let cmd = format!("{}s/foo/bar\nbaz/", addr(1, "foo"));
+        let cmds = parse_commands_from_strs(&[&cmd]).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Substitute(s) => {
+                assert_eq!(s.pattern, "foo");
+                assert_eq!(s.replacement, "bar\nbaz");
+            }
+            _ => panic!("expected substitute"),
+        }
+    }
+
+    #[test]
+    fn parse_substitute_custom_delim_with_literal_newline() {
+        let cmd = format!("{}s@foo\nbar@baz@", addr(1, "foo"));
+        let cmds = parse_commands_from_strs(&[&cmd]).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Substitute(s) => {
+                assert_eq!(s.pattern, "foo\nbar");
+                assert_eq!(s.replacement, "baz");
+            }
+            _ => panic!("expected substitute"),
+        }
+    }
+
+    #[test]
+    fn parse_transliterate_custom_delimiter() {
+        let cmd = format!("{}y@abc@ABC@", addr(1, "abc"));
+        let cmds = parse_commands_from_script(&cmd).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Transliterate { source, dest } => {
+                assert_eq!(source, "abc");
+                assert_eq!(dest, "ABC");
+            }
+            _ => panic!("expected transliterate"),
+        }
     }
 }
