@@ -1,3 +1,4 @@
+from pathlib import Path
 from .exhash import line_hash as _line_hash, lnhash as _lnhash, lnhashview as _lnhashview, exhash as _exhash
 
 def line_hash(line:str) -> str:
@@ -13,6 +14,11 @@ def lnhash(lineno:int, line:str) -> str:
 def lnhashview(text:str) -> list[str]:
     'Return lines formatted as ``lineno|hash|  content`` for each line in ``text``.'
     return _lnhashview(text)
+
+
+def lnhashview_file(path:str) -> list[str]:
+    'Return lines formatted as ``lineno|hash|  content`` for each line in file at ``path``.'
+    return _lnhashview(Path(path).read_text())
 
 
 def exhash_result(results:list[dict]) -> str:
@@ -88,3 +94,11 @@ def exhash(text:str, cmds:list[str], sw:int=4) -> dict:
     """
     r = _exhash(text, *cmds, sw=sw)
     return dict(lines=r.lines, hashes=r.hashes, modified=r.modified, deleted=r.deleted)
+
+
+def exhash_file(path:str, cmds:list[str], sw:int=4, inplace:bool=False) -> dict:
+    'Like ``exhash`` but reads from file at ``path``. If ``inplace``, writes result back (atomically on success only).'
+    text = Path(path).read_text()
+    r = exhash(text, cmds, sw=sw)
+    if inplace: Path(path).write_text('\n'.join(r['lines']) + '\n' if r['lines'] else '')
+    return r
