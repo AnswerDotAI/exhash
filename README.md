@@ -95,7 +95,7 @@ In `--stdin` mode, multiline `a/i/c` text blocks are not available.
 ## Python API
 
 ```py
-from exhash import exhash, exhash_file, exhash_result, lnhash, lnhashview, lnhashview_file, line_hash
+from exhash import exhash, exhash_file, lnhash, lnhashview, lnhashview_file, line_hash
 ```
 
 ### Viewing
@@ -144,21 +144,32 @@ res = exhash("foo\nbar\n", [f"{a1},{a2}s/foo\nbar/replaced/"])
 ```py
 view = lnhashview_file("file.py")
 
-# Returns result dict, file unchanged
+# Returns EditResult, file unchanged
 res = exhash_file("file.py", [f"{addr}s/foo/bar/"])
 
-# With inplace=True, writes back on success; no changes if any command fails
-res = exhash_file("file.py", [f"{addr}s/foo/bar/"], inplace=True)
+# With inplace=True, writes back on success and returns diff string
+diff = exhash_file("file.py", [f"{addr}s/foo/bar/"], inplace=True)
 ```
 
-### Result dict
+### EditResult
+
+`exhash()` returns an `EditResult` with attributes (also accessible via `res["key"]`):
 
 - `lines` — list of output lines
 - `hashes` — lnhash for each output line
 - `modified` — 1-based line numbers of modified/added lines
 - `deleted` — 1-based line numbers of removed lines (in original)
+- `origins` — for each output line, the 1-based original line number (None if inserted)
 
-`exhash_result([res1, res2, ...])` renders modified lines in lnhash format, matching the old `repr(EditResult)` style.
+`res.format_diff(context=1)` returns a unified-diff-style summary showing only changed lines with context:
+
+```py
+res = exhash(text, [f"{addr}s/foo/baz/"])
+print(res.format_diff())
+# -1|a1b2|  foo
+# +1|c3d4|  baz
+#  2|e5f6|  bar
+```
 
 ## Tests
 

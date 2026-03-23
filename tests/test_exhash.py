@@ -1,5 +1,5 @@
 import pytest
-from exhash import line_hash, lnhash, lnhashview, exhash, exhash_result
+from exhash import line_hash, lnhash, lnhashview, exhash
 
 def test_line_hash_returns_4_hex():
     h = line_hash("hello")
@@ -131,27 +131,25 @@ def test_exhash_stale_hash_raises():
     addr = lnhash(1, "wrong")
     with pytest.raises(ValueError): exhash(text, [addr+"d"])
 
-def test_exhash_result_is_dict():
+def test_exhash_result_supports_dict_access():
     text = "foo\nbar\n"
     addr = lnhash(1, "foo")
     res = exhash(text, [addr+"s/foo/baz/"])
-    assert isinstance(res, dict)
-    assert set(res.keys()) == {"lines", "hashes", "modified", "deleted"}
+    assert res["lines"] == ["baz", "bar"]
+    assert res["modified"] == [1]
+    assert res.lines == ["baz", "bar"]
 
-
-def test_exhash_result_formats_modified():
+def test_exhash_format_diff():
     text = "foo\nbar\n"
     addr = lnhash(1, "foo")
     res = exhash(text, [addr+"s/foo/baz/"])
-    assert exhash_result([res]) == f"{lnhash(1, 'baz')}  baz"
+    diff = res.format_diff()
+    assert f"-{lnhash(1, 'foo')}  foo" in diff
+    assert f"+{lnhash(1, 'baz')}  baz" in diff
 
-
-def test_exhash_result_no_modifications_is_empty(): assert exhash_result([exhash("foo\n", [])]) == ""
-
-
-def test_exhash_result_requires_list_of_dict():
-    with pytest.raises(TypeError): exhash_result(dict(lines=[], hashes=[], modified=[]))
-    with pytest.raises(TypeError): exhash_result([1])
+def test_exhash_format_diff_no_changes():
+    res = exhash("foo\n", [])
+    assert res.format_diff() == ""
 
 
 def test_exhash_view():
@@ -225,8 +223,9 @@ def test_exhash_file_inplace(tmp_path):
     f = tmp_path / "test.txt"
     f.write_text("foo\nbar\n")
     addr = lnhash(1, "foo")
-    res = exhash_file(str(f), [f"{addr}s/foo/baz/"], inplace=True)
-    assert res["lines"] == ["baz", "bar"]
+    diff = exhash_file(str(f), [f"{addr}s/foo/baz/"], inplace=True)
+    assert isinstance(diff, str)
+    assert "+{}  baz".format(lnhash(1, "baz")) in diff
     assert f.read_text() == "baz\nbar\n"
 
 def test_exhash_file_inplace_no_change_on_error(tmp_path):

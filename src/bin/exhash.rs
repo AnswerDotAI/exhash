@@ -269,10 +269,7 @@ fn main() {
         }
     }
 
-    for lineno in &result.modified {
-        let i = lineno - 1;
-        if let (Some(h), Some(line)) = (result.hashes.get(i), result.lines.get(i)) {
-            println!("{h}  {line}");
-        }
-    }
+    let original_lines: Vec<&str> = text.lines().collect();
+    let diff = result.format_diff(&original_lines, 1);
+    if !diff.is_empty() { print!("{diff}"); }
 }

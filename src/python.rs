@@ -12,12 +12,45 @@ struct EditResultPy {
     modified: Vec<usize>,
     #[pyo3(get)]
     deleted: Vec<usize>,
+    #[pyo3(get)]
+    origins: Vec<Option<usize>>,
+    original_text: String,
 }
 
+#[pymethods]
+impl EditResultPy {
+    #[pyo3(signature = (context=1))]
+    fn format_diff(&self, context: usize) -> String {
+        let original_lines: Vec<&str> = self.original_text.lines().collect();
+        let result = crate::EditResult {
+            lines: self.lines.clone(), hashes: self.hashes.clone(),
+            modified: self.modified.clone(), deleted: self.deleted.clone(),
+            origins: self.origins.clone(),
+        };
+        result.format_diff(&original_lines, context)
+    }
 
-impl From<crate::EditResult> for EditResultPy {
-    fn from(r: crate::EditResult) -> Self {
-        Self { lines: r.lines, hashes: r.hashes, modified: r.modified, deleted: r.deleted }
+    fn __str__(&self) -> String { self.format_diff(1) }
+
+    fn __repr__(&self) -> String {
+        let diff = self.format_diff(1);
+        if diff.is_empty() {
+            format!("EditResult({} lines, no changes)", self.lines.len())
+        } else {
+            format!("EditResult({} lines, {} modified, {} deleted)\n{}",
+                self.lines.len(), self.modified.len(), self.deleted.len(), diff)
+        }
+    }
+
+    fn __getitem__(&self, key: &str) -> PyResult<PyObject> {
+        Python::with_gil(|py| match key {
+            "lines" => Ok(self.lines.clone().into_pyobject(py)?.into_any().unbind()),
+            "hashes" => Ok(self.hashes.clone().into_pyobject(py)?.into_any().unbind()),
+            "modified" => Ok(self.modified.clone().into_pyobject(py)?.into_any().unbind()),
+            "deleted" => Ok(self.deleted.clone().into_pyobject(py)?.into_any().unbind()),
+            "origins" => Ok(self.origins.clone().into_pyobject(py)?.into_any().unbind()),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
+        })
     }
 }
 
@@ -43,7 +76,11 @@ fn py_exhash(text: &str, cmds: Vec<String>, sw: usize) -> PyResult<EditResultPy>
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     let res = crate::edit_text_with_sw(text, &parsed, sw)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    Ok(res.into())
+    Ok(EditResultPy {
+        lines: res.lines, hashes: res.hashes, modified: res.modified,
+        deleted: res.deleted, origins: res.origins,
+        original_text: text.to_string(),
+    })
 }
 
 #[pymodule]

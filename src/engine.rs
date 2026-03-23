@@ -17,6 +17,95 @@ pub struct EditResult {
     pub modified: Vec<usize>,
     /// Old-file 1-based line numbers that were removed.
     pub deleted: Vec<usize>,
+    /// For each output line, the 1-based original line number it came from (None if inserted).
+    pub origins: Vec<Option<usize>>,
+}
+
+impl EditResult {
+    /// Format a unified-diff-style summary of changes.
+    ///
+    /// Each line is prefixed with ` ` (context), `+` (added/modified), or `-` (deleted),
+    /// followed by the lnhash and content. `context` controls how many unchanged lines
+    /// surround each hunk (default 1).
+    pub fn format_diff(&self, original_lines: &[&str], context: usize) -> String {
+        use crate::lnhash::format_lnhash;
+
+        let mod_set: BTreeSet<usize> = self.modified.iter().copied().collect();
+        let del_set: BTreeSet<usize> = self.deleted.iter().copied().collect();
+
+        // Build interleaved sequence of (tag, lnhash, text) where tag is ' ', '+', '-'
+        // Walk new lines, inserting deleted old lines at the right positions.
+        let mut events: Vec<(char, String, &str)> = Vec::new();
+        let mut next_old = 1usize; // next original line we expect
+
+        for (new_idx, line) in self.lines.iter().enumerate() {
+            let new_lineno = new_idx + 1;
+            let origin = self.origins[new_idx];
+
+            // Emit any deleted old lines that came before this line's origin
+            if let Some(orig) = origin {
+                while next_old < orig {
+                    if del_set.contains(&next_old) {
+                        let old_line = original_lines[next_old - 1];
+                        events.push(('-', format_lnhash(next_old, old_line), old_line));
+                    }
+                    next_old += 1;
+                }
+                next_old = orig + 1;
+            }
+
+            if mod_set.contains(&new_lineno) {
+                // Show the old line as deleted if this was a modification (not insertion)
+                if let Some(orig) = origin {
+                    let old_line = original_lines[orig - 1];
+                    if old_line != line.as_str() {
+                        events.push(('-', format_lnhash(orig, old_line), old_line));
+                    }
+                }
+                events.push(('+', self.hashes[new_idx].clone(), line.as_str()));
+            } else {
+                events.push((' ', self.hashes[new_idx].clone(), line.as_str()));
+            }
+        }
+
+        // Emit any remaining deleted lines at the end
+        let old_len = original_lines.len();
+        while next_old <= old_len {
+            if del_set.contains(&next_old) {
+                let old_line = original_lines[next_old - 1];
+                events.push(('-', format_lnhash(next_old, old_line), old_line));
+            }
+            next_old += 1;
+        }
+
+        // Now group into hunks with context
+        let interesting: BTreeSet<usize> = events.iter().enumerate()
+            .filter(|(_, (tag, _, _))| *tag != ' ')
+            .flat_map(|(i, _)| {
+                let start = i.saturating_sub(context);
+                let end = (i + context).min(events.len() - 1);
+                start..=end
+            })
+            .collect();
+
+        if interesting.is_empty() { return String::new(); }
+
+        let mut out = String::new();
+        let mut last: Option<usize> = None;
+        for i in &interesting {
+            if let Some(prev) = last {
+                if *i > prev + 1 { out.push_str("---\n"); }
+            }
+            let (tag, ref hash, text) = events[*i];
+            out.push(tag);
+            out.push_str(hash);
+            out.push_str("  ");
+            out.push_str(text);
+            out.push('\n');
+            last = Some(*i);
+        }
+        out
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -641,12 +730,14 @@ pub fn edit_text_with_sw(input: &str, commands: &[Command], sw: usize) -> Result
         .collect();
 
     let deleted: Vec<usize> = eng.deleted.into_iter().collect();
+    let origins: Vec<Option<usize>> = eng.lines.iter().map(|l| l.origin).collect();
 
     Ok(EditResult {
         lines,
         hashes,
         modified,
         deleted,
+        origins,
     })
 }
 

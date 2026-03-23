@@ -21,21 +21,8 @@ def lnhashview_file(path:str, start:int=None, end:int=None) -> list[str]:
     return _lnhashview(Path(path).read_text(), start, end)
 
 
-def exhash_result(results:list[dict]) -> str:
-    'Format modified lines from exhash result dicts in lnhash view format.'
-    if not isinstance(results, list): raise TypeError("results must be a list[dict]")
-    out = []
-    for r in results:
-        if not isinstance(r, dict): raise TypeError("results must be a list[dict]")
-        lines, hashes, modified = r.get("lines"), r.get("hashes"), r.get("modified")
-        if not isinstance(lines, list) or not isinstance(hashes, list) or not isinstance(modified, list):
-            raise TypeError("each result must include list fields: lines, hashes, modified")
-        out += [f"{hashes[i-1]}  {lines[i-1]}" for i in modified if isinstance(i, int) and 0 < i <= len(hashes)]
-    return '\n'.join(out)
-
-
-def exhash(text:str, cmds:list[str], sw:int=4) -> dict:
-    """Verified line-addressed editor. Apply commands to `text`, return a result dict.
+def exhash(text:str, cmds:list[str], sw:int=4):
+    """Verified line-addressed editor. Apply commands to `text`, return an EditResult.
 
     Commands primarily use lnhash addresses: ``lineno|hash|cmd`` where hash is
     a 4-char hex content hash. Use ``lnhashview(text)`` or
@@ -76,11 +63,14 @@ def exhash(text:str, cmds:list[str], sw:int=4) -> dict:
     For a/i/c, remaining lines in the command string are the text block
     (no '.' terminator needed, unlike the CLI).
 
-    Returns a dict with:
+    Returns an EditResult with attributes (also accessible as dict keys):
       lines     list of output lines
       hashes    lnhash for each output line
       modified  1-based line numbers of modified/added lines
       deleted   1-based line numbers of removed lines (in original)
+      origins   for each output line, the 1-based original line number (None if inserted)
+
+    Call ``res.format_diff(context=1)`` for a unified-diff-style summary.
 
     `cmds` is a required iterable of command strings. For `a`/`i`/`c`, include
     the text block in the same command string after a newline.
@@ -92,16 +82,16 @@ def exhash(text:str, cmds:list[str], sw:int=4) -> dict:
       addr = lnhash(1, "foo")           # "1|a1b2|"
       res = exhash(text, [f"{addr}s/foo/baz/"])
       print(res["lines"])                # ["baz", "bar"]
-      "\\n".join(res["lines"])           # "baz\\nbar"
-      res = exhash(text, [f"{addr}a\\nnew line 1\\nnew line 2"])
+      print(res.format_diff())           # unified-diff-style summary
     """
-    r = _exhash(text, *cmds, sw=sw)
-    return dict(lines=r.lines, hashes=r.hashes, modified=r.modified, deleted=r.deleted)
+    return _exhash(text, *cmds, sw=sw)
 
 
-def exhash_file(path:str, cmds:list[str], sw:int=4, inplace:bool=False) -> dict:
-    'Like ``exhash`` but reads from file at ``path``. If ``inplace``, writes result back (atomically on success only).'
+def exhash_file(path:str, cmds:list[str], sw:int=4, inplace:bool=False):
+    'Like ``exhash`` but reads from file at ``path``. If ``inplace``, writes back and returns diff string.'
     text = Path(path).read_text()
-    r = exhash(text, cmds, sw=sw)
-    if inplace: Path(path).write_text('\n'.join(r['lines']) + '\n' if r['lines'] else '')
+    r = _exhash(text, *cmds, sw=sw)
+    if inplace:
+        Path(path).write_text('\n'.join(r['lines']) + '\n' if r['lines'] else '')
+        return r.format_diff()
     return r
