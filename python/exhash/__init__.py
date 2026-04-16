@@ -60,8 +60,10 @@ def exhash(text:str, cmds:list[str], sw:int=4):
 
     `sw` controls shift width for `<` and `>` and defaults to 4.
 
-    For a/i/c, remaining lines in the command string are the text block
-    (no '.' terminator needed, unlike the CLI).
+    For a/i/c, remaining lines in the command string are the text block.
+    Do not include an ex-style trailing ``.`` terminator here: unlike CLI/script
+    mode, ``exhash(text, cmds)`` does not use one. If you include a final ``.``
+    line, it is inserted literally and exhash emits a warning.
 
     Returns an EditResult with attributes (also accessible as dict keys):
       lines     list of output lines
@@ -88,7 +90,7 @@ def exhash(text:str, cmds:list[str], sw:int=4):
 
 
 def exhash_file(path:str, cmds:list[str], sw:int=4, inplace:bool=False):
-    'Like ``exhash`` but reads from file at ``path``. If ``inplace``, writes back and returns diff string.'
+    'Like ``exhash`` but reads from file at ``path``. Uses the same no-``.``-terminator rule for a/i/c text blocks. If ``inplace``, writes back and returns diff string.'
     text = Path(path).read_text()
     r = _exhash(text, *cmds, sw=sw)
     if inplace:

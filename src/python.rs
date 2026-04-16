@@ -1,5 +1,7 @@
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyUserWarning, PyValueError};
 use pyo3::prelude::*;
+
+use crate::{Command, Subcommand};
 
 #[pyclass]
 #[derive(Clone)]
@@ -70,10 +72,11 @@ fn lnhashview(text: &str, start: Option<usize>, end: Option<usize>) -> PyResult<
 
 #[pyfunction]
 #[pyo3(name = "exhash", signature = (text, *cmds, sw=4))]
-fn py_exhash(text: &str, cmds: Vec<String>, sw: usize) -> PyResult<EditResultPy> {
+fn py_exhash(py: Python<'_>, text: &str, cmds: Vec<String>, sw: usize) -> PyResult<EditResultPy> {
     let cmd_refs: Vec<&str> = cmds.iter().map(|s| s.as_str()).collect();
     let parsed = crate::parse_commands_from_strs(&cmd_refs)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    warn_on_ex_style_dot_terminators(py, &cmds, &parsed)?;
     let res = crate::edit_text_with_sw(text, &parsed, sw)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(EditResultPy {
@@ -91,4 +94,42 @@ fn exhash(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lnhashview, m)?)?;
     m.add_function(wrap_pyfunction!(py_exhash, m)?)?;
     Ok(())
+}
+
+fn warn_on_ex_style_dot_terminators(py: Python<'_>, inputs: &[String], parsed: &[Command]) -> PyResult<()> {
+    for (i, (input, cmd)) in inputs.iter().zip(parsed.iter()).enumerate() {
+        if command_has_text_block(cmd) && looks_like_ex_style_dot_terminator(input) {
+            let msg = format!(
+                "cmds[{i}] ends with a '.' line. In exhash(text, cmds), a/i/c text blocks do not use ex-style '.' terminators; that final '.' line will be inserted literally."
+            );
+            let warnings = py.import("warnings")?;
+            warnings.call_method1("warn", (msg, py.get_type::<PyUserWarning>(), 2))?;
+        }
+    }
+    Ok(())
+}
+
+fn command_has_text_block(cmd: &Command) -> bool {
+    match &cmd.cmd {
+        Subcommand::Append(_) | Subcommand::Insert(_) | Subcommand::Change(_) => true,
+        Subcommand::Global { cmd, .. } => matches!(
+            cmd.as_ref(),
+            Subcommand::Append(_) | Subcommand::Insert(_) | Subcommand::Change(_)
+        ),
+        _ => false,
+    }
+}
+
+fn looks_like_ex_style_dot_terminator(input: &str) -> bool {
+    let Some((_, rest)) = input.split_once('\n') else {
+        return false;
+    };
+    let mut lines: Vec<&str> = rest
+        .split('\n')
+        .map(|line| line.strip_suffix('\r').unwrap_or(line))
+        .collect();
+    while matches!(lines.last(), Some(&"")) {
+        lines.pop();
+    }
+    matches!(lines.last(), Some(&"."))
 }

@@ -1,4 +1,4 @@
-import pytest
+import warnings, pytest
 from exhash import line_hash, lnhash, lnhashview, exhash
 
 def test_line_hash_returns_4_hex():
@@ -119,6 +119,21 @@ def test_exhash_append():
     assert res["lines"] == ["a", "x", "y", "b"]
     assert res["modified"] == [2, 3]
 
+def test_exhash_warns_on_ex_style_dot_terminator_for_text_block():
+    text = "a\nb\n"
+    addr = lnhash(1, "a")
+    with pytest.warns(UserWarning, match=r"final '\.' line will be inserted literally"): res = exhash(text, [addr+"a\nx\n."])
+    assert res["lines"] == ["a", "x", ".", "b"]
+
+def test_exhash_does_not_warn_for_nontrailing_dot_line():
+    text = "a\nb\n"
+    addr = lnhash(1, "a")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        res = exhash(text, [addr+"a\n.\nx"])
+    assert res["lines"] == ["a", ".", "x", "b"]
+    assert not caught
+
 def test_exhash_insert():
     text = "a\nb\n"
     addr = lnhash(2, "b")
@@ -211,7 +226,7 @@ def test_exhash_literal_newline_in_replacement():
     assert res["lines"] == ["foo", "bar", "baz"]
 
 def test_exhash_file_read(tmp_path):
-    from exhash import lnhashview_file, exhash_file
+    from exhash import lnhashview_file
     f = tmp_path / "test.txt"
     f.write_text("hello\nworld\n")
     lines = lnhashview_file(str(f))
@@ -229,7 +244,7 @@ def test_exhash_file_inplace(tmp_path):
     assert f.read_text() == "baz\nbar\n"
 
 def test_exhash_file_inplace_no_change_on_error(tmp_path):
-    from exhash import exhash_file, lnhash
+    from exhash import exhash_file
     f = tmp_path / "test.txt"
     f.write_text("foo\nbar\n")
     with pytest.raises(ValueError): exhash_file(str(f), ["99|ffff|s/x/y/"], inplace=True)

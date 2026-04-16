@@ -108,7 +108,7 @@ view = lnhashview_file("f.py") # same but reads from file
 
 ### Editing
 
-`exhash(text, cmds, sw=4)` takes the text and a required iterable of command strings (use `[]` for no-op). `sw` controls how far `<` and `>` shift. For `a`/`i`/`c` commands, lines after the command are the text block (no `.` terminator needed):
+`exhash(text, cmds, sw=4)` takes the text and a required iterable of command strings (use `[]` for no-op). `sw` controls how far `<` and `>` shift. For `a`/`i`/`c` commands, lines after the command are the text block. Do not include an ex-style trailing `.` line here: unlike CLI/script mode, `exhash(text, cmds)` does not use one, and a final `.` line is inserted literally.
 
 ```py
 addr = lnhash(1, "foo")  # "1|a1b2|"
@@ -125,6 +125,9 @@ res = exhash(text, [f"{a1}s/foo/FOO/", f"{a2}s/bar/BAR/"])
 
 # Append multiline text (no dot terminator)
 res = exhash(text, [f"{addr}a\nnew line 1\nnew line 2"])
+
+# Wrong for the Python API: the trailing "." would be inserted literally
+# res = exhash(text, [f"{addr}a\nnew line 1\nnew line 2\n."])
 
 # Change shift width for < and >
 res = exhash(text, [f"{addr}>1"], sw=2)

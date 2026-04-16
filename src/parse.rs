@@ -71,7 +71,8 @@ pub fn parse_commands_from_args(
 /// Parse commands from a list of individual command strings (for programmatic APIs).
 ///
 /// Each string is one command. For `a`/`i`/`c`, lines after the first are the text
-/// block (no `.` terminator needed). For other commands, extra lines are an error.
+/// block (no `.` terminator needed; a trailing `.` line is literal text). For
+/// other commands, extra lines are an error.
 pub fn parse_commands_from_strs(cmds: &[&str]) -> Result<Vec<Command>, EditError> {
     let mut out = Vec::with_capacity(cmds.len());
     for s in cmds {
