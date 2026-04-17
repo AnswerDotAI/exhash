@@ -243,6 +243,13 @@ def test_exhash_file_inplace(tmp_path):
     assert "+{}  baz".format(lnhash(1, "baz")) in diff
     assert f.read_text() == "baz\nbar\n"
 
+def test_exhash_file_inplace_creates_missing_file_from_empty_input(tmp_path):
+    from exhash import exhash_file, lnhash
+    f = tmp_path / "new.txt"
+    diff = exhash_file(str(f), ["0|0000|a\nhello"], inplace=True)
+    assert f.read_text() == "hello\n"
+    assert f"+{lnhash(1, 'hello')}  hello" in diff
+
 def test_exhash_file_inplace_no_change_on_error(tmp_path):
     from exhash import exhash_file
     f = tmp_path / "test.txt"

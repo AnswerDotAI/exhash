@@ -289,6 +289,34 @@ fn exhash_multiline_append_from_stdin() {
 }
 
 #[test]
+fn exhash_creates_missing_file_with_zero_append() {
+    let dir = mk_temp_dir("exhash_create_missing");
+    let file = dir.join("new.txt");
+
+    let bin = env!("CARGO_BIN_EXE_exhash");
+    let mut child = Command::new(bin)
+        .arg(&file)
+        .arg("0|0000|a")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    {
+        let stdin = child.stdin.as_mut().unwrap();
+        stdin.write_all(b"first line\n.\n").unwrap();
+    }
+
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success());
+
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let expected = format!("{}\n", add(1, "first line"));
+    assert_eq!(stdout, expected);
+    assert_eq!(read_file(&file), "first line\n");
+}
+
+#[test]
 fn exhash_rejects_binary_file() {
     let dir = mk_temp_dir("exhash_binary");
     let file = dir.join("f.bin");

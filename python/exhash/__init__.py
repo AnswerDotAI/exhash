@@ -90,10 +90,14 @@ def exhash(text:str, cmds:list[str], sw:int=4):
 
 
 def exhash_file(path:str, cmds:list[str], sw:int=4, inplace:bool=False):
-    'Like ``exhash`` but reads from file at ``path``. Uses the same no-``.``-terminator rule for a/i/c text blocks. If ``inplace``, writes back and returns diff string.'
-    text = Path(path).read_text()
-    r = _exhash(text, *cmds, sw=sw)
+    'Like ``exhash`` but reads from file at ``path``. Uses the same no-``.``-terminator rule for a/i/c text blocks. If the file is missing and the commands are valid on empty input (for example ``0|0000|a``), it is treated as empty and created on inplace write. If ``inplace``, writes back and returns diff string.'
+    p = Path(path)
+    try: text = p.read_text()
+    except FileNotFoundError as e:
+        try: r = exhash("", cmds, sw=sw)
+        except Exception: raise e
+    else: r = _exhash(text, *cmds, sw=sw)
     if inplace:
-        Path(path).write_text('\n'.join(r['lines']) + '\n' if r['lines'] else '')
+        p.write_text('\n'.join(r['lines']) + '\n' if r['lines'] else '')
         return r.format_diff()
     return r

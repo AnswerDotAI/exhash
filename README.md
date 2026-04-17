@@ -65,6 +65,12 @@ exhash file.txt '%j'
 
 # Move a line to EOF using $ as the destination
 exhash file.txt '12|abcd|m$'
+
+# Create a missing file by treating it as empty input
+exhash new.txt '0|0000|a' <<'EOF'
+first line
+.
+EOF
 ```
 
 Substitute uses Rust regex syntax:
@@ -83,6 +89,8 @@ For `a/i/c` commands, provide the text block on stdin:
 ```bash
 printf "new line 1\nnew line 2\n.\n" | exhash file.txt "2|beef|a"
 ```
+
+If the file does not exist and the command set is valid on empty input, exhash treats it as an empty file and writes the result. For example, `0|0000|a` can create a new file.
 
 ### Stdin filter mode
 
@@ -152,6 +160,9 @@ res = exhash_file("file.py", [f"{addr}s/foo/bar/"])
 
 # With inplace=True, writes back on success and returns diff string
 diff = exhash_file("file.py", [f"{addr}s/foo/bar/"], inplace=True)
+
+# Missing files are treated as empty when the commands are valid on empty input
+diff = exhash_file("new.py", ["0|0000|a\nprint('hi')"], inplace=True)
 ```
 
 ### EditResult

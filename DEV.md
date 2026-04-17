@@ -50,6 +50,7 @@ cargo test && pytest -q
 `edit_text` verifies lnhashes command-by-command against the current in-memory buffer, immediately before each command executes (not all upfront). If an earlier command shifts or rewrites a later target line, that later command will fail with a stale-hash error unless you recompute addresses.
 The `$` (last line) and `%` (whole file) address forms are resolved against the current buffer and do not require hashes.
 `edit_text_with_sw` exposes configurable shift width for `<` and `>`; `edit_text` defaults to `sw=4`.
+In CLI/file-helper flows, a missing file is treated as empty input only when the parsed command set is valid against an empty buffer (for example `0|0000|a`); otherwise the original file-not-found error is preserved.
 
 ## Release
 

@@ -24,6 +24,8 @@ ADDRESSING
   Last:     $cmd
   Whole:    %cmd   (same as 1,$)
   Special:  0|0000| targets before line 1 (only with a or i)
+            If the file does not exist and the command set is valid on empty input
+            (for example 0|0000|a), exhash treats it as empty and creates it on write.
 
 COMMANDS
   s/pat/rep/[flags]  Substitute using Rust regex syntax.
@@ -69,6 +71,7 @@ EXAMPLES
   exhash file.txt '12|abcd|m$'
   printf 'line1\\nline2\\n.\\n' | exhash file.txt '5|d1e2|a'
   exhash file.txt '0|0000|i' <<< $'header\\n.'
+  exhash new.txt '0|0000|a' <<< $'first line\\n.'
   exhash file.txt '2|aa|,3|bb|m5|cc|'
   exhash file.txt '1|ab|,10|ef|g/TODO/d'
   exhash --dry-run file.txt '3|1234|s/old/new/'
@@ -215,28 +218,6 @@ fn main() {
         return;
     }
 
-    // File mode.
-    let bytes = match fs::read(&file) {
-        Ok(b) => b,
-        Err(e) => {
-            eprintln!("error: failed to read {file}: {e}");
-            process::exit(1);
-        }
-    };
-
-    if is_binary(&bytes) {
-        eprintln!("error: binary file rejected (NUL byte found)");
-        process::exit(1);
-    }
-
-    let text = match String::from_utf8(bytes) {
-        Ok(s) => s,
-        Err(_) => {
-            eprintln!("error: non-UTF8 file rejected");
-            process::exit(1);
-        }
-    };
-
     let mut stdin = io::stdin().lock();
     let commands = match parse_commands_from_args(&cmd_args, &mut stdin) {
         Ok(c) => c,
@@ -246,11 +227,44 @@ fn main() {
         }
     };
 
-    let result = match edit_text_with_sw(&text, &commands, sw) {
-        Ok(r) => r,
+    // File mode.
+    let (text, result) = match fs::read(&file) {
+        Ok(bytes) => {
+            if is_binary(&bytes) {
+                eprintln!("error: binary file rejected (NUL byte found)");
+                process::exit(1);
+            }
+
+            let text = match String::from_utf8(bytes) {
+                Ok(s) => s,
+                Err(_) => {
+                    eprintln!("error: non-UTF8 file rejected");
+                    process::exit(1);
+                }
+            };
+
+            let result = match edit_text_with_sw(&text, &commands, sw) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    process::exit(2);
+                }
+            };
+            (text, result)
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            let result = match edit_text_with_sw("", &commands, sw) {
+                Ok(r) => r,
+                Err(_) => {
+                    eprintln!("error: failed to read {file}: {e}");
+                    process::exit(1);
+                }
+            };
+            (String::new(), result)
+        }
         Err(e) => {
-            eprintln!("error: {e}");
-            process::exit(2);
+            eprintln!("error: failed to read {file}: {e}");
+            process::exit(1);
         }
     };
 
