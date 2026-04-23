@@ -37,6 +37,8 @@ lnhashview path/to/file.txt
 lnhashview path/to/file.txt 10 20
 ```
 
+If `end` is past EOF, `lnhashview` returns through the last available line instead of failing.
+
 ### Edit
 
 ```bash
@@ -110,8 +112,8 @@ from exhash import exhash, exhash_file, lnhash, lnhashview, lnhashview_file, lin
 
 ```py
 text = "foo\nbar\n"
-view = lnhashview(text)       # ["1|a1b2|  foo", "2|c3d4|  bar"]
-view = lnhashview_file("f.py") # same but reads from file
+view = lnhashview(text)                        # ["1|a1b2|  foo", "2|c3d4|  bar"]
+view = lnhashview_file("f.py", start=1, end=260) # end past EOF is clamped
 ```
 
 ### Editing

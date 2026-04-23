@@ -7,7 +7,8 @@ use std::process;
 use exhash::{edit_text_with_sw, parse_commands_from_args};
 
 fn usage() {
-    eprintln!("\
+    eprintln!(
+        "\
 Usage: exhash [-h] [--dry-run] [--stdin] [--sw N] <file|-> [commands...]
 
 Verified line-addressed file editor using lnhash addresses.
@@ -76,7 +77,8 @@ EXAMPLES
   exhash file.txt '1|ab|,10|ef|g/TODO/d'
   exhash --dry-run file.txt '3|1234|s/old/new/'
   cat file.txt | exhash --stdin - '1|abcd|s/foo/bar/'
-");
+"
+    );
 }
 
 fn is_binary(bytes: &[u8]) -> bool {
@@ -198,7 +200,9 @@ fn main() {
             Ok(c) => c,
             Err(e) => {
                 eprintln!("error: {e}");
-                eprintln!("note: commands requiring text blocks (a/i/c) are not supported with --stdin");
+                eprintln!(
+                    "note: commands requiring text blocks (a/i/c) are not supported with --stdin"
+                );
                 process::exit(2);
             }
         };
@@ -285,5 +289,7 @@ fn main() {
 
     let original_lines: Vec<&str> = text.lines().collect();
     let diff = result.format_diff(&original_lines, 1);
-    if !diff.is_empty() { print!("{diff}"); }
+    if !diff.is_empty() {
+        print!("{diff}");
+    }
 }

@@ -23,9 +23,15 @@ fn read_file(path: &Path) -> String {
     fs::read_to_string(path).unwrap()
 }
 
-fn ctx(lineno: usize, line: &str) -> String { format!(" {}  {}", format_lnhash(lineno, line), line) }
-fn add(lineno: usize, line: &str) -> String { format!("+{}  {}", format_lnhash(lineno, line), line) }
-fn del(lineno: usize, line: &str) -> String { format!("-{}  {}", format_lnhash(lineno, line), line) }
+fn ctx(lineno: usize, line: &str) -> String {
+    format!(" {}  {}", format_lnhash(lineno, line), line)
+}
+fn add(lineno: usize, line: &str) -> String {
+    format!("+{}  {}", format_lnhash(lineno, line), line)
+}
+fn del(lineno: usize, line: &str) -> String {
+    format!("-{}  {}", format_lnhash(lineno, line), line)
+}
 
 #[test]
 fn lnhashview_basic_and_range() {
@@ -60,6 +66,24 @@ fn lnhashview_basic_and_range() {
     let expected = vec![
         format!("{}  beta", format_lnhash(2, "beta")),
         format!("{}  ", format_lnhash(3, "")),
+    ]
+    .join("\n")
+        + "\n";
+    assert_eq!(stdout, expected);
+
+    // End past EOF clamps to the last line.
+    let out = Command::new(bin)
+        .arg(&file)
+        .arg("2")
+        .arg("260")
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let expected = vec![
+        format!("{}  beta", format_lnhash(2, "beta")),
+        format!("{}  ", format_lnhash(3, "")),
+        format!("{}  gamma", format_lnhash(4, "gamma")),
     ]
     .join("\n")
         + "\n";
@@ -196,7 +220,9 @@ fn exhash_rechecks_hashes_between_commands() {
         .output()
         .unwrap();
     assert!(!out.status.success());
-    assert!(String::from_utf8(out.stderr).unwrap().contains("stale lnhash"));
+    assert!(String::from_utf8(out.stderr)
+        .unwrap()
+        .contains("stale lnhash"));
 
     // No partial write on command failure.
     assert_eq!(read_file(&file), "a\nb\n");

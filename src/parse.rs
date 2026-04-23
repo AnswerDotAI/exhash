@@ -26,21 +26,32 @@ pub struct Command {
 pub enum Subcommand {
     Delete,
     Substitute(Subst),
-    Transliterate { source: String, dest: String },
+    Transliterate {
+        source: String,
+        dest: String,
+    },
     Append(Vec<String>),
     Insert(Vec<String>),
     Change(Vec<String>),
     Join,
-    Move { dest: Address },
-    Copy { dest: Address },
+    Move {
+        dest: Address,
+    },
+    Copy {
+        dest: Address,
+    },
     /// Global (`g`) and inverted-global (`v`/`g!`).
     Global {
         invert: bool,
         pattern: String,
         cmd: Box<Subcommand>,
     },
-    Indent { levels: usize },
-    Dedent { levels: usize },
+    Indent {
+        levels: usize,
+    },
+    Dedent {
+        levels: usize,
+    },
     Sort,
     Print,
 }
@@ -76,7 +87,9 @@ pub fn parse_commands_from_args(
 pub fn parse_commands_from_strs(cmds: &[&str]) -> Result<Vec<Command>, EditError> {
     let mut out = Vec::with_capacity(cmds.len());
     for s in cmds {
-        if s.trim().is_empty() { continue; }
+        if s.trim().is_empty() {
+            continue;
+        }
         let cmd = parse_command_with_text_from_str(s)?;
         out.push(cmd);
     }
@@ -94,16 +107,28 @@ fn parse_command_with_text_from_str(input: &str) -> Result<Command, EditError> {
     // Fall back to line-split approach for text commands (a/i/c)
     let mut lines = input.split('\n');
     let first = lines.next().unwrap();
-    let remaining: Vec<String> = lines.map(|l| l.strip_suffix('\r').unwrap_or(l).to_string()).collect();
-    if remaining.is_empty() { return Err(full_err); }
+    let remaining: Vec<String> = lines
+        .map(|l| l.strip_suffix('\r').unwrap_or(l).to_string())
+        .collect();
+    if remaining.is_empty() {
+        return Err(full_err);
+    }
     let cmd = parse_command_with_text(first, || Ok(remaining.clone()))?;
     match &cmd.cmd {
         Subcommand::Append(_) | Subcommand::Insert(_) | Subcommand::Change(_) => {}
         Subcommand::Global { cmd: sub, .. } => match sub.as_ref() {
             Subcommand::Append(_) | Subcommand::Insert(_) | Subcommand::Change(_) => {}
-            _ => return Err(EditError::new("unexpected multiline input for this command")),
+            _ => {
+                return Err(EditError::new(
+                    "unexpected multiline input for this command",
+                ))
+            }
         },
-        _ => return Err(EditError::new("unexpected multiline input for this command")),
+        _ => {
+            return Err(EditError::new(
+                "unexpected multiline input for this command",
+            ))
+        }
     }
     Ok(cmd)
 }
@@ -182,11 +207,7 @@ where
             }
             match cmd {
                 Subcommand::Append(_) | Subcommand::Insert(_) => {}
-                _ => {
-                    return Err(EditError::new(
-                        "0|0000| is only allowed with i or a",
-                    ))
-                }
+                _ => return Err(EditError::new("0|0000| is only allowed with i or a")),
             }
         }
     }
@@ -227,10 +248,12 @@ fn parse_destination_address(input: &str, op: char) -> Result<Address, EditError
         )));
     }
     match addr {
-        Address::LnHash(LnHash { lineno: 0, .. }) => {
-            Err(EditError::new(format!("destination 0|0000| is not allowed for {op}")))
-        }
-        Address::WholeFile => Err(EditError::new(format!("destination % is not allowed for {op}"))),
+        Address::LnHash(LnHash { lineno: 0, .. }) => Err(EditError::new(format!(
+            "destination 0|0000| is not allowed for {op}"
+        ))),
+        Address::WholeFile => Err(EditError::new(format!(
+            "destination % is not allowed for {op}"
+        ))),
         _ => Ok(addr),
     }
 }
@@ -325,10 +348,14 @@ where
     F: FnMut() -> Result<Vec<String>, EditError>,
 {
     let rest = rest.trim_start();
-    let delim = rest.chars().next()
+    let delim = rest
+        .chars()
+        .next()
         .ok_or_else(|| EditError::new("global requires <delim>pat<delim>cmd"))?;
     if delim.is_alphanumeric() || delim == '\\' {
-        return Err(EditError::new("global delimiter must not be alphanumeric or backslash"));
+        return Err(EditError::new(
+            "global delimiter must not be alphanumeric or backslash",
+        ));
     }
     let (pat, after_pat) = parse_delimited(rest, delim)?;
     let cmd_str = after_pat.trim_start();
@@ -354,10 +381,14 @@ where
 
 fn parse_substitute(rest: &str) -> Result<(Subst, &str), EditError> {
     let rest = rest.trim_start();
-    let delim = rest.chars().next()
+    let delim = rest
+        .chars()
+        .next()
         .ok_or_else(|| EditError::new("substitute requires <delim>pat<delim>rep<delim>[flags]"))?;
     if delim.is_alphanumeric() || delim == '\\' {
-        return Err(EditError::new("substitute delimiter must not be alphanumeric or backslash"));
+        return Err(EditError::new(
+            "substitute delimiter must not be alphanumeric or backslash",
+        ));
     }
 
     let (pat, after_pat) = parse_delimited(rest, delim)?;
@@ -370,11 +401,7 @@ fn parse_substitute(rest: &str) -> Result<(Subst, &str), EditError> {
         match ch {
             'g' => global = true,
             'i' => case_insensitive = true,
-            _ => {
-                return Err(EditError::new(format!(
-                    "unknown substitute flag: {ch}"
-                )))
-            }
+            _ => return Err(EditError::new(format!("unknown substitute flag: {ch}"))),
         }
     }
 
@@ -395,10 +422,14 @@ fn parse_substitute(rest: &str) -> Result<(Subst, &str), EditError> {
 
 fn parse_transliterate(rest: &str) -> Result<((String, String), &str), EditError> {
     let rest = rest.trim_start();
-    let delim = rest.chars().next()
+    let delim = rest
+        .chars()
+        .next()
         .ok_or_else(|| EditError::new("transliterate requires <delim>source<delim>dest<delim>"))?;
     if delim.is_alphanumeric() || delim == '\\' {
-        return Err(EditError::new("transliterate delimiter must not be alphanumeric or backslash"));
+        return Err(EditError::new(
+            "transliterate delimiter must not be alphanumeric or backslash",
+        ));
     }
 
     let (source, after_source) = parse_delimited(rest, delim)?;
@@ -608,10 +639,7 @@ mod tests {
 
     #[test]
     fn parse_append_reads_text_block() {
-        let input = format!(
-            "{}a\nhello\nworld\n.\n",
-            addr(1, "line")
-        );
+        let input = format!("{}a\nhello\nworld\n.\n", addr(1, "line"));
         let cmds = parse_commands_from_script(&input).unwrap();
         match &cmds[0].cmd {
             Subcommand::Append(t) => {
@@ -626,7 +654,11 @@ mod tests {
         let cmd = format!("{}g/foo/s/bar/baz/", addr(1, "x"));
         let cmds = parse_commands_from_script(&cmd).unwrap();
         match &cmds[0].cmd {
-            Subcommand::Global { invert, pattern, cmd } => {
+            Subcommand::Global {
+                invert,
+                pattern,
+                cmd,
+            } => {
                 assert!(!invert);
                 assert_eq!(pattern, "foo");
                 match cmd.as_ref() {
@@ -646,7 +678,11 @@ mod tests {
         let cmd = format!("{}g@foo@s/bar/baz/", addr(1, "x"));
         let cmds = parse_commands_from_script(&cmd).unwrap();
         match &cmds[0].cmd {
-            Subcommand::Global { invert, pattern, cmd } => {
+            Subcommand::Global {
+                invert,
+                pattern,
+                cmd,
+            } => {
                 assert!(!invert);
                 assert_eq!(pattern, "foo");
                 match cmd.as_ref() {

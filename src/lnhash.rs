@@ -27,18 +27,37 @@ pub fn format_lnhash(lineno: usize, line: &str) -> String {
 
 /// Format lines as `lineno|hash|  content` for a range of lines.
 /// `start` and `end` are 1-based inclusive. Pass `None` for defaults (1 and len).
-/// Returns an error if start is 0, end < start, or end > number of lines.
-pub fn lnhashview(lines: &[&str], start: Option<usize>, end: Option<usize>) -> Result<Vec<String>, EditError> {
-    if lines.is_empty() { return Ok(vec![]); }
-    let s = start.unwrap_or(1);
-    let e = end.unwrap_or(lines.len());
-    if s == 0 { return Err(EditError::new("start_line is 1-based (must be >= 1)")); }
-    if e < s { return Err(EditError::new("end_line must be >= start_line")); }
-    if e > lines.len() {
-        return Err(EditError::new(format!("end_line {} is beyond EOF (file has {} line(s))", e, lines.len())));
+/// `end` past EOF is clamped to the last line.
+/// Returns an error if start is 0, end < start, or start is beyond EOF.
+pub fn lnhashview(
+    lines: &[&str],
+    start: Option<usize>,
+    end: Option<usize>,
+) -> Result<Vec<String>, EditError> {
+    if lines.is_empty() {
+        return Ok(vec![]);
     }
-    Ok(lines.iter().enumerate()
-        .skip(s - 1).take(e - s + 1)
+    let s = start.unwrap_or(1);
+    let requested_e = end.unwrap_or(lines.len());
+    if s == 0 {
+        return Err(EditError::new("start_line is 1-based (must be >= 1)"));
+    }
+    if requested_e < s {
+        return Err(EditError::new("end_line must be >= start_line"));
+    }
+    if s > lines.len() {
+        return Err(EditError::new(format!(
+            "start_line {} is beyond EOF (file has {} line(s))",
+            s,
+            lines.len()
+        )));
+    }
+    let e = requested_e.min(lines.len());
+    Ok(lines
+        .iter()
+        .enumerate()
+        .skip(s - 1)
+        .take(e - s + 1)
         .map(|(i, l)| format!("{}  {}", format_lnhash(i + 1, l), l))
         .collect())
 }
@@ -114,5 +133,18 @@ mod tests {
         assert_eq!(lh.lineno, 3);
         assert_eq!(lh.hash, 0x00ff);
         assert_eq!(rest, "d");
+    }
+
+    #[test]
+    fn lnhashview_clamps_end_past_eof() {
+        let lines = vec!["a", "b", "c"];
+        let out = lnhashview(&lines, Some(2), Some(260)).unwrap();
+        assert_eq!(
+            out,
+            vec![
+                format!("{}  b", format_lnhash(2, "b")),
+                format!("{}  c", format_lnhash(3, "c")),
+            ]
+        );
     }
 }

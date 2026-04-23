@@ -51,6 +51,7 @@ cargo test && pytest -q
 The `$` (last line) and `%` (whole file) address forms are resolved against the current buffer and do not require hashes.
 `edit_text_with_sw` exposes configurable shift width for `<` and `>`; `edit_text` defaults to `sw=4`.
 In CLI/file-helper flows, a missing file is treated as empty input only when the parsed command set is valid against an empty buffer (for example `0|0000|a`); otherwise the original file-not-found error is preserved.
+`lnhashview` range requests clamp `end` past EOF to the last available line, while invalid `start` values still error.
 
 ## Release
 

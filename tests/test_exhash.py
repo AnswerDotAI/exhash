@@ -284,3 +284,12 @@ def test_lnhashview_file_start_end(tmp_path):
     assert len(lines) == 2
     assert lines[0].startswith("2|")
     assert lines[1].startswith("3|")
+
+def test_lnhashview_file_clamps_end_past_eof(tmp_path):
+    from exhash import lnhashview_file
+    f = tmp_path / "test.txt"
+    f.write_text("a\nb\nc\n")
+    lines = lnhashview_file(str(f), start=1, end=260)
+    assert len(lines) == 3
+    assert lines[0].startswith("1|")
+    assert lines[-1].startswith("3|")

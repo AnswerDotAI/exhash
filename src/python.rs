@@ -25,22 +25,31 @@ impl EditResultPy {
     fn format_diff(&self, context: usize) -> String {
         let original_lines: Vec<&str> = self.original_text.lines().collect();
         let result = crate::EditResult {
-            lines: self.lines.clone(), hashes: self.hashes.clone(),
-            modified: self.modified.clone(), deleted: self.deleted.clone(),
+            lines: self.lines.clone(),
+            hashes: self.hashes.clone(),
+            modified: self.modified.clone(),
+            deleted: self.deleted.clone(),
             origins: self.origins.clone(),
         };
         result.format_diff(&original_lines, context)
     }
 
-    fn __str__(&self) -> String { self.format_diff(1) }
+    fn __str__(&self) -> String {
+        self.format_diff(1)
+    }
 
     fn __repr__(&self) -> String {
         let diff = self.format_diff(1);
         if diff.is_empty() {
             format!("EditResult({} lines, no changes)", self.lines.len())
         } else {
-            format!("EditResult({} lines, {} modified, {} deleted)\n{}",
-                self.lines.len(), self.modified.len(), self.deleted.len(), diff)
+            format!(
+                "EditResult({} lines, {} modified, {} deleted)\n{}",
+                self.lines.len(),
+                self.modified.len(),
+                self.deleted.len(),
+                diff
+            )
         }
     }
 
@@ -57,17 +66,20 @@ impl EditResultPy {
 }
 
 #[pyfunction]
-fn line_hash(line: &str) -> String { format!("{:04x}", crate::line_hash_u16(line)) }
+fn line_hash(line: &str) -> String {
+    format!("{:04x}", crate::line_hash_u16(line))
+}
 
 #[pyfunction]
-fn lnhash(lineno: usize, line: &str) -> String { crate::format_lnhash(lineno, line) }
+fn lnhash(lineno: usize, line: &str) -> String {
+    crate::format_lnhash(lineno, line)
+}
 
 #[pyfunction]
 #[pyo3(signature = (text, start=None, end=None))]
 fn lnhashview(text: &str, start: Option<usize>, end: Option<usize>) -> PyResult<Vec<String>> {
     let lines: Vec<&str> = text.lines().collect();
-    crate::lnhashview(&lines, start, end)
-        .map_err(|e| PyValueError::new_err(e.to_string()))
+    crate::lnhashview(&lines, start, end).map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 #[pyfunction]
@@ -80,8 +92,11 @@ fn py_exhash(py: Python<'_>, text: &str, cmds: Vec<String>, sw: usize) -> PyResu
     let res = crate::edit_text_with_sw(text, &parsed, sw)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(EditResultPy {
-        lines: res.lines, hashes: res.hashes, modified: res.modified,
-        deleted: res.deleted, origins: res.origins,
+        lines: res.lines,
+        hashes: res.hashes,
+        modified: res.modified,
+        deleted: res.deleted,
+        origins: res.origins,
         original_text: text.to_string(),
     })
 }
@@ -96,7 +111,11 @@ fn exhash(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-fn warn_on_ex_style_dot_terminators(py: Python<'_>, inputs: &[String], parsed: &[Command]) -> PyResult<()> {
+fn warn_on_ex_style_dot_terminators(
+    py: Python<'_>,
+    inputs: &[String],
+    parsed: &[Command],
+) -> PyResult<()> {
     for (i, (input, cmd)) in inputs.iter().zip(parsed.iter()).enumerate() {
         if command_has_text_block(cmd) && looks_like_ex_style_dot_terminator(input) {
             let msg = format!(

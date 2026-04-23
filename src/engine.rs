@@ -79,7 +79,9 @@ impl EditResult {
         }
 
         // Now group into hunks with context
-        let interesting: BTreeSet<usize> = events.iter().enumerate()
+        let interesting: BTreeSet<usize> = events
+            .iter()
+            .enumerate()
             .filter(|(_, (tag, _, _))| *tag != ' ')
             .flat_map(|(i, _)| {
                 let start = i.saturating_sub(context);
@@ -88,13 +90,17 @@ impl EditResult {
             })
             .collect();
 
-        if interesting.is_empty() { return String::new(); }
+        if interesting.is_empty() {
+            return String::new();
+        }
 
         let mut out = String::new();
         let mut last: Option<usize> = None;
         for i in &interesting {
             if let Some(prev) = last {
-                if *i > prev + 1 { out.push_str("---\n"); }
+                if *i > prev + 1 {
+                    out.push_str("---\n");
+                }
             }
             let (tag, ref hash, text) = events[*i];
             out.push(tag);
@@ -144,9 +150,7 @@ impl Engine {
     fn apply_command(&mut self, cmd: &Command) -> Result<(), EditError> {
         let (start, end, is_range) = self.resolve_command_range(cmd)?;
         if start > end && start != 0 {
-            return Err(EditError::new(format!(
-                "invalid range: {start}..{end}"
-            )));
+            return Err(EditError::new(format!("invalid range: {start}..{end}")));
         }
         self.apply_subcommand(start, end, is_range, &cmd.cmd)
     }
@@ -284,7 +288,9 @@ impl Engine {
         match sub {
             Subcommand::Delete => self.delete_range(start, end),
             Subcommand::Substitute(s) => self.substitute_range(start, end, s),
-            Subcommand::Transliterate { source, dest } => self.transliterate_range(start, end, source, dest),
+            Subcommand::Transliterate { source, dest } => {
+                self.transliterate_range(start, end, source, dest)
+            }
             Subcommand::Append(text) => self.append_after(start, end, text),
             Subcommand::Insert(text) => self.insert_before(start, text),
             Subcommand::Change(text) => self.change_range(start, end, text),
@@ -295,8 +301,12 @@ impl Engine {
                     self.join_with_next(start)
                 }
             }
-            Subcommand::Move { dest } => self.move_range(start, end, self.resolve_destination_lineno(*dest)?),
-            Subcommand::Copy { dest } => self.copy_range(start, end, self.resolve_destination_lineno(*dest)?),
+            Subcommand::Move { dest } => {
+                self.move_range(start, end, self.resolve_destination_lineno(*dest)?)
+            }
+            Subcommand::Copy { dest } => {
+                self.copy_range(start, end, self.resolve_destination_lineno(*dest)?)
+            }
             Subcommand::Global {
                 invert,
                 pattern,
@@ -323,9 +333,7 @@ impl Engine {
             return Err(EditError::new("address 0 is not valid for this command"));
         }
         if start > end {
-            return Err(EditError::new(format!(
-                "invalid range: {start}..{end}"
-            )));
+            return Err(EditError::new(format!("invalid range: {start}..{end}")));
         }
         if end > self.lines.len() {
             return Err(EditError::new(format!(
@@ -360,18 +368,27 @@ impl Engine {
             let result = if s.global {
                 re.replace_all(&joined, s.replacement.as_str()).to_string()
             } else {
-                if !re.is_match(&joined) { return Ok(()); }
+                if !re.is_match(&joined) {
+                    return Ok(());
+                }
                 re.replace(&joined, s.replacement.as_str()).to_string()
             };
-            if result == joined { return Ok(()); }
+            if result == joined {
+                return Ok(());
+            }
             let new_lines: Vec<String> = result.split('\n').map(|s| s.to_string()).collect();
-            let origins: Vec<Option<usize>> = (s_idx..=e_idx).map(|i| self.lines[i].origin).collect();
-            let new_line_objs: Vec<Line> = new_lines.into_iter().enumerate().map(|(i, text)| Line {
-                text,
-                origin: origins.get(i).copied().flatten(),
-                modified: true,
-                global_mark: false,
-            }).collect();
+            let origins: Vec<Option<usize>> =
+                (s_idx..=e_idx).map(|i| self.lines[i].origin).collect();
+            let new_line_objs: Vec<Line> = new_lines
+                .into_iter()
+                .enumerate()
+                .map(|(i, text)| Line {
+                    text,
+                    origin: origins.get(i).copied().flatten(),
+                    modified: true,
+                    global_mark: false,
+                })
+                .collect();
             self.lines.splice(s_idx..=e_idx, new_line_objs);
         } else {
             for idx in s_idx..=e_idx {
@@ -379,7 +396,9 @@ impl Engine {
                 let new = if s.global {
                     re.replace_all(&old, s.replacement.as_str()).to_string()
                 } else {
-                    if !re.is_match(&old) { continue; }
+                    if !re.is_match(&old) {
+                        continue;
+                    }
                     re.replace(&old, s.replacement.as_str()).to_string()
                 };
                 if new != old {
@@ -391,12 +410,21 @@ impl Engine {
         Ok(())
     }
 
-    fn transliterate_range(&mut self, start: usize, end: usize, source: &str, dest: &str) -> Result<(), EditError> {
+    fn transliterate_range(
+        &mut self,
+        start: usize,
+        end: usize,
+        source: &str,
+        dest: &str,
+    ) -> Result<(), EditError> {
         let (s_idx, e_idx) = self.resolve_range(start, end)?;
         let map: HashMap<char, char> = source.chars().zip(dest.chars()).collect();
         for idx in s_idx..=e_idx {
             let old = self.lines[idx].text.clone();
-            let new: String = old.chars().map(|ch| map.get(&ch).copied().unwrap_or(ch)).collect();
+            let new: String = old
+                .chars()
+                .map(|ch| map.get(&ch).copied().unwrap_or(ch))
+                .collect();
             if new != old {
                 self.lines[idx].text = new;
                 self.lines[idx].modified = true;
@@ -706,7 +734,11 @@ pub fn edit_text(input: &str, commands: &[Command]) -> Result<EditResult, EditEr
     edit_text_with_sw(input, commands, 4)
 }
 
-pub fn edit_text_with_sw(input: &str, commands: &[Command], sw: usize) -> Result<EditResult, EditError> {
+pub fn edit_text_with_sw(
+    input: &str,
+    commands: &[Command],
+    sw: usize,
+) -> Result<EditResult, EditError> {
     let input_lines: Vec<String> = input.lines().map(|l| l.to_string()).collect();
 
     let mut eng = Engine::new(input_lines, sw);
@@ -944,12 +976,7 @@ mod tests {
     fn move_range_marks_moved_lines_modified() {
         let input = "a\nb\nc\nd\n";
         // Move lines 2-3 after line 4.
-        let cmd = format!(
-            "{},{}m{}",
-            addr(2, "b"),
-            addr(3, "c"),
-            addr(4, "d")
-        );
+        let cmd = format!("{},{}m{}", addr(2, "b"), addr(3, "c"), addr(4, "d"));
         let cmds = parse_commands_from_script(&cmd).unwrap();
         let res = edit_text(input, &cmds).unwrap();
         assert_eq!(res.lines, vec!["a", "d", "b", "c"]);
@@ -1051,14 +1078,13 @@ mod tests {
     #[test]
     fn change_replaces_range() {
         let input = "a\nb\nc\n";
-        let script = format!(
-            "{},{}c\nX\nY\n.\n",
-            addr(1, "a"),
-            addr(2, "b")
-        );
+        let script = format!("{},{}c\nX\nY\n.\n", addr(1, "a"), addr(2, "b"));
         let cmds = parse_commands_from_script(&script).unwrap();
         let res = edit_text(input, &cmds).unwrap();
-        assert_eq!(res.lines, vec!["X".to_string(), "Y".to_string(), "c".to_string()]);
+        assert_eq!(
+            res.lines,
+            vec!["X".to_string(), "Y".to_string(), "c".to_string()]
+        );
         assert_eq!(res.deleted, vec![1, 2]);
         assert_eq!(res.modified, vec![1, 2]);
     }
@@ -1089,11 +1115,7 @@ mod tests {
     fn multi_command_rechecks_hashes_after_each_command() {
         let input = "a\nb\nc\n";
         // Insert X before line 2, then try to delete original line 3 by stale lnhash.
-        let script = format!(
-            "{}i\nX\n.\n{}d\n",
-            addr(2, "b"),
-            addr(3, "c")
-        );
+        let script = format!("{}i\nX\n.\n{}d\n", addr(2, "b"), addr(3, "c"));
         let cmds = parse_commands_from_script(&script).unwrap();
         let err = edit_text(input, &cmds).unwrap_err();
         assert!(err.message().contains("stale lnhash at line 3"));

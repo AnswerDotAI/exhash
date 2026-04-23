@@ -12,7 +12,10 @@ mod python;
 
 pub use engine::{edit_text, edit_text_with_sw, EditResult};
 pub use lnhash::{format_lnhash, line_hash_u16, lnhashview, parse_lnhash, LnHash};
-pub use parse::{parse_commands_from_args, parse_commands_from_script, parse_commands_from_strs, Address, Command, Subcommand};
+pub use parse::{
+    parse_commands_from_args, parse_commands_from_script, parse_commands_from_strs, Address,
+    Command, Subcommand,
+};
 
 #[derive(Debug, Clone)]
 pub struct EditError {
@@ -57,7 +60,8 @@ mod tests {
 
     #[test]
     fn lnhashview_lines() {
-        let lines: Vec<String> = "a\nb\nc".lines()
+        let lines: Vec<String> = "a\nb\nc"
+            .lines()
             .enumerate()
             .map(|(i, l)| format!("{}  {}", format_lnhash(i + 1, l), l))
             .collect();
