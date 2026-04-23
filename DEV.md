@@ -88,7 +88,7 @@ Maturin's `data` option in `pyproject.toml` points to `python/exhash.data/`. Fil
 
 The Rust core has three parsing functions:
 
-- `parse_commands_from_strs(&[&str])` — for the Python API; each string is one command, text blocks are the remaining lines (no `.` terminator; a trailing `.` line is literal text and the Python binding warns about this common mistake)
+- `parse_commands_from_strs(&[&str])` — for the Python API; each string is one command, and multiline `a/i/c` text blocks must be in that same string using newlines, e.g. `["12|abcd|c\nnew line 1\nnew line 2"]`. Do not use `.` terminators or split the inserted text into separate command entries; a trailing `.` line is literal text and the Python binding warns about this common mistake.
 - `parse_commands_from_script(&str)` — for script strings; commands separated by newlines, text blocks terminated by `.`
 - `parse_commands_from_args(&[String], &mut BufRead)` — for the CLI; each arg is a command, text blocks read from stdin terminated by `.`
 

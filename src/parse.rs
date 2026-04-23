@@ -81,9 +81,11 @@ pub fn parse_commands_from_args(
 
 /// Parse commands from a list of individual command strings (for programmatic APIs).
 ///
-/// Each string is one command. For `a`/`i`/`c`, lines after the first are the text
-/// block (no `.` terminator needed; a trailing `.` line is literal text). For
-/// other commands, extra lines are an error.
+/// Each string is one command. For multiline `a`/`i`/`c`, include the text block
+/// in the same string using newline characters, e.g.
+/// `["12|abcd|c\nnew line 1\nnew line 2"]`. Do not use `.` terminators or split
+/// the text block into separate entries; a trailing `.` line is literal text.
+/// For other commands, extra lines are an error.
 pub fn parse_commands_from_strs(cmds: &[&str]) -> Result<Vec<Command>, EditError> {
     let mut out = Vec::with_capacity(cmds.len());
     for s in cmds {

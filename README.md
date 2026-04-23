@@ -118,7 +118,7 @@ view = lnhashview_file("f.py", start=1, end=260) # end past EOF is clamped
 
 ### Editing
 
-`exhash(text, cmds, sw=4)` takes the text and a required iterable of command strings (use `[]` for no-op). `sw` controls how far `<` and `>` shift. For `a`/`i`/`c` commands, lines after the command are the text block. Do not include an ex-style trailing `.` line here: unlike CLI/script mode, `exhash(text, cmds)` does not use one, and a final `.` line is inserted literally.
+`exhash(text, cmds, sw=4)` takes the text and a required iterable of command strings (use `[]` for no-op). `sw` controls how far `<` and `>` shift. For multiline `a`/`i`/`c` commands, include the inserted text in the same command string using newline characters, e.g. `["12|abcd|c\nnew line 1\nnew line 2"]`. Do not use `.` terminators, and do not split the text block into separate `cmds` entries. If you include a final `.` line, it is inserted literally and exhash emits a warning.
 
 ```py
 addr = lnhash(1, "foo")  # "1|a1b2|"
@@ -133,11 +133,14 @@ res = exhash(text, [f"{a1}s/foo/FOO/", f"{a2}s/bar/BAR/"])
 # Hashes are checked just-in-time per command.
 # If earlier commands change/shift a later target line, recompute lnhash first.
 
-# Append multiline text (no dot terminator)
+# Append multiline text in the same command string (no dot terminator)
 res = exhash(text, [f"{addr}a\nnew line 1\nnew line 2"])
 
 # Wrong for the Python API: the trailing "." would be inserted literally
 # res = exhash(text, [f"{addr}a\nnew line 1\nnew line 2\n."])
+
+# Also wrong: do not split the inserted text into separate cmds entries
+# res = exhash(text, [f"{addr}a", "new line 1", "new line 2"])
 
 # Change shift width for < and >
 res = exhash(text, [f"{addr}>1"], sw=2)

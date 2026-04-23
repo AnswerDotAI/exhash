@@ -60,10 +60,11 @@ def exhash(text:str, cmds:list[str], sw:int=4):
 
     `sw` controls shift width for `<` and `>` and defaults to 4.
 
-    For a/i/c, remaining lines in the command string are the text block.
-    Do not include an ex-style trailing ``.`` terminator here: unlike CLI/script
-    mode, ``exhash(text, cmds)`` does not use one. If you include a final ``.``
-    line, it is inserted literally and exhash emits a warning.
+    For multiline a/i/c commands, include the inserted text in the same command
+    string using newline characters, e.g. ``["12|abcd|c\nnew line 1\nnew line 2"]``.
+    Do not use ``.`` terminators, and do not split the text block into separate
+    ``cmds`` entries. If you include a final ``.`` line, it is inserted literally
+    and exhash emits a warning.
 
     Returns an EditResult with attributes (also accessible as dict keys):
       lines     list of output lines
@@ -73,9 +74,6 @@ def exhash(text:str, cmds:list[str], sw:int=4):
       origins   for each output line, the 1-based original line number (None if inserted)
 
     Call ``res.format_diff(context=1)`` for a unified-diff-style summary.
-
-    `cmds` is a required iterable of command strings. For `a`/`i`/`c`, include
-    the text block in the same command string after a newline.
 
     Examples::
 
@@ -90,7 +88,7 @@ def exhash(text:str, cmds:list[str], sw:int=4):
 
 
 def exhash_file(path:str, cmds:list[str], sw:int=4, inplace:bool=False):
-    'Like ``exhash`` but reads from file at ``path``. Uses the same no-``.``-terminator rule for a/i/c text blocks. If the file is missing and the commands are valid on empty input (for example ``0|0000|a``), it is treated as empty and created on inplace write. If ``inplace``, writes back and returns diff string.'
+    'Like ``exhash`` but reads from file at ``path``. For multiline a/i/c commands, include the inserted text in the same command string using newline characters, e.g. ``["12|abcd|c\\nnew line 1\\nnew line 2"]``. Do not use ``.`` terminators, and do not split the text block into separate ``cmds`` entries. If the file is missing and the commands are valid on empty input (for example ``0|0000|a``), it is treated as empty and created on inplace write. If ``inplace``, writes back and returns diff string.'
     p = Path(path)
     try: text = p.read_text()
     except FileNotFoundError as e:
