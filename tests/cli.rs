@@ -29,6 +29,10 @@ fn ctx(lineno: usize, line: &str) -> String {
 fn add(lineno: usize, line: &str) -> String {
     format!("+{}  {}", format_lnhash(lineno, line), line)
 }
+fn diff(body: String) -> String {
+    format!("--- original\n+++ modified\n{body}")
+}
+
 fn del(lineno: usize, line: &str) -> String {
     format!("-{}  {}", format_lnhash(lineno, line), line)
 }
@@ -104,7 +108,7 @@ fn exhash_inplace_substitute_and_stdout_modified_only() {
     assert!(out.status.success());
 
     let stdout = String::from_utf8(out.stdout).unwrap();
-    let expected = format!("{}\n{}\n{}\n", del(1, "foo"), add(1, "baz"), ctx(2, "bar"));
+    let expected = diff(format!("{}\n{}\n{}\n", del(1, "foo"), add(1, "baz"), ctx(2, "bar")));
     assert_eq!(stdout, expected);
 
     assert_eq!(read_file(&file), "baz\nbar\n");
@@ -124,7 +128,7 @@ fn exhash_inplace_transliterate_and_stdout_modified_only() {
     assert!(out.status.success());
 
     let stdout = String::from_utf8(out.stdout).unwrap();
-    let expected = format!("{}\n{}\n{}\n", del(1, "abc"), add(1, "ABC"), ctx(2, "cab"));
+    let expected = diff(format!("{}\n{}\n{}\n", del(1, "abc"), add(1, "ABC"), ctx(2, "cab")));
     assert_eq!(stdout, expected);
 
     assert_eq!(read_file(&file), "ABC\ncab\n");
@@ -149,7 +153,7 @@ fn exhash_dry_run_does_not_write() {
     assert!(out.status.success());
 
     let stdout = String::from_utf8(out.stdout).unwrap();
-    let expected = format!("{}\n{}\n{}\n", del(1, "foo"), add(1, "baz"), ctx(2, "bar"));
+    let expected = diff(format!("{}\n{}\n{}\n", del(1, "foo"), add(1, "baz"), ctx(2, "bar")));
     assert_eq!(stdout, expected);
 
     // File unchanged.
@@ -176,7 +180,7 @@ fn exhash_custom_sw_option_changes_shift_width() {
     assert!(out.status.success());
 
     let stdout = String::from_utf8(out.stdout).unwrap();
-    let expected = format!("{}\n{}\n", del(1, "a"), add(1, "  a"));
+    let expected = diff(format!("{}\n{}\n", del(1, "a"), add(1, "  a")));
     assert_eq!(stdout, expected);
     assert_eq!(read_file(&file), "  a\n");
 }
@@ -257,7 +261,7 @@ fn exhash_dollar_deletes_last_line() {
     assert!(out.status.success());
 
     let stdout = String::from_utf8(out.stdout).unwrap();
-    let expected = format!("{}\n{}\n", ctx(2, "b"), del(3, "c"));
+    let expected = diff(format!("{}\n{}\n", ctx(2, "b"), del(3, "c")));
     assert_eq!(stdout, expected);
     assert_eq!(read_file(&file), "a\nb\n");
 }
@@ -337,7 +341,7 @@ fn exhash_creates_missing_file_with_zero_append() {
     assert!(out.status.success());
 
     let stdout = String::from_utf8(out.stdout).unwrap();
-    let expected = format!("{}\n", add(1, "first line"));
+    let expected = diff(format!("{}\n", add(1, "first line")));
     assert_eq!(stdout, expected);
     assert_eq!(read_file(&file), "first line\n");
 }

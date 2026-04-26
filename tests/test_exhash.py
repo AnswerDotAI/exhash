@@ -159,6 +159,7 @@ def test_exhash_format_diff():
     addr = lnhash(1, "foo")
     res = exhash(text, [addr+"s/foo/baz/"])
     diff = res.format_diff()
+    assert diff.startswith("--- original\n+++ modified\n")
     assert f"-{lnhash(1, 'foo')}  foo" in diff
     assert f"+{lnhash(1, 'baz')}  baz" in diff
 
@@ -250,6 +251,98 @@ def test_exhash_file_inplace_creates_missing_file_from_empty_input(tmp_path):
     assert f.read_text() == "hello\n"
     assert f"+{lnhash(1, 'hello')}  hello" in diff
 
+def test_exhash_file_returns_file_set_result(tmp_path):
+    from exhash import exhash_file, lnhash
+    f = tmp_path / "test.txt"
+    f.write_text("foo\nbar\n")
+    addr = lnhash(1, "foo")
+    res = exhash_file(str(f), [f"{addr}s/foo/baz/"])
+    assert res.default_path == str(f)
+    assert res.changed == [str(f)]
+    assert res[str(f)]["lines"] == ["baz", "bar"]
+    assert f.read_text() == "foo\nbar\n"
+    diff = res.format_diff()
+    assert f"--- {f}" in diff
+    assert f"+++ {f}" in diff
+    assert f"+{lnhash(1, 'baz')}  baz" in diff
+
+
+def test_exhash_file_copies_to_file_qualified_destination(tmp_path):
+    from exhash import exhash_file, lnhash
+    a, b = tmp_path / "a.txt", tmp_path / "b.txt"
+    a.write_text("one\ntwo\n")
+    b.write_text("alpha\n")
+    cmd = f"{a}:{lnhash(2, 'two')}t {b}:0|0000|"
+    res = exhash_file(str(a), [cmd])
+    assert res.changed == [str(b)]
+    assert res[str(b)]["lines"] == ["two", "alpha"]
+    assert a.read_text() == "one\ntwo\n"
+    assert b.read_text() == "alpha\n"
+
+
+def test_exhash_file_moves_to_missing_file(tmp_path):
+    from exhash import exhash_file, lnhash
+    a, new = tmp_path / "a.txt", tmp_path / "new.txt"
+    a.write_text("one\ntwo\n")
+    cmd = f"{a}:{lnhash(2, 'two')}m {new}:0|0000|"
+    diff = exhash_file(str(a), [cmd], inplace=True)
+    assert a.read_text() == "one\n"
+    assert new.read_text() == "two\n"
+    assert f"--- {a}" in diff
+    assert f"+++ {new}" in diff
+
+
+def test_exhash_file_writes_nothing_if_later_command_fails(tmp_path):
+    from exhash import exhash_file, lnhash
+    a, b = tmp_path / "a.txt", tmp_path / "b.txt"
+    a.write_text("foo\n")
+    b.write_text("bar\n")
+    cmd1 = f"{a}:{lnhash(1, 'foo')}s/foo/FOO/"
+    cmd2 = f"{b}:99|ffff|d"
+    with pytest.raises(ValueError): exhash_file(str(a), [cmd1, cmd2], inplace=True)
+    assert a.read_text() == "foo\n"
+    assert b.read_text() == "bar\n"
+
+
+def test_exhash_file_rejects_missing_file_without_creation_address(tmp_path):
+    from exhash import exhash_file
+    missing = tmp_path / "missing.txt"
+    with pytest.raises(FileNotFoundError): exhash_file(str(missing), ["%s/foo/bar/"])
+    assert not missing.exists()
+
+
+def test_exhash_file_rejects_missing_destination_parent_before_writing_source(tmp_path):
+    from exhash import exhash_file, lnhash
+    a = tmp_path / "a.txt"
+    dest = tmp_path / "missing" / "new.txt"
+    a.write_text("one\ntwo\n")
+    cmd = f"{a}:{lnhash(2, 'two')}m {dest}:0|0000|"
+    with pytest.raises(FileNotFoundError): exhash_file(str(a), [cmd], inplace=True)
+    assert a.read_text() == "one\ntwo\n"
+    assert not dest.exists()
+
+
+def test_exhash_file_accepts_escaped_colon_in_file_prefix(tmp_path):
+    from exhash import exhash_file, lnhash
+    default = tmp_path / "default.txt"
+    target = tmp_path / "weird:name.txt"
+    default.write_text("unused\n")
+    target.write_text("foo\n")
+    prefix = str(target).replace("\\", "\\\\").replace(":", "\\:")
+    cmd = f"{prefix}:{lnhash(1, 'foo')}s/foo/bar/"
+    res = exhash_file(str(default), [cmd])
+    assert res.changed == [str(target)]
+    assert res[str(target)]["lines"] == ["bar"]
+
+
+def test_exhash_file_rejects_cross_file_source_range(tmp_path):
+    from exhash import exhash_file, lnhash
+    a, b = tmp_path / "a.txt", tmp_path / "b.txt"
+    a.write_text("a\n")
+    b.write_text("b\n")
+    cmd = f"{a}:{lnhash(1, 'a')},{b}:{lnhash(1, 'b')}d"
+    with pytest.raises(ValueError, match="cross-file ranges"): exhash_file(str(a), [cmd])
+
 def test_exhash_file_inplace_no_change_on_error(tmp_path):
     from exhash import exhash_file
     f = tmp_path / "test.txt"
@@ -293,3 +386,5 @@ def test_lnhashview_file_clamps_end_past_eof(tmp_path):
     assert len(lines) == 3
     assert lines[0].startswith("1|")
     assert lines[-1].startswith("3|")
+
+

@@ -155,20 +155,45 @@ res = exhash("foo\nbar\n", [f"{a1},{a2}s/foo\nbar/replaced/"])
 
 ### File helpers
 
-`exhash_file` and `lnhashview_file` read directly from a file path:
+`lnhashview_file` reads directly from one file path. `exhash_file(path, cmds, sw=4, inplace=False)` uses `path` as the default file context for unqualified addresses, and also accepts file-qualified source and `m`/`t` destination addresses:
 
 ```py
 view = lnhashview_file("file.py")
 
-# Returns EditResult, file unchanged
+# Returns FileSetEditResult, files unchanged
 res = exhash_file("file.py", [f"{addr}s/foo/bar/"])
+print(res.changed)          # ["file.py"]
+print(res["file.py"].lines)
+print(res.format_diff())    # includes --- file.py / +++ file.py headers
 
-# With inplace=True, writes back on success and returns diff string
+# With inplace=True, writes changed files after every command succeeds
+# and returns the combined diff string.
 diff = exhash_file("file.py", [f"{addr}s/foo/bar/"], inplace=True)
 
-# Missing files are treated as empty when the commands are valid on empty input
+# Missing files are treated as empty only when the command is valid on empty input.
 diff = exhash_file("new.py", ["0|0000|a\nprint('hi')"], inplace=True)
+
+# File-qualified addresses can edit or transfer lines across files.
+cmds = [
+    "src/a.py:24|8f12|,38|c0de|m src/b.py:$",
+    r"src/a.py:5|91aa|s/from \.b import old/from \.b import helper/",
+]
+diff = exhash_file("src/a.py", cmds, inplace=True)
 ```
+
+A file prefix is separated from the address with `:`. Escape literal colons in filenames as `\:` and literal backslashes as `\\`.
+
+`exhash_file(..., inplace=False)` returns a `FileSetEditResult`:
+
+- `res.files` — dict of path to `FileEditResult`
+- `res.changed` — changed paths, in first-touch order
+- `res.default_path` — the default path passed to `exhash_file`
+- `res[path]` — shorthand for `res.files[path]`
+- `res.format_diff(context=1)` — combined diff with `--- path` / `+++ path` headers
+
+### Pyskill
+
+The package registers `exhash.skill` as a pyskill exposing the primary Python APIs with LLM-oriented workflow docs. Use `doc(exhash.skill)` after importing it through a pyskills host.
 
 ### EditResult
 
@@ -185,6 +210,8 @@ diff = exhash_file("new.py", ["0|0000|a\nprint('hi')"], inplace=True)
 ```py
 res = exhash(text, [f"{addr}s/foo/baz/"])
 print(res.format_diff())
+# --- original
+# +++ modified
 # -1|a1b2|  foo
 # +1|c3d4|  baz
 #  2|e5f6|  bar

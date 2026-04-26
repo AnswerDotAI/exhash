@@ -19,6 +19,8 @@ classifiers = [
 Homepage = "https://github.com/AnswerDotAI/exhash"
 Repository = "https://github.com/AnswerDotAI/exhash"
 Issues = "https://github.com/AnswerDotAI/exhash/issues"
+[project.entry-points.pyskills]
+exhash = "exhash.skill"
 
 [tool.maturin]
 features = ["extension-module"]

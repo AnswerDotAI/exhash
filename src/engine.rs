@@ -24,9 +24,10 @@ pub struct EditResult {
 impl EditResult {
     /// Format a unified-diff-style summary of changes.
     ///
-    /// Each line is prefixed with ` ` (context), `+` (added/modified), or `-` (deleted),
+    /// Non-header lines are prefixed with ` ` (context), `+` (added/modified), or `-` (deleted),
     /// followed by the lnhash and content. `context` controls how many unchanged lines
     /// surround each hunk (default 1).
+    /// Non-empty diffs start with `--- original` and `+++ modified` headers.
     pub fn format_diff(&self, original_lines: &[&str], context: usize) -> String {
         use crate::lnhash::format_lnhash;
 
@@ -94,7 +95,7 @@ impl EditResult {
             return String::new();
         }
 
-        let mut out = String::new();
+        let mut out = String::from("--- original\n+++ modified\n");
         let mut last: Option<usize> = None;
         for i in &interesting {
             if let Some(prev) = last {

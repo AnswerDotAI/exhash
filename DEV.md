@@ -18,7 +18,8 @@ src/
   bin/exhash.rs   CLI editor (atomic in-place edit, dry-run, stdin mode)
   bin/lnhashview.rs  CLI viewer
 python/exhash/
-  __init__.py     Python wrapper functions with typed/docstring API (+ exhash_result helper)
+  __init__.py     Python wrapper functions plus file-aware exhash_file orchestration
+  skill.py        pyskills entry point exposing exhash APIs for LLM tools
 python/exhash.data/scripts/
   exhash          native binary (built, not checked in)
   lnhashview      native binary (built, not checked in)
@@ -50,7 +51,8 @@ cargo test && pytest -q
 `edit_text` verifies lnhashes command-by-command against the current in-memory buffer, immediately before each command executes (not all upfront). If an earlier command shifts or rewrites a later target line, that later command will fail with a stale-hash error unless you recompute addresses.
 The `$` (last line) and `%` (whole file) address forms are resolved against the current buffer and do not require hashes.
 `edit_text_with_sw` exposes configurable shift width for `<` and `>`; `edit_text` defaults to `sw=4`.
-In CLI/file-helper flows, a missing file is treated as empty input only when the parsed command set is valid against an empty buffer (for example `0|0000|a`); otherwise the original file-not-found error is preserved.
+In CLI and Python file-helper flows, a missing file is treated as empty input only when the parsed command set is valid against an empty buffer (for example `0|0000|a`); otherwise the original file-not-found error is preserved.
+Python `exhash_file` adds the file-qualified orchestration layer. It parses optional `path:` prefixes, applies each command to the current in-memory buffer for that file, rejects cross-file source ranges, and writes changed files only after every command succeeds.
 `lnhashview` range requests clamp `end` past EOF to the last available line, while invalid `start` values still error.
 
 ## Release
@@ -91,6 +93,8 @@ The Rust core has three parsing functions:
 - `parse_commands_from_strs(&[&str])` — for the Python API; each string is one command, and multiline `a/i/c` text blocks must be in that same string using newlines, e.g. `["12|abcd|c\nnew line 1\nnew line 2"]`. Do not use `.` terminators or split the inserted text into separate command entries; a trailing `.` line is literal text and the Python binding warns about this common mistake.
 - `parse_commands_from_script(&str)` — for script strings; commands separated by newlines, text blocks terminated by `.`
 - `parse_commands_from_args(&[String], &mut BufRead)` — for the CLI; each arg is a command, text blocks read from stdin terminated by `.`
+
+File-qualified addresses are parsed by the Python `exhash_file` wrapper; the Rust parser and CLI remain single-buffer.
 
 Substitute parsing keeps Rust regex escapes intact (`\d`, `\w`, etc.) while still allowing escaped command delimiters (`\/`) in pattern and replacement.
 Transliteration uses `y/src/dst/` and validates equal character counts at parse time.
