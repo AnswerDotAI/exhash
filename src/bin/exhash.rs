@@ -33,9 +33,9 @@ COMMANDS
                      Replacement supports $1, $0, ${{name}}. Flags: g=all, i=case-insensitive
   y/src/dst/         Transliterate chars in-place (source and destination lengths must match)
   d                  Delete line(s)
-  a                  Append text after line (reads text block)
-  i                  Insert text before line (reads text block)
-  c                  Change/replace line(s) with text block
+  a[text]           Append inline text after line, or read text block if text omitted
+  i[text]           Insert inline text before line, or read text block if text omitted
+  c[text]           Change/replace with inline text, or read text block if text omitted
   j                  Join with next line; with range, joins all lines in range
   m dest             Move line(s) after dest address
   t dest             Copy line(s) after dest address
@@ -48,7 +48,8 @@ COMMANDS
   v/pat/cmd          Same as g!
 
 TEXT BLOCKS (a/i/c)
-  Text is read from stdin, terminated by a line containing just '.'
+  Text after a/i/c on the command line is literal inline text.
+  If no inline text is given, text is read from stdin, terminated by a line containing just '.'.
   Use '..' to insert a literal '.' line.
 
 OPTIONS

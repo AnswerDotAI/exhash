@@ -30,9 +30,9 @@ Addressing:
 Commands:
   s/pat/rep/[flags]  Substitute (regex). Flags: g=all, i=case-insensitive
   d                  Delete line(s)
-  a                  Append text after line (reads text block)
-  i                  Insert text before line (reads text block)
-  c                  Change/replace line(s) with text block
+  a[text]           Append inline text after line, or read following text block
+  i[text]           Insert inline text before line, or read following text block
+  c[text]           Change/replace with inline text, or read following text block
   j                  Join with next line; with range, joins all lines in range
   m dest             Move line(s) after dest address
   t dest             Copy line(s) after dest address
@@ -45,7 +45,7 @@ Commands:
   v/pat/cmd          Same as g!
 
 Important:
-Do not create addresses by text search or remembered line numbers. On stale hash, re-view and rebuild. For moving/copying across files, use file-qualified ``m``/``t`` commands; cross-file source ranges are invalid. Missing files can only be created through ``0|0000|`` creation semantics.
+Do not create addresses by text search or remembered line numbers. On stale hash, re-view and rebuild. For multiline ``a``/``i``/``c`` commands, put all text in one command string; text after the command character is the first inserted line and following newline-separated lines continue the block. For moving/copying across files, use file-qualified ``m``/``t`` commands; cross-file source ranges are invalid. Missing files can only be created through ``0|0000|`` creation semantics.
 """
 
 from pyskills.core import PosAllowPolicy, allow

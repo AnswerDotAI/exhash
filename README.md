@@ -48,6 +48,9 @@ exhash file.txt '12|abcd|s/foo/bar/g'
 # Transliterate characters on one line
 exhash file.txt '12|abcd|y/abc/ABC/'
 
+# Change one line with inline text (spaces after c are literal text)
+exhash file.txt '12|abcd|c    replacement line'
+
 # Append multiline text (terminated by a single dot)
 exhash file.txt '12|abcd|a' <<'EOF'
 new line 1
@@ -86,7 +89,7 @@ Substitute uses Rust regex syntax:
 
 When passing multiple commands, each command's lnhashes are verified immediately before that command runs.
 
-For `a/i/c` commands, provide the text block on stdin:
+For multiline `a/i/c` commands, omit inline text and provide the text block on stdin:
 
 ```bash
 printf "new line 1\nnew line 2\n.\n" | exhash file.txt "2|beef|a"
@@ -118,7 +121,9 @@ view = lnhashview_file("f.py", start=1, end=260) # end past EOF is clamped
 
 ### Editing
 
-`exhash(text, cmds, sw=4)` takes the text and a required iterable of command strings (use `[]` for no-op). `sw` controls how far `<` and `>` shift. For multiline `a`/`i`/`c` commands, include the inserted text in the same command string using newline characters, e.g. `["12|abcd|c\nnew line 1\nnew line 2"]`. Do not use `.` terminators, and do not split the text block into separate `cmds` entries. If you include a final `.` line, it is inserted literally and exhash emits a warning.
+`exhash(text, cmds, sw=4)` takes the text and a required iterable of command strings (use `[]` for no-op). `sw` controls how far `<` and `>` shift. For single-line `a`/`i`/`c`, text after the command character is literal inserted text, including leading spaces, e.g. `["12|abcd|c    return x"]`.
+
+For multiline `a`/`i`/`c` commands, include the inserted text in the same command string using newline characters. Text after the command character is the first inserted line, so `f"{addr}cfirst line\nsecond line"` and `f"{addr}c\nfirst line\nsecond line"` are both valid. Do not use `.` terminators, and do not split the text block into separate `cmds` entries. If you include a final `.` line, it is inserted literally and exhash emits a warning.
 
 ```py
 addr = lnhash(1, "foo")  # "1|a1b2|"
@@ -132,6 +137,9 @@ res = exhash(text, [f"{a1}s/foo/FOO/", f"{a2}s/bar/BAR/"])
 
 # Hashes are checked just-in-time per command.
 # If earlier commands change/shift a later target line, recompute lnhash first.
+
+# Change one line with inline text; spaces after c are part of the replacement
+res = exhash(text, [f"{addr}c    replacement line"])
 
 # Append multiline text in the same command string (no dot terminator)
 res = exhash(text, [f"{addr}a\nnew line 1\nnew line 2"])

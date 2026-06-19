@@ -108,7 +108,12 @@ fn exhash_inplace_substitute_and_stdout_modified_only() {
     assert!(out.status.success());
 
     let stdout = String::from_utf8(out.stdout).unwrap();
-    let expected = diff(format!("{}\n{}\n{}\n", del(1, "foo"), add(1, "baz"), ctx(2, "bar")));
+    let expected = diff(format!(
+        "{}\n{}\n{}\n",
+        del(1, "foo"),
+        add(1, "baz"),
+        ctx(2, "bar")
+    ));
     assert_eq!(stdout, expected);
 
     assert_eq!(read_file(&file), "baz\nbar\n");
@@ -128,7 +133,12 @@ fn exhash_inplace_transliterate_and_stdout_modified_only() {
     assert!(out.status.success());
 
     let stdout = String::from_utf8(out.stdout).unwrap();
-    let expected = diff(format!("{}\n{}\n{}\n", del(1, "abc"), add(1, "ABC"), ctx(2, "cab")));
+    let expected = diff(format!(
+        "{}\n{}\n{}\n",
+        del(1, "abc"),
+        add(1, "ABC"),
+        ctx(2, "cab")
+    ));
     assert_eq!(stdout, expected);
 
     assert_eq!(read_file(&file), "ABC\ncab\n");
@@ -153,7 +163,12 @@ fn exhash_dry_run_does_not_write() {
     assert!(out.status.success());
 
     let stdout = String::from_utf8(out.stdout).unwrap();
-    let expected = diff(format!("{}\n{}\n{}\n", del(1, "foo"), add(1, "baz"), ctx(2, "bar")));
+    let expected = diff(format!(
+        "{}\n{}\n{}\n",
+        del(1, "foo"),
+        add(1, "baz"),
+        ctx(2, "bar")
+    ));
     assert_eq!(stdout, expected);
 
     // File unchanged.
@@ -316,6 +331,25 @@ fn exhash_multiline_append_from_stdin() {
     assert!(stdout.contains(&add(3, "y")));
 
     assert_eq!(read_file(&file), "a\nx\ny\n");
+}
+
+#[test]
+fn exhash_inline_change_from_arg() {
+    let dir = mk_temp_dir("exhash_inline_change");
+    let file = dir.join("f.txt");
+    write_file(&file, "old\n");
+
+    let a1 = format_lnhash(1, "old");
+    let cmd = format!("{}c    new", a1);
+
+    let bin = env!("CARGO_BIN_EXE_exhash");
+    let out = Command::new(bin).arg(&file).arg(cmd).output().unwrap();
+    assert!(out.status.success());
+
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(stdout.contains(&del(1, "old")));
+    assert!(stdout.contains(&add(1, "    new")));
+    assert_eq!(read_file(&file), "    new\n");
 }
 
 #[test]

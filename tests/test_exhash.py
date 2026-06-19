@@ -141,6 +141,20 @@ def test_exhash_insert():
     assert res["lines"] == ["a", "x", "b"]
     assert res["modified"] == [2]
 
+def test_exhash_inline_change_preserves_leading_spaces():
+    text = "if endline > len(lines):\n"
+    addr = lnhash(1, "if endline > len(lines):")
+    res = exhash(text, [addr+"c    if endline > len(lines): endline = len(lines)"])
+    assert res["lines"] == ["    if endline > len(lines): endline = len(lines)"]
+
+def test_exhash_text_block_can_start_on_command_line():
+    text = "a\nb\n"
+    addr = lnhash(1, "a")
+    res = exhash(text, [addr+"cfirst\nsecond"])
+    assert res["lines"] == ["first", "second", "b"]
+    res = exhash(text, [addr+"a    indented\nnext"])
+    assert res["lines"] == ["a", "    indented", "next", "b"]
+
 def test_exhash_stale_hash_raises():
     text = "hello\nworld\n"
     addr = lnhash(1, "wrong")

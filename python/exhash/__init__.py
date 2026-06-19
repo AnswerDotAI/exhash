@@ -47,9 +47,9 @@ def exhash(text:str, cmds:list[str], sw:int=4):
       y/src/dst/         Transliterate chars in-place (also supports custom delimiters;
                          source and destination lengths must match)
       d                  Delete line(s)
-      a                  Append text after line
-      i                  Insert text before line
-      c                  Change/replace line(s)
+      a[text]           Append inline text after line, or read following text block
+      i[text]           Insert inline text before line, or read following text block
+      c[text]           Change/replace with inline text, or read following text block
       j                  Join with next line; with range, joins all
       m dest             Move line(s) after dest address
       t dest             Copy line(s) after dest address
@@ -62,11 +62,14 @@ def exhash(text:str, cmds:list[str], sw:int=4):
 
     `sw` controls shift width for `<` and `>` and defaults to 4.
 
-    For multiline a/i/c commands, include the inserted text in the same command
-    string using newline characters, e.g. ``["12|abcd|c\nnew line 1\nnew line 2"]``.
-    Do not use ``.`` terminators, and do not split the text block into separate
-    ``cmds`` entries. If you include a final ``.`` line, it is inserted literally
-    and exhash emits a warning.
+    For single-line a/i/c, text after the command character is literal text
+    (including leading spaces), e.g. ``["12|abcd|c    return x"]``. For
+    multiline a/i/c commands, include the inserted text in the same command
+    string using newline characters. Text after the command character is the
+    first inserted line, so ``cfirst\nsecond`` and ``c\nfirst\nsecond`` are both
+    valid. Do not use ``.`` terminators, and do not split the text block into
+    separate ``cmds`` entries. If you include a final ``.`` line, it is inserted
+    literally and exhash emits a warning.
 
     Returns an EditResult with attributes (also accessible as dict keys):
       lines     list of output lines

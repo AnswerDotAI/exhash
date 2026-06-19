@@ -82,9 +82,10 @@ pub fn parse_commands_from_args(
 /// Parse commands from a list of individual command strings (for programmatic APIs).
 ///
 /// Each string is one command. For multiline `a`/`i`/`c`, include the text block
-/// in the same string using newline characters, e.g.
-/// `["12|abcd|c\nnew line 1\nnew line 2"]`. Do not use `.` terminators or split
-/// the text block into separate entries; a trailing `.` line is literal text.
+/// in the same string using newline characters. Text after the command character
+/// is the first inserted line, so `cfirst\nsecond` and `c\nfirst\nsecond`
+/// are both valid. Do not use `.` terminators or split the text block into
+/// separate entries; a trailing `.` line is literal text.
 /// For other commands, extra lines are an error.
 pub fn parse_commands_from_strs(cmds: &[&str]) -> Result<Vec<Command>, EditError> {
     let mut out = Vec::with_capacity(cmds.len());
@@ -115,24 +116,28 @@ fn parse_command_with_text_from_str(input: &str) -> Result<Command, EditError> {
     if remaining.is_empty() {
         return Err(full_err);
     }
-    let cmd = parse_command_with_text(first, || Ok(remaining.clone()))?;
-    match &cmd.cmd {
-        Subcommand::Append(_) | Subcommand::Insert(_) | Subcommand::Change(_) => {}
-        Subcommand::Global { cmd: sub, .. } => match sub.as_ref() {
-            Subcommand::Append(_) | Subcommand::Insert(_) | Subcommand::Change(_) => {}
-            _ => {
-                return Err(EditError::new(
-                    "unexpected multiline input for this command",
-                ))
-            }
-        },
-        _ => {
-            return Err(EditError::new(
-                "unexpected multiline input for this command",
-            ))
-        }
+    let mut used_text_block = false;
+    let mut cmd = parse_command_with_text(first, || {
+        used_text_block = true;
+        Ok(remaining.clone())
+    })?;
+    if !used_text_block {
+        append_remaining_text(&mut cmd.cmd, &remaining)?;
     }
     Ok(cmd)
+}
+
+fn append_remaining_text(cmd: &mut Subcommand, remaining: &[String]) -> Result<(), EditError> {
+    match cmd {
+        Subcommand::Append(text) | Subcommand::Insert(text) | Subcommand::Change(text) => {
+            text.extend_from_slice(remaining);
+            Ok(())
+        }
+        Subcommand::Global { cmd: sub, .. } => append_remaining_text(sub, remaining),
+        _ => Err(EditError::new(
+            "unexpected multiline input for this command",
+        )),
+    }
 }
 
 /// Parse commands from an ex-style script string.
@@ -297,16 +302,16 @@ where
             Ok((Subcommand::Transliterate { source, dest }, trailing))
         }
         'a' => {
-            let text = read_text()?;
-            Ok((Subcommand::Append(text), rest))
+            let (text, trailing) = parse_text_command(rest, read_text)?;
+            Ok((Subcommand::Append(text), trailing))
         }
         'i' => {
-            let text = read_text()?;
-            Ok((Subcommand::Insert(text), rest))
+            let (text, trailing) = parse_text_command(rest, read_text)?;
+            Ok((Subcommand::Insert(text), trailing))
         }
         'c' => {
-            let text = read_text()?;
-            Ok((Subcommand::Change(text), rest))
+            let (text, trailing) = parse_text_command(rest, read_text)?;
+            Ok((Subcommand::Change(text), trailing))
         }
         'm' => {
             let dest_str = rest.trim();
@@ -329,6 +334,19 @@ where
             Ok((Subcommand::Dedent { levels }, ""))
         }
         _ => Err(EditError::new(format!("unknown command: {c}"))),
+    }
+}
+fn parse_text_command<'a, F>(
+    rest: &'a str,
+    read_text: &mut F,
+) -> Result<(Vec<String>, &'a str), EditError>
+where
+    F: FnMut() -> Result<Vec<String>, EditError>,
+{
+    if rest.is_empty() || rest.contains('\n') {
+        Ok((read_text()?, rest))
+    } else {
+        Ok((vec![rest.to_string()], ""))
     }
 }
 
@@ -648,6 +666,50 @@ mod tests {
                 assert_eq!(t, &vec!["hello".to_string(), "world".to_string()]);
             }
             _ => panic!("expected append"),
+        }
+    }
+
+    #[test]
+    fn parse_inline_text_for_a_i_c() {
+        let append = format!("{}a appended", addr(1, "line"));
+        let insert = format!("{}i    indented", addr(1, "line"));
+        let change = format!("{}c    changed", addr(1, "line"));
+        let cmds = parse_commands_from_strs(&[&append, &insert, &change]).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Append(t) => assert_eq!(t, &vec![" appended".to_string()]),
+            _ => panic!("expected append"),
+        }
+        match &cmds[1].cmd {
+            Subcommand::Insert(t) => assert_eq!(t, &vec!["    indented".to_string()]),
+            _ => panic!("expected insert"),
+        }
+        match &cmds[2].cmd {
+            Subcommand::Change(t) => assert_eq!(t, &vec!["    changed".to_string()]),
+            _ => panic!("expected change"),
+        }
+    }
+
+    #[test]
+    fn parse_str_text_block_can_start_on_command_line() {
+        let change = format!("{}cfirst\nsecond\nthird", addr(1, "line"));
+        let insert = format!("{}i    indented\nnext", addr(1, "line"));
+        let cmds = parse_commands_from_strs(&[&change, &insert]).unwrap();
+        match &cmds[0].cmd {
+            Subcommand::Change(t) => assert_eq!(
+                t,
+                &vec![
+                    "first".to_string(),
+                    "second".to_string(),
+                    "third".to_string()
+                ]
+            ),
+            _ => panic!("expected change"),
+        }
+        match &cmds[1].cmd {
+            Subcommand::Insert(t) => {
+                assert_eq!(t, &vec!["    indented".to_string(), "next".to_string()])
+            }
+            _ => panic!("expected insert"),
         }
     }
 
