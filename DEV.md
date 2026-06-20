@@ -68,9 +68,7 @@ Release flow is: release first, then bump.
 ship-rs-test
 ```
 
-2. Confirm the release version matches in both:
-   - `pyproject.toml` (`[project].version`)
-   - `Cargo.toml` (`[package].version`)
+2. Confirm the release version in `Cargo.toml` (`[package].version`). `pyproject.toml` gets the Python package version from Cargo via `dynamic = ["version"]`.
 
 3. Tag that commit and push the tag:
 
@@ -78,7 +76,7 @@ ship-rs-test
 ship-rs-release
 ```
 
-4. After pushing the release tag, bump both files to the next dev version (for example `0.1.4`) and commit/push to `main` (no tag). No need to wait for publish to finish first.
+4. After pushing the release tag, run `ship-rs-bump`, commit the `Cargo.toml` version bump, and push to `main` (no tag). No need to wait for publish to finish first.
 
 No local build is required for release; CI runs the release build, creates a GitHub Release, and publishes to PyPI.
 
