@@ -5,6 +5,7 @@
 - Rust toolchain (stable)
 - Python 3.10+
 - [maturin](https://github.com/PyO3/maturin): `pip install maturin`
+- [fastship](https://github.com/AnswerDotAI/fastship): `pip install fastship`
 
 ## Project layout
 
@@ -31,19 +32,19 @@ tests/
 ## Building
 
 ```bash
-tools/build.sh
+ship-rs-prep
 ```
 
 This builds binaries (debug by default) and copies them to `python/exhash.data/scripts/`. Pass `release` for optimized builds:
 
 ```bash
-tools/build.sh release
+ship-rs-prep --release
 ```
 
 ## Testing
 
 ```bash
-cargo test && pytest -q
+ship-rs-test
 ```
 
 ## Hash verification timing
@@ -64,7 +65,7 @@ Release flow is: release first, then bump.
 1. Confirm tests pass:
 
 ```bash
-cargo test && pytest -q
+ship-rs-test
 ```
 
 2. Confirm the release version matches in both:
@@ -74,8 +75,7 @@ cargo test && pytest -q
 3. Tag that commit and push the tag:
 
 ```bash
-git tag v0.1.3
-git push origin v0.1.3
+ship-rs-release
 ```
 
 4. After pushing the release tag, bump both files to the next dev version (for example `0.1.4`) and commit/push to `main` (no tag). No need to wait for publish to finish first.
@@ -84,7 +84,7 @@ No local build is required for release; CI runs the release build, creates a Git
 
 ## How the binary distribution works
 
-Maturin's `data` option in `pyproject.toml` points to `python/exhash.data/`. Files in the `scripts/` subdirectory are installed as standalone executables when the wheel is installed via pip. The build script compiles the Rust `[[bin]]` targets and copies them there before building the wheel.
+Maturin's `data` option in `pyproject.toml` points to `python/exhash.data/`. Files in the `scripts/` subdirectory are installed as standalone executables when the wheel is installed via pip. `ship-rs-prep` compiles the Rust `[[bin]]` targets configured in `[tool.fastship.rs]` and copies them there before building the wheel.
 
 ## Command parsing modes
 
