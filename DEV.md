@@ -5,7 +5,7 @@
 - Rust toolchain (stable)
 - Python 3.10+
 - [maturin](https://github.com/PyO3/maturin): `pip install maturin`
-- [fastship](https://github.com/AnswerDotAI/fastship): `pip install fastship`
+- [fastship](https://github.com/AnswerDotAI/fastship): installed by `pip install -e '.[dev]'`
 
 ## Project layout
 

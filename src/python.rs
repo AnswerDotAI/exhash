@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 
 use crate::{Command, Subcommand};
 
-#[pyclass]
+#[pyclass(skip_from_py_object)]
 #[derive(Clone)]
 struct EditResultPy {
     #[pyo3(get)]
@@ -53,15 +53,15 @@ impl EditResultPy {
         }
     }
 
-    fn __getitem__(&self, key: &str) -> PyResult<PyObject> {
-        Python::with_gil(|py| match key {
+    fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<Py<PyAny>> {
+        match key {
             "lines" => Ok(self.lines.clone().into_pyobject(py)?.into_any().unbind()),
             "hashes" => Ok(self.hashes.clone().into_pyobject(py)?.into_any().unbind()),
             "modified" => Ok(self.modified.clone().into_pyobject(py)?.into_any().unbind()),
             "deleted" => Ok(self.deleted.clone().into_pyobject(py)?.into_any().unbind()),
             "origins" => Ok(self.origins.clone().into_pyobject(py)?.into_any().unbind()),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
-        })
+        }
     }
 }
 

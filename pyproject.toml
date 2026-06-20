@@ -16,7 +16,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = ["fastship", "maturin>=1.0,<2.0", "pytest"]
+dev = ["fastship>=0.0.11", "maturin>=1.0,<2.0", "pytest"]
 
 [project.urls]
 Homepage = "https://github.com/AnswerDotAI/exhash"
