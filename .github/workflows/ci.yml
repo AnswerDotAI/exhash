@@ -24,7 +24,7 @@ jobs:
           args: --release --out dist -i python3.10 -i python3.11 -i python3.12 -i python3.13
           manylinux: auto
           before-script-linux: |
-            python3.10 -m pip install 'fastship>=0.0.11'
+            python3.13 -m pip install 'fastship>=0.0.11'
             ship-rs-prep --release
       - uses: actions/upload-artifact@v4
         with:
