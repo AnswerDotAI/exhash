@@ -1,6 +1,6 @@
 [package]
 name = "exhash"
-version = "0.3.12"
+version = "0.3.13"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Verified line-addressed file editor using lnhash addresses"
