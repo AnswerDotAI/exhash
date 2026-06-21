@@ -15,37 +15,34 @@ src/
   engine.rs       edit engine producing EditResult
   lnhash.rs       lnhash hashing/formatting/parsing
   parse.rs        command parsing (script, strs, and args modes)
-  python.rs       PyO3 bindings
-  bin/exhash.rs   CLI editor (atomic in-place edit, dry-run, stdin mode)
-  bin/lnhashview.rs  CLI viewer
+  python.rs       PyO3 bindings (incl. exhash_argv used by the CLI)
 python/exhash/
   __init__.py     Python wrapper functions plus file-aware exhash_file orchestration
+  _cli.py         exhash/lnhashview console-script entry points
   skill.py        pyskills entry point exposing exhash APIs for LLM tools
-python/exhash.data/scripts/
-  exhash          native binary (built, not checked in)
-  lnhashview      native binary (built, not checked in)
 tests/
-  cli.rs          Rust integration tests for CLIs
-  test_exhash.py  Python API tests
+  test_exhash.py    Python API tests
+  test_commands.py  engine command coverage
+  test_cli.py       CLI console-script tests
 ```
 
 ## Building
 
-```bash
-ship-rs-prep
-```
-
-This builds binaries (debug by default) and copies them to `python/exhash.data/scripts/`. Pass `release` for optimized builds:
+For local development, build and install the extension:
 
 ```bash
-ship-rs-prep --release
+maturin develop
 ```
+
+`ship-rs-build` builds the distributable wheel. The `exhash` and `lnhashview` commands are Python console scripts (`python/exhash/_cli.py`) over the extension; there are no separate Rust binaries.
 
 ## Testing
 
 ```bash
-ship-rs-test
+pytest -q
 ```
+
+All tests are Python (`tests/`); there are no `cargo test` unit tests.
 
 ## Hash verification timing
 
@@ -65,7 +62,7 @@ Release flow is: release first, then bump.
 1. Confirm tests pass:
 
 ```bash
-ship-rs-test
+pytest -q
 ```
 
 2. Confirm the release version in `Cargo.toml` (`[package].version`). `pyproject.toml` gets the Python package version from Cargo via `dynamic = ["version"]`.
@@ -80,9 +77,9 @@ ship-rs-release
 
 No local build is required for release; CI runs the release build, creates a GitHub Release, and publishes to PyPI.
 
-## How the binary distribution works
+## How the CLIs work
 
-Maturin's `data` option in `pyproject.toml` points to `python/exhash.data/`. Files in the `scripts/` subdirectory are installed as standalone executables when the wheel is installed via pip. `ship-rs-prep` compiles the Rust `[[bin]]` targets configured in `[tool.fastship.rs]` and copies them there before building the wheel.
+The `exhash` and `lnhashview` commands are Python console scripts declared in `[project.scripts]` (`python/exhash/_cli.py`). They handle argument parsing, file I/O (atomic writes, binary/UTF-8 rejection, `--stdin`/`--dry-run`), and delegate command parsing and editing to the extension: `_cli` calls the `exhash_argv` binding, which runs `parse_commands_from_args` (ex-style `a/i/c` text blocks terminated by `.`) plus `edit_text_with_sw`.
 
 ## Command parsing modes
 
@@ -90,7 +87,7 @@ The Rust core has three parsing functions:
 
 - `parse_commands_from_strs(&[&str])` — for the Python API; each string is one command. Single-line `a/i/c` text may follow the command character directly, e.g. `12|abcd|c    value`. Multiline `a/i/c` text blocks must be in that same string using newlines. Text after the command character is the first inserted line, so `cfirst\nsecond` and `c\nfirst\nsecond` are both valid. Do not use `.` terminators or split the inserted text into separate command entries; a trailing `.` line is literal text and the Python binding warns about this common mistake.
 - `parse_commands_from_script(&str)` — for script strings; commands are separated by newlines. Single-line `a/i/c` text may be inline; if omitted, following lines up to `.` are used as the text block.
-- `parse_commands_from_args(&[String], &mut BufRead)` — for the CLI; each arg is a command. Single-line `a/i/c` text may be inline; if omitted, text blocks are read from stdin terminated by `.`.
+- `parse_commands_from_args(&[String], &mut BufRead)` — used by the `exhash` CLI via the `exhash_argv` binding; each arg is a command. Single-line `a/i/c` text may be inline; if omitted, text blocks are read from the stdin stream terminated by `.`.
 
 File-qualified addresses are parsed by the Python `exhash_file` wrapper; the Rust parser and CLI remain single-buffer.
 

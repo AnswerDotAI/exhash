@@ -12,18 +12,9 @@ documentation = "https://github.com/AnswerDotAI/exhash"
 name = "exhash"
 crate-type = ["cdylib", "rlib"]
 
-[[bin]]
-name = "exhash"
-path = "src/bin/exhash.rs"
-
-[[bin]]
-name = "lnhashview"
-path = "src/bin/lnhashview.rs"
-
 [dependencies]
 regex = "1.7.1"
-pyo3 = { version = ">=0.28", optional = true }
+pyo3 = ">=0.28"
 
 [features]
-extension-module = ["pyo3", "pyo3/extension-module"]
-pyo3 = ["dep:pyo3"]
+extension-module = ["pyo3/extension-module"]

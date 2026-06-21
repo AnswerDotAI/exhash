@@ -22,6 +22,10 @@ dev = ["fastship>=0.0.11", "maturin>=1.0,<2.0", "pytest"]
 Homepage = "https://github.com/AnswerDotAI/exhash"
 Repository = "https://github.com/AnswerDotAI/exhash"
 Issues = "https://github.com/AnswerDotAI/exhash/issues"
+[project.scripts]
+exhash = "exhash._cli:exhash_main"
+lnhashview = "exhash._cli:lnhashview_main"
+
 [project.entry-points.pyskills]
 exhash = "exhash.skill"
 
@@ -32,11 +36,6 @@ exhash = "exhash"
 features = ["extension-module"]
 python-source = "python"
 module-name = "exhash.exhash"
-data = "python/exhash.data"
 
 [tool.fastship]
 branch = "main"
-
-[tool.fastship.rs]
-bins = ["exhash", "lnhashview"]
-data_scripts = "python/exhash.data/scripts"

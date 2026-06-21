@@ -1,7 +1,20 @@
-use pyo3::exceptions::{PyUserWarning, PyValueError};
+use std::panic::{catch_unwind, AssertUnwindSafe};
+
+use pyo3::exceptions::{PyRuntimeError, PyUserWarning, PyValueError};
 use pyo3::prelude::*;
 
 use crate::{Command, Subcommand};
+
+/// Run a panic-prone pure-Rust step, converting any panic into a clean
+/// `RuntimeError` instead of surfacing pyo3's `BaseException`-derived
+/// `PanicException`.
+fn guard<T>(what: &str, f: impl FnOnce() -> T) -> PyResult<T> {
+    catch_unwind(AssertUnwindSafe(f)).map_err(|_| {
+        PyRuntimeError::new_err(format!(
+            "internal error in exhash while {what} (this is a bug, please report it)"
+        ))
+    })
+}
 
 #[pyclass(skip_from_py_object)]
 #[derive(Clone)]
@@ -79,18 +92,50 @@ fn lnhash(lineno: usize, line: &str) -> String {
 #[pyo3(signature = (text, start=None, end=None))]
 fn lnhashview(text: &str, start: Option<usize>, end: Option<usize>) -> PyResult<Vec<String>> {
     let lines: Vec<&str> = text.lines().collect();
-    crate::lnhashview(&lines, start, end).map_err(|e| PyValueError::new_err(e.to_string()))
+    guard("listing lines", || crate::lnhashview(&lines, start, end))?
+        .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 #[pyfunction]
 #[pyo3(name = "exhash", signature = (text, *cmds, sw=4))]
 fn py_exhash(py: Python<'_>, text: &str, cmds: Vec<String>, sw: usize) -> PyResult<EditResultPy> {
     let cmd_refs: Vec<&str> = cmds.iter().map(|s| s.as_str()).collect();
-    let parsed = crate::parse_commands_from_strs(&cmd_refs)
-        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let parsed = guard("parsing commands", || {
+        crate::parse_commands_from_strs(&cmd_refs)
+    })?
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
     warn_on_ex_style_dot_terminators(py, &cmds, &parsed)?;
-    let res = crate::edit_text_with_sw(text, &parsed, sw)
-        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let res = guard("applying edits", || {
+        crate::edit_text_with_sw(text, &parsed, sw)
+    })?
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(EditResultPy {
+        lines: res.lines,
+        hashes: res.hashes,
+        modified: res.modified,
+        deleted: res.deleted,
+        origins: res.origins,
+        original_text: text.to_string(),
+    })
+}
+
+#[pyfunction]
+#[pyo3(signature = (text, cmds, text_block="", sw=4))]
+fn exhash_argv(
+    text: &str,
+    cmds: Vec<String>,
+    text_block: &str,
+    sw: usize,
+) -> PyResult<EditResultPy> {
+    let mut stream = std::io::Cursor::new(text_block.as_bytes());
+    let parsed = guard("parsing commands", || {
+        crate::parse_commands_from_args(&cmds, &mut stream)
+    })?
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let res = guard("applying edits", || {
+        crate::edit_text_with_sw(text, &parsed, sw)
+    })?
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(EditResultPy {
         lines: res.lines,
         hashes: res.hashes,
@@ -108,6 +153,7 @@ fn exhash(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lnhash, m)?)?;
     m.add_function(wrap_pyfunction!(lnhashview, m)?)?;
     m.add_function(wrap_pyfunction!(py_exhash, m)?)?;
+    m.add_function(wrap_pyfunction!(exhash_argv, m)?)?;
     Ok(())
 }
 
