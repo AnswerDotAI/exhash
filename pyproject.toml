@@ -25,6 +25,9 @@ Issues = "https://github.com/AnswerDotAI/exhash/issues"
 [project.entry-points.pyskills]
 exhash = "exhash.skill"
 
+[project.entry-points.fastaudit_safe_native]
+exhash = "exhash"
+
 [tool.maturin]
 features = ["extension-module"]
 python-source = "python"
