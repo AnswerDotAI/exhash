@@ -48,7 +48,6 @@ Important:
 Do not create addresses by text search or remembered line numbers. On stale hash, re-view and rebuild. For multiline ``a``/``i``/``c`` commands, put all text in one command string; text after the command character is the first inserted line and following newline-separated lines continue the block. For moving/copying across files, use file-qualified ``m``/``t`` commands; cross-file source ranges are invalid. Missing files can only be created through ``0|0000|`` creation semantics.
 """
 
-from pyskills.core import PosAllowPolicy, allow
 from . import exhash, exhash_file, line_hash, lnhash, lnhashview, lnhashview_file
 
 __all__ = ["line_hash", "lnhash", "lnhashview", "lnhashview_file", "exhash", "exhash_file", "lnhash_cat"]
@@ -56,7 +55,3 @@ __all__ = ["line_hash", "lnhash", "lnhashview", "lnhashview_file", "exhash", "ex
 def lnhash_cat(fname:str, start:int=None, end:int=None):
     "Little shortcut for printing concatenated lines of lnhashview_file"
     print("\n".join(lnhashview_file(fname, start=start, end=end)))
-
-allow(line_hash, lnhash, lnhashview, lnhashview_file, exhash)
-allow(exhash_file, allow_policy=PosAllowPolicy(0))
-
