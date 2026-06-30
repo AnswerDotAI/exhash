@@ -58,7 +58,7 @@ pub fn lnhashview(
         .enumerate()
         .skip(s - 1)
         .take(e - s + 1)
-        .map(|(i, l)| format!("{}  {}", format_lnhash(i + 1, l), l))
+        .map(|(i, l)| format!("{}{}", format_lnhash(i + 1, l), l))
         .collect())
 }
 
