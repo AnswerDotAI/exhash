@@ -19,13 +19,13 @@ def test_lnhashview_basic_and_range(tmp_path):
     out = runlv([str(f)])
     assert out.returncode == 0
     assert out.stdout == "".join(s + "\n" for s in (
-        f"{lnhash(1, 'alpha')}  alpha", f"{lnhash(2, 'beta')}  beta",
-        f"{lnhash(3, '')}  ", f"{lnhash(4, 'gamma')}  gamma"))
+        f"{lnhash(1, 'alpha')}alpha", f"{lnhash(2, 'beta')}beta",
+        f"{lnhash(3, '')}", f"{lnhash(4, 'gamma')}gamma"))
     out = runlv([str(f), "2", "3"])
-    assert out.stdout == f"{lnhash(2, 'beta')}  beta\n{lnhash(3, '')}  \n"
+    assert out.stdout == f"{lnhash(2, 'beta')}beta\n{lnhash(3, '')}\n"
     out = runlv([str(f), "2", "260"])
     assert out.stdout == "".join(s + "\n" for s in (
-        f"{lnhash(2, 'beta')}  beta", f"{lnhash(3, '')}  ", f"{lnhash(4, 'gamma')}  gamma"))
+        f"{lnhash(2, 'beta')}beta", f"{lnhash(3, '')}", f"{lnhash(4, 'gamma')}gamma"))
 
 def test_inplace_substitute(tmp_path):
     f = tmp_path / "f.txt"

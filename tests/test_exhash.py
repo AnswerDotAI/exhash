@@ -19,8 +19,8 @@ def test_lnhash_format():
 def test_lnhashview():
     lines = lnhashview("a\nb\nc")
     assert len(lines) == 3
-    assert lines[0].endswith("  a")
-    assert lines[2].endswith("  c")
+    assert lines[0].endswith("|a")
+    assert lines[2].endswith("|c")
     assert lines[0].startswith(lnhash(1, "a"))
 
 def test_lnhashview_empty(): assert lnhashview("") == []

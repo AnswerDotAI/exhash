@@ -14,12 +14,12 @@ def lnhash(lineno:int, line:str) -> str:
 
 
 def lnhashview(text:str, start:int=None, end:int=None) -> list[str]:
-    'Return lines formatted as ``lineno|hash|  content``. Optional 1-based ``start``/``end`` filter the range; ``end`` past EOF is clamped.'
+    'Return lines formatted as ``lineno|hash|content``. Optional 1-based ``start``/``end`` filter the range; ``end`` past EOF is clamped.'
     return _lnhashview(text, start, end)
 
 
 def lnhashview_file(path:str, start:int=None, end:int=None) -> list[str]:
-    'Return lines formatted as ``lineno|hash|  content`` for file at ``path``. Optional 1-based ``start``/``end`` filter the range; ``end`` past EOF is clamped.'
+    'Return lines formatted as ``lineno|hash|content`` for file at ``path``. Optional 1-based ``start``/``end`` filter the range; ``end`` past EOF is clamped.'
     return _lnhashview(Path(path).read_text(), start, end)
 
 
