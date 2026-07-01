@@ -1,6 +1,6 @@
 """Universal hash-verified text editing for local files. Use this when an LLM needs one safe editing interface for reading, previewing, and modifying text files.
 
-Exhash's purpose is to make edits precise and auditable. First view a file as ``lineno|hash|  text``; then issue ex-style commands against those exact addresses. Every addressed line's hash is checked immediately before the command runs, so stale context or wrong targets fail instead of editing nearby text. Hashes are checked immediately before each command and lines shift as edits apply; for multiple edits in one call always work *backwards* (bottom-to-top).
+Exhash's purpose is to make edits precise and auditable. First view a file as ``lineno|hash|text``; then issue ex-style commands against those exact addresses. Every addressed line's hash is checked immediately before the command runs, so stale context or wrong targets fail instead of editing nearby text. Hashes are checked immediately before each command and lines shift as edits apply; for multiple edits in one call always work *backwards* (bottom-to-top).
 
 Prefer exhash over ad hoc patching for text file modifications. Use shell tools for discovery, tests, git, directory operations, and binary files.
 

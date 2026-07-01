@@ -106,7 +106,6 @@ impl EditResult {
             let (tag, ref hash, text) = events[*i];
             out.push(tag);
             out.push_str(hash);
-            out.push_str("  ");
             out.push_str(text);
             out.push('\n');
             last = Some(*i);

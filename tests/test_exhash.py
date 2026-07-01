@@ -174,8 +174,8 @@ def test_exhash_format_diff():
     res = exhash(text, [addr+"s/foo/baz/"])
     diff = res.format_diff()
     assert diff.startswith("--- original\n+++ modified\n")
-    assert f"-{lnhash(1, 'foo')}  foo" in diff
-    assert f"+{lnhash(1, 'baz')}  baz" in diff
+    assert f"-{lnhash(1, 'foo')}foo" in diff
+    assert f"+{lnhash(1, 'baz')}baz" in diff
 
 def test_exhash_format_diff_no_changes():
     res = exhash("foo\n", [])
@@ -185,8 +185,8 @@ def test_exhash_format_diff_no_changes():
 def test_exhash_view():
     text = "foo\nbar\n"
     res = exhash(text, [])
-    view = '\n'.join(f"{h}  {l}" for h, l in zip(res["hashes"], res["lines"]))
-    assert view == f"{lnhash(1, 'foo')}  foo\n{lnhash(2, 'bar')}  bar"
+    view = '\n'.join(f"{h}{l}" for h, l in zip(res["hashes"], res["lines"]))
+    assert view == f'{lnhash(1, "foo")}foo\n{lnhash(2, "bar")}bar'
 
 def test_exhash_result_hashes_match():
     text = "foo\nbar\n"
@@ -255,7 +255,7 @@ def test_exhash_file_inplace(tmp_path):
     addr = lnhash(1, "foo")
     diff = exhash_file(str(f), [f"{addr}s/foo/baz/"], inplace=True)
     assert isinstance(diff, str)
-    assert "+{}  baz".format(lnhash(1, "baz")) in diff
+    assert "+{}baz".format(lnhash(1, "baz")) in diff
     assert f.read_text() == "baz\nbar\n"
 
 def test_exhash_file_inplace_creates_missing_file_from_empty_input(tmp_path):
@@ -263,7 +263,7 @@ def test_exhash_file_inplace_creates_missing_file_from_empty_input(tmp_path):
     f = tmp_path / "new.txt"
     diff = exhash_file(str(f), ["0|0000|a\nhello"], inplace=True)
     assert f.read_text() == "hello\n"
-    assert f"+{lnhash(1, 'hello')}  hello" in diff
+    assert f"+{lnhash(1, 'hello')}hello" in diff
 
 def test_exhash_file_returns_file_set_result(tmp_path):
     from exhash import exhash_file, lnhash
@@ -278,7 +278,7 @@ def test_exhash_file_returns_file_set_result(tmp_path):
     diff = res.format_diff()
     assert f"--- {f}" in diff
     assert f"+++ {f}" in diff
-    assert f"+{lnhash(1, 'baz')}  baz" in diff
+    assert f"+{lnhash(1, 'baz')}baz" in diff
 
 
 def test_exhash_file_copies_to_file_qualified_destination(tmp_path):

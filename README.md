@@ -115,7 +115,7 @@ from exhash import exhash, exhash_file, lnhash, lnhashview, lnhashview_file, lin
 
 ```py
 text = "foo\nbar\n"
-view = lnhashview(text)                        # ["1|a1b2|  foo", "2|c3d4|  bar"]
+view = lnhashview(text)                        # ["1|a1b2|foo", "2|c3d4|bar"]
 view = lnhashview_file("f.py", start=1, end=260) # end past EOF is clamped
 ```
 
@@ -220,9 +220,9 @@ res = exhash(text, [f"{addr}s/foo/baz/"])
 print(res.format_diff())
 # --- original
 # +++ modified
-# -1|a1b2|  foo
-# +1|c3d4|  baz
-#  2|e5f6|  bar
+# -1|a1b2|foo
+# +1|c3d4|baz
+#  2|e5f6|bar
 ```
 
 ## Tests

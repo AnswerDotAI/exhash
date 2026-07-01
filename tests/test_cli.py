@@ -7,9 +7,9 @@ from exhash import lnhash
 def run(args, input=""): return subprocess.run(["exhash", *args], input=input, text=True, capture_output=True)
 def runlv(args): return subprocess.run(["lnhashview", *args], input="", text=True, capture_output=True)
 
-def ctx(n, l): return f" {lnhash(n, l)}  {l}"
-def add(n, l): return f"+{lnhash(n, l)}  {l}"
-def dele(n, l): return f"-{lnhash(n, l)}  {l}"
+def ctx(n, l): return f' {lnhash(n, l)}{l}'
+def add(n, l): return f'+{lnhash(n, l)}{l}'
+def dele(n, l): return f'-{lnhash(n, l)}{l}'
 def diff(body): return f"--- original\n+++ modified\n{body}"
 
 
@@ -137,4 +137,4 @@ def test_rejects_binary_file(tmp_path):
 def test_stdin_mode_edits_and_prints_full_file():
     out = run(["--stdin", "-", f"{lnhash(1, 'foo')}s/foo/baz/"], input="foo\nbar\n")
     assert out.returncode == 0
-    assert out.stdout == f"{lnhash(1, 'baz')}  baz\n{lnhash(2, 'bar')}  bar\n"
+    assert out.stdout == f'{lnhash(1, "baz")}baz\n{lnhash(2, "bar")}bar\n'

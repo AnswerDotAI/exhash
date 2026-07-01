@@ -31,7 +31,7 @@ OPTIONS
 """
 
 LNHASHVIEW_USAGE = ("Usage: lnhashview <file> [start_line [end_line]]\n\n"
-    "Prints lines as: <lineno>|<hash>|  <content>; start_line/end_line are 1-based inclusive.")
+    "Prints lines as: <lineno>|<hash>|<content>; start_line/end_line are 1-based inclusive.")
 
 
 def _die(msg, code=1):
@@ -76,14 +76,20 @@ def exhash_main(argv=None):
     sw, i = 4, 0
     while i < len(argv):
         a = argv[i]
-        if a == "--dry-run": dry_run = True; i += 1
-        elif a == "--stdin": stdin_mode = True; i += 1
+        if a == "--dry-run":
+            dry_run = True
+            i += 1
+        elif a == "--stdin":
+            stdin_mode = True
+            i += 1
         elif a == "--sw":
             if i + 1 >= len(argv): _die("error: --sw requires an integer argument", 2)
             try: sw = int(argv[i + 1])
             except ValueError: _die(f"error: invalid --sw value {argv[i + 1]!r}", 2)
             i += 2
-        elif a in ("-h", "--help"): print(EXHASH_USAGE, file=sys.stderr); return
+        elif a in ("-h", "--help"):
+            print(EXHASH_USAGE, file=sys.stderr)
+            return
         elif a.startswith("-") and len(a) > 1: _die(f"error: unknown flag {a}\n{EXHASH_USAGE}", 2)
         else: break
     if i >= len(argv): _die(EXHASH_USAGE, 2)
@@ -93,9 +99,8 @@ def exhash_main(argv=None):
         if file != "-": _die(f"error: with --stdin, file must be '-' (got '{file}')", 2)
         text = sys.stdin.read()
         try: res = _exhash_argv(text, cmds, "", sw)
-        except ValueError as e:
-            _die(f"error: {e}\nnote: commands requiring text blocks (a/i/c) are not supported with --stdin", 2)
-        for h, line in zip(res.hashes, res.lines): print(f"{h}  {line}")
+        except ValueError as e: _die(f"error: {e}\nnote: commands requiring text blocks (a/i/c) are not supported with --stdin", 2)
+        for h, line in zip(res.hashes, res.lines): print(f"{h}{line}")
         return
 
     text_block = sys.stdin.read() if (not sys.stdin.isatty() or any(_needs_text_block(c) for c in cmds)) else ""

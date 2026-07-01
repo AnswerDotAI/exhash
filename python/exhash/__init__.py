@@ -153,7 +153,7 @@ def _format_file_diff(path, old_lines, new_lines, context=1):
     for i in sorted(interesting):
         if last is not None and i > last + 1: out.append('---')
         tag, lineno, line = events[i]
-        out.append(f'{tag}{lnhash(lineno, line)}  {line}')
+        out.append(f'{tag}{lnhash(lineno, line)}{line}')
         last = i
     return '\n'.join(out) + '\n'
 
