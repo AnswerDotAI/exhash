@@ -1,4 +1,4 @@
-import re
+import json, re
 from difflib import SequenceMatcher
 from pathlib import Path
 from .exhash import line_hash as _line_hash, lnhash as _lnhash, lnhashview as _lnhashview, exhash as _exhash
@@ -338,3 +338,47 @@ def exhash_file(path:str, cmds:list[str], sw:int=4, inplace:bool=False):
     return result
 
 
+
+
+def _load_cell(path, cell_id):
+    'Return ``(nb, cell)`` for the cell whose id is ``cell_id`` (exact match or unique prefix).'
+    nb = json.loads(Path(path).read_text())
+    cells = [c for c in nb['cells'] if c.get('id','').startswith(cell_id)]
+    exact = [c for c in cells if c.get('id')==cell_id]
+    if exact: cells = exact
+    if not cells: raise KeyError(f'no cell with id {cell_id!r} in {path}')
+    if len(cells)>1: raise KeyError(f'cell id prefix {cell_id!r} is ambiguous in {path}')
+    return nb, cells[0]
+
+
+def _cell_text(cell):
+    src = cell['source']
+    return src if isinstance(src, str) else ''.join(src)
+
+
+def lnhashview_cell(path:str, cell_id:str, start:int=None, end:int=None) -> list[str]:
+    'Return lines formatted as ``lineno|hash|content`` for the source of notebook cell ``cell_id`` in ipynb file at ``path``. ``cell_id`` may be an exact id or unique prefix; optional 1-based ``start``/``end`` filter the range.'
+    return _lnhashview(_cell_text(_load_cell(path, cell_id)[1]), start, end)
+
+
+def exhash_cell(path:str, cell_id:str, cmds:list[str], sw:int=4, inplace:bool=False):
+    """Apply exhash commands to the source of notebook cell ``cell_id`` in ipynb file at ``path``.
+
+    Command syntax is the same as ``exhash(text, cmds, sw=sw)``; run ``doc(exhash)``
+    for the full reference, and ``lnhashview_cell(path, cell_id)`` for addresses.
+    ``cell_id`` may be an exact id or unique prefix.
+
+    With ``inplace=False``, return the EditResult without touching the file. With
+    ``inplace=True``, write the edited source back (preserving the cell's original
+    str-or-list-of-lines form; the notebook re-serializes in Jupyter's JSON layout)
+    and return the diff string. If any command fails, write nothing.
+    """
+    nb, cell = _load_cell(path, cell_id)
+    text = _cell_text(cell)
+    res = exhash(text, cmds, sw=sw)
+    if not inplace: return res
+    new = '\n'.join(res['lines'])
+    if text.endswith('\n') and new: new += '\n'
+    cell['source'] = new.splitlines(keepends=True) if isinstance(cell['source'], list) else new
+    Path(path).write_text(json.dumps(nb, sort_keys=True, indent=1, ensure_ascii=False) + '\n')
+    return res.format_diff()

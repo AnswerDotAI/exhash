@@ -9,6 +9,9 @@ Core APIs:
 - ``exhash(text, cmds, sw=4)`` is the in-memory command engine; run ``doc(exhash)`` for complete command syntax.
 - ``exhash_file(path, cmds, sw=4, inplace=False)`` is the file-aware engine;
   unqualified addresses use ``path`` and file-qualified addresses can edit or transfer across files.
+- ``lnhashview_cell(path, cell_id)`` and ``exhash_cell(path, cell_id, cmds, sw=4, inplace=False)`` are
+  the same pair for one notebook cell's source in an ``.ipynb`` file (``cell_id`` is an exact id or
+  unique prefix), so hash-verified editing works on notebook cells too.
 
 Workflow:
 1. ``lnhash_cat(path, start=..., end=...))``.
@@ -48,9 +51,9 @@ Important:
 Do not create addresses by text search or remembered line numbers. On stale hash, re-view and rebuild. For multiline ``a``/``i``/``c`` commands, put all text in one command string; text after the command character is the first inserted line and following newline-separated lines continue the block. For moving/copying across files, use file-qualified ``m``/``t`` commands; cross-file source ranges are invalid. Missing files can only be created through ``0|0000|`` creation semantics.
 """
 
-from . import exhash, exhash_file, line_hash, lnhash, lnhashview, lnhashview_file
+from . import exhash, exhash_cell, exhash_file, line_hash, lnhash, lnhashview, lnhashview_cell, lnhashview_file
 
-__all__ = ["line_hash", "lnhash", "lnhashview", "lnhashview_file", "exhash", "exhash_file", "lnhash_cat"]
+__all__ = ["line_hash", "lnhash", "lnhashview", "lnhashview_file", "lnhashview_cell", "exhash", "exhash_file", "exhash_cell", "lnhash_cat"]
 
 def lnhash_cat(fname:str, start:int=None, end:int=None):
     "Little shortcut for printing concatenated lines of lnhashview_file"
