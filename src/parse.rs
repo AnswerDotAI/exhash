@@ -81,11 +81,11 @@ pub fn parse_commands_from_args(
 
 /// Parse commands from a list of individual command strings (for programmatic APIs).
 ///
-/// Each string is one command. For multiline `a`/`i`/`c`, include the text block
-/// in the same string using newline characters. Text after the command character
-/// is the first inserted line, so `cfirst\nsecond` and `c\nfirst\nsecond`
-/// are both valid. Do not use `.` terminators or split the text block into
-/// separate entries; a trailing `.` line is literal text.
+/// Each string is one command. For `a`/`i`/`c`, all text after the
+/// command character is literal payload. Use `cfirst\nsecond` when `first`
+/// is the first inserted line; `c\nfirst` inserts a leading blank line before
+/// `first`. Do not use `.` terminators or split text into separate entries;
+/// a trailing `.` line is literal text.
 /// For other commands, extra lines are an error.
 pub fn parse_commands_from_strs(cmds: &[&str]) -> Result<Vec<Command>, EditError> {
     let mut out = Vec::with_capacity(cmds.len());
@@ -100,44 +100,13 @@ pub fn parse_commands_from_strs(cmds: &[&str]) -> Result<Vec<Command>, EditError
 }
 
 fn parse_command_with_text_from_str(input: &str) -> Result<Command, EditError> {
-    // Try parsing the full string first — handles commands with literal newlines
-    // inside delimited sections (e.g. s/foo\nbar/baz/ or y with custom delims).
-    let full_err = match parse_command_with_text(input.trim(), || Ok(vec![])) {
-        Ok(cmd) => return Ok(cmd),
-        Err(e) => e,
-    };
-
-    // Fall back to line-split approach for text commands (a/i/c)
-    let mut lines = input.split('\n');
-    let first = lines.next().unwrap();
-    let remaining: Vec<String> = lines
-        .map(|l| l.strip_suffix('\r').unwrap_or(l).to_string())
-        .collect();
-    if remaining.is_empty() {
-        return Err(full_err);
-    }
-    let mut used_text_block = false;
-    let mut cmd = parse_command_with_text(first, || {
-        used_text_block = true;
-        Ok(remaining.clone())
-    })?;
-    if !used_text_block {
-        append_remaining_text(&mut cmd.cmd, &remaining)?;
-    }
-    Ok(cmd)
+    parse_command_with_text(input, || Ok(vec![]))
 }
 
-fn append_remaining_text(cmd: &mut Subcommand, remaining: &[String]) -> Result<(), EditError> {
-    match cmd {
-        Subcommand::Append(text) | Subcommand::Insert(text) | Subcommand::Change(text) => {
-            text.extend_from_slice(remaining);
-            Ok(())
-        }
-        Subcommand::Global { cmd: sub, .. } => append_remaining_text(sub, remaining),
-        _ => Err(EditError::new(
-            "unexpected multiline input for this command",
-        )),
-    }
+fn split_text_payload(text: &str) -> Vec<String> {
+    text.split('\n')
+        .map(|line| line.strip_suffix('\r').unwrap_or(line).to_string())
+        .collect()
 }
 
 /// Parse commands from an ex-style script string.
@@ -167,7 +136,7 @@ fn parse_command_with_text<F>(line: &str, mut read_text: F) -> Result<Command, E
 where
     F: FnMut() -> Result<Vec<String>, EditError>,
 {
-    let line = line.trim();
+    let line = line.trim_start();
     let (addr1, mut rest) = parse_address_prefix(line)?;
     let mut has_comma = false;
     let mut addr2: Option<Address> = None;
@@ -179,7 +148,7 @@ where
         rest = r2;
     }
 
-    let rest = rest.trim();
+    let rest = rest.trim_start();
     if rest.is_empty() {
         return Err(EditError::new("missing command"));
     }
@@ -343,8 +312,10 @@ fn parse_text_command<'a, F>(
 where
     F: FnMut() -> Result<Vec<String>, EditError>,
 {
-    if rest.is_empty() || rest.contains('\n') {
-        Ok((read_text()?, rest))
+    if rest.is_empty() {
+        Ok((read_text()?, ""))
+    } else if rest.contains('\n') {
+        Ok((split_text_payload(rest), ""))
     } else {
         Ok((vec![rest.to_string()], ""))
     }

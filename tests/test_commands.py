@@ -67,7 +67,7 @@ def test_substitute_global_case_insensitive():
 def test_change_replaces_range():
     text = "a\nb\nc\n"
     a1, a2 = lnhash(1, "a"), lnhash(2, "b")
-    res = exhash(text, [f"{a1},{a2}c\nX\nY"])
+    res = exhash(text, [f"{a1},{a2}cX\nY"])
     assert res["lines"] == ["X", "Y", "c"]
     assert res["deleted"] == [1, 2]
     assert res["modified"] == [1, 2]

@@ -89,7 +89,7 @@ Substitute uses Rust regex syntax:
 
 When passing multiple commands, each command's lnhashes are verified immediately before that command runs.
 
-For multiline `a/i/c` commands, omit inline text and provide the text block on stdin:
+For CLI multiline `a/i/c` commands, omit inline text and provide the text block on stdin:
 
 ```bash
 printf "new line 1\nnew line 2\n.\n" | exhash file.txt "2|beef|a"
@@ -121,9 +121,9 @@ view = lnhashview_file("f.py", start=1, end=260) # end past EOF is clamped
 
 ### Editing
 
-`exhash(text, cmds, sw=4)` takes the text and a required iterable of command strings (use `[]` for no-op). `sw` controls how far `<` and `>` shift. For single-line `a`/`i`/`c`, text after the command character is literal inserted text, including leading spaces, e.g. `["12|abcd|c    return x"]`.
+`exhash(text, cmds, sw=4)` takes the text and a required iterable of command strings (use `[]` for no-op). `sw` controls how far `<` and `>` shift. For `a`/`i`/`c`, all text after the command character is literal inserted text, including leading spaces and newlines, e.g. `["12|abcd|c    return x"]`.
 
-For multiline `a`/`i`/`c` commands, include the inserted text in the same command string using newline characters. Text after the command character is the first inserted line, so `f"{addr}cfirst line\nsecond line"` and `f"{addr}c\nfirst line\nsecond line"` are both valid. Do not use `.` terminators, and do not split the text block into separate `cmds` entries. If you include a final `.` line, it is inserted literally and exhash emits a warning.
+For multiline `a`/`i`/`c` commands, include the inserted text in the same command string using newline characters. Payload starts immediately after the command character: use `f"{addr}cfirst line\nsecond line"` when `first line` is the first inserted line. If the command character is followed by a newline, that newline is part of the payload, so `f"{addr}c\nfirst line"` starts with a blank inserted line. Do not use `.` terminators, and do not split the text block into separate `cmds` entries. If you include a final `.` line, it is inserted literally and exhash emits a warning.
 
 ```py
 addr = lnhash(1, "foo")  # "1|a1b2|"
@@ -142,10 +142,10 @@ res = exhash(text, [f"{a1}s/foo/FOO/", f"{a2}s/bar/BAR/"])
 res = exhash(text, [f"{addr}c    replacement line"])
 
 # Append multiline text in the same command string (no dot terminator)
-res = exhash(text, [f"{addr}a\nnew line 1\nnew line 2"])
+res = exhash(text, [f"{addr}anew line 1\nnew line 2"])
 
 # Wrong for the Python API: the trailing "." would be inserted literally
-# res = exhash(text, [f"{addr}a\nnew line 1\nnew line 2\n."])
+# res = exhash(text, [f"{addr}anew line 1\nnew line 2\n."])
 
 # Also wrong: do not split the inserted text into separate cmds entries
 # res = exhash(text, [f"{addr}a", "new line 1", "new line 2"])
@@ -179,7 +179,7 @@ print(res.format_diff())    # includes --- file.py / +++ file.py headers
 diff = exhash_file("file.py", [f"{addr}s/foo/bar/"], inplace=True)
 
 # Missing files are treated as empty only when the command is valid on empty input.
-diff = exhash_file("new.py", ["0|0000|a\nprint('hi')"], inplace=True)
+diff = exhash_file("new.py", ["0|0000|aprint('hi')"], inplace=True)
 
 # File-qualified addresses can edit or transfer lines across files.
 cmds = [

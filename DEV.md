@@ -85,7 +85,7 @@ The `exhash` and `lnhashview` commands are Python console scripts declared in `[
 
 The Rust core has three parsing functions:
 
-- `parse_commands_from_strs(&[&str])` — for the Python API; each string is one command. Single-line `a/i/c` text may follow the command character directly, e.g. `12|abcd|c    value`. Multiline `a/i/c` text blocks must be in that same string using newlines. Text after the command character is the first inserted line, so `cfirst\nsecond` and `c\nfirst\nsecond` are both valid. Do not use `.` terminators or split the inserted text into separate command entries; a trailing `.` line is literal text and the Python binding warns about this common mistake.
+- `parse_commands_from_strs(&[&str])` — for the Python API; each string is one command. For `a/i/c`, text starts immediately after the command character and may contain newlines. Use `cfirst\nsecond` when `first` is the first inserted line; `c\nfirst` inserts a leading blank line before `first`. Do not use `.` terminators or split text into separate command entries; a trailing `.` line is literal text and the Python binding warns about this common mistake.
 - `parse_commands_from_script(&str)` — for script strings; commands are separated by newlines. Single-line `a/i/c` text may be inline; if omitted, following lines up to `.` are used as the text block.
 - `parse_commands_from_args(&[String], &mut BufRead)` — used by the `exhash` CLI via the `exhash_argv` binding; each arg is a command. Single-line `a/i/c` text may be inline; if omitted, text blocks are read from the stdin stream terminated by `.`.
 

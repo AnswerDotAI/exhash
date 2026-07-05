@@ -115,14 +115,14 @@ def test_exhash_custom_sw():
 def test_exhash_append():
     text = "a\nb\n"
     addr = lnhash(1, "a")
-    res = exhash(text, [addr+"a\nx\ny"])
+    res = exhash(text, [addr+"ax\ny"])
     assert res["lines"] == ["a", "x", "y", "b"]
     assert res["modified"] == [2, 3]
 
 def test_exhash_warns_on_ex_style_dot_terminator_for_text_block():
     text = "a\nb\n"
     addr = lnhash(1, "a")
-    with pytest.warns(UserWarning, match=r"final '\.' line will be inserted literally"): res = exhash(text, [addr+"a\nx\n."])
+    with pytest.warns(UserWarning, match=r"final '\.' line will be inserted literally"): res = exhash(text, [addr+"ax\n."])
     assert res["lines"] == ["a", "x", ".", "b"]
 
 def test_exhash_does_not_warn_for_nontrailing_dot_line():
@@ -130,14 +130,20 @@ def test_exhash_does_not_warn_for_nontrailing_dot_line():
     addr = lnhash(1, "a")
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        res = exhash(text, [addr+"a\n.\nx"])
+        res = exhash(text, [addr+"a.\nx"])
     assert res["lines"] == ["a", ".", "x", "b"]
     assert not caught
+
+def test_exhash_text_payload_newline_starts_with_blank_line():
+    text = "a\nb\n"
+    addr = lnhash(1, "a")
+    res = exhash(text, [addr+"a\nx"])
+    assert res["lines"] == ["a", "", "x", "b"]
 
 def test_exhash_insert():
     text = "a\nb\n"
     addr = lnhash(2, "b")
-    res = exhash(text, [addr+"i\nx"])
+    res = exhash(text, [addr+"ix"])
     assert res["lines"] == ["a", "x", "b"]
     assert res["modified"] == [2]
 
@@ -203,12 +209,12 @@ def test_exhash_multiple_cmds():
 def test_exhash_rechecks_hash_before_each_command():
     text = "a\nb\nc\n"
     a2, a3 = lnhash(2, "b"), lnhash(3, "c")
-    with pytest.raises(ValueError, match="stale"): exhash(text, [f"{a2}i\nx", f"{a3}d"])
+    with pytest.raises(ValueError, match="stale"): exhash(text, [f"{a2}ix", f"{a3}d"])
 
 def test_exhash_append_trailing_newline():
     text = "a\nb\n"
     addr = lnhash(1, "a")
-    res = exhash(text, [addr+"a\nx\n"])
+    res = exhash(text, [addr+"ax\n"])
     assert res["lines"] == ["a", "x", "", "b"]
 
 def test_exhash_multiline_non_text_cmd_raises():
@@ -261,7 +267,7 @@ def test_exhash_file_inplace(tmp_path):
 def test_exhash_file_inplace_creates_missing_file_from_empty_input(tmp_path):
     from exhash import exhash_file, lnhash
     f = tmp_path / "new.txt"
-    diff = exhash_file(str(f), ["0|0000|a\nhello"], inplace=True)
+    diff = exhash_file(str(f), ["0|0000|ahello"], inplace=True)
     assert f.read_text() == "hello\n"
     assert f"+{lnhash(1, 'hello')}hello" in diff
 

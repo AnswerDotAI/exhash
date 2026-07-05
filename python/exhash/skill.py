@@ -33,9 +33,9 @@ Addressing:
 Commands:
   s/pat/rep/[flags]  Substitute (regex). Flags: g=all, i=case-insensitive
   d                  Delete line(s)
-  a[text]           Append inline text after line, or read following text block
-  i[text]           Insert inline text before line, or read following text block
-  c[text]           Change/replace with inline text, or read following text block
+  a[text]           Append payload after line
+  i[text]           Insert payload before line
+  c[text]           Change/replace with payload
   j                  Join with next line; with range, joins all lines in range
   m dest             Move line(s) after dest address
   t dest             Copy line(s) after dest address
@@ -48,7 +48,7 @@ Commands:
   v/pat/cmd          Same as g!
 
 Important:
-Do not create addresses by text search or remembered line numbers. On stale hash, re-view and rebuild. For multiline ``a``/``i``/``c`` commands, put all text in one command string; text after the command character is the first inserted line and following newline-separated lines continue the block. For moving/copying across files, use file-qualified ``m``/``t`` commands; cross-file source ranges are invalid. Missing files can only be created through ``0|0000|`` creation semantics.
+Do not create addresses by text search or remembered line numbers. On stale hash, re-view and rebuild. For ``a``/``i``/``c`` commands, put all text in one command string immediately after the command character: ``cfirst\nsecond`` starts with ``first``, while ``c\nfirst`` inserts a leading blank line before ``first``. For moving/copying across files, use file-qualified ``m``/``t`` commands; cross-file source ranges are invalid. Missing files can only be created through ``0|0000|aTEXT``/``0|0000|iTEXT`` creation semantics.
 """
 
 from . import exhash, exhash_cell, exhash_file, line_hash, lnhash, lnhashview, lnhashview_cell, lnhashview_file

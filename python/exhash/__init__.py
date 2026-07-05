@@ -47,9 +47,9 @@ def exhash(text:str, cmds:list[str], sw:int=4):
       y/src/dst/         Transliterate chars in-place (also supports custom delimiters;
                          source and destination lengths must match)
       d                  Delete line(s)
-      a[text]           Append inline text after line, or read following text block
-      i[text]           Insert inline text before line, or read following text block
-      c[text]           Change/replace with inline text, or read following text block
+      a[text]           Append payload after line
+      i[text]           Insert payload before line
+      c[text]           Change/replace with payload
       j                  Join with next line; with range, joins all
       m dest             Move line(s) after dest address
       t dest             Copy line(s) after dest address
@@ -62,14 +62,15 @@ def exhash(text:str, cmds:list[str], sw:int=4):
 
     `sw` controls shift width for `<` and `>` and defaults to 4.
 
-    For single-line a/i/c, text after the command character is literal text
-    (including leading spaces), e.g. ``["12|abcd|c    return x"]``. For
-    multiline a/i/c commands, include the inserted text in the same command
-    string using newline characters. Text after the command character is the
-    first inserted line, so ``cfirst\nsecond`` and ``c\nfirst\nsecond`` are both
-    valid. Do not use ``.`` terminators, and do not split the text block into
-    separate ``cmds`` entries. If you include a final ``.`` line, it is inserted
-    literally and exhash emits a warning.
+    For a/i/c, text after the command character is literal text (including
+    leading spaces and newlines), e.g. ``["12|abcd|c    return x"]``.
+    For multiline a/i/c commands, include the inserted text in the same command
+    string using newline characters. Text starts immediately after the command
+    character: ``cfirst\nsecond`` makes ``first`` the first inserted line,
+    while ``c\nfirst`` inserts a leading blank line before ``first``. Do not use
+    ``.`` terminators, and do not split the text block into separate ``cmds``
+    entries. If you include a final ``.`` line, it is inserted literally and
+    exhash emits a warning.
 
     Returns an EditResult with attributes (also accessible as dict keys):
       lines     list of output lines
@@ -312,11 +313,12 @@ def exhash_file(path:str, cmds:list[str], sw:int=4, inplace:bool=False):
     literal colons in filenames as ``\:`` and literal backslashes as ``\\\\``.
 
     For multiline ``a``/``i``/``c`` commands, include the inserted text in the
-    same command string using newline characters. Do not use ``.`` terminators,
-    and do not split the text block into separate ``cmds`` entries.
+    same command string using newline characters. Text starts immediately after
+    the command character; a newline there inserts a leading blank line. Do not
+    use ``.`` terminators, and do not split the text block into separate ``cmds`` entries.
 
     Missing files are treated as empty only when the command is valid against an
-    empty buffer, such as ``0|0000|a``/``0|0000|i`` or an ``m``/``t`` destination
+    empty buffer, such as ``0|0000|aTEXT``/``0|0000|iTEXT`` or an ``m``/``t`` destination
     of ``0|0000|``.
 
     With ``inplace=False``, return a ``FileSetEditResult`` with ``files``,
