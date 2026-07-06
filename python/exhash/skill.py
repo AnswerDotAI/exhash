@@ -2,7 +2,7 @@ r"""Universal hash-verified text editing for local files. Use this when an LLM n
 
 Exhash's purpose is to make edits precise and auditable. First view a file as `lineno|hash|text` (line numbers may be space-padded for alignment); then issue ex-style commands against those exact addresses. Every addressed line's hash is checked immediately before the command runs, so stale context or wrong targets fail instead of editing nearby text. Hashes are checked immediately before each command and lines shift as edits apply; for multiple edits in one call always work *backwards* (bottom-to-top).
 
-Prefer exhash over ad hoc patching for text file modifications, and prefer reading with `lnhashview_file`/`lnhash_cat` over plain file reads whenever an edit may follow: the view doubles as the address book, so the edit needs no second read. Use shell tools for discovery, tests, git, directory operations, and binary files.
+Prefer exhash over ad hoc patching for text file modifications, and prefer reading with `lnhashview_file`/`lnhash_cat` over plain file reads whenever an edit may follow: the view doubles as the address book, so the edit needs no second read.
 
 Core APIs:
 - `lnhashview_file` (or the lnhash_cat helper) lists hashed lines.
