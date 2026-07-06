@@ -25,7 +25,7 @@ pub fn format_lnhash(lineno: usize, line: &str) -> String {
     format!("{}|{:04x}|", lineno, line_hash_u16(line))
 }
 
-/// Format lines as `lineno|hash|content` for a range of lines.
+/// Format lines as `lineno|hash|content`, with line numbers space-padded to align the shown range.
 /// `start` and `end` are 1-based inclusive. Pass `None` for defaults (1 and len).
 /// `end` past EOF is clamped to the last line.
 /// Returns an error if start is 0, end < start, or start is beyond EOF.
@@ -53,12 +53,21 @@ pub fn lnhashview(
         )));
     }
     let e = requested_e.min(lines.len());
+    let width = e.to_string().len();
     Ok(lines
         .iter()
         .enumerate()
         .skip(s - 1)
         .take(e - s + 1)
-        .map(|(i, l)| format!("{}{}", format_lnhash(i + 1, l), l))
+        .map(|(i, l)| {
+            format!(
+                "{:>width$}|{:04x}|{}",
+                i + 1,
+                line_hash_u16(l),
+                l,
+                width = width
+            )
+        })
         .collect())
 }
 

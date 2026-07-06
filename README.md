@@ -1,4 +1,4 @@
-# exhash — Verified Line-Addressed File Editor
+# exhash: Verified Line-Addressed File Editor
 
 exhash combines Can Bölük's very clever [line number + hash editing system](https://blog.can.ac/2026/02/12/the-harness-problem/) with the powerful and expressive syntax of the classic [ex editor](https://en.wikipedia.org/wiki/Ex_(text_editor)).
 
@@ -20,9 +20,9 @@ We refer to an *lnhash* as a tag of the form `lineno|hash|`, where `hash` is the
 
 Address forms:
 
-- `lineno|hash|` — hash-verified address
-- `$` — last line (no hash)
-- `%` — whole file (`1,$`, no hashes)
+- `lineno|hash|`: hash-verified address
+- `$`: last line (no hash)
+- `%`: whole file (`1,$`, no hashes)
 
 ## CLI
 
@@ -84,7 +84,7 @@ Substitute uses Rust regex syntax:
 - Replacement syntax is from [`regex::Replacer`](https://docs.rs/regex/latest/regex/struct.Regex.html#method.replace), e.g. `$1`, `$0`, `${name}`
 - `\/` escapes the command delimiter in pattern/replacement
 - Custom delimiters: `s`, `y`, `g`, `g!`, and `v` all accept any non-alphanumeric char as delimiter instead of `/`, e.g. `s@pat@rep@`, `g@pat@cmd`. Each command in a combo picks its own delimiter independently: `g@a/b@s/old/new/`
-- Literal newlines in pattern/replacement are supported (joins/splits lines as needed)
+- For example, `s///` accepts newlines in pattern/replacement; replacement newlines split one line into multiple lines.
 - Transliteration uses `y/src/dst/` and requires source/destination to have equal character counts
 
 When passing multiple commands, each command's lnhashes are verified immediately before that command runs.
@@ -121,70 +121,76 @@ view = lnhashview_file("f.py", start=1, end=260) # end past EOF is clamped
 
 ### Editing
 
-`exhash(text, cmds, sw=4)` takes the text and a required iterable of command strings (use `[]` for no-op). `sw` controls how far `<` and `>` shift. For `a`/`i`/`c`, all text after the command character is literal inserted text, including leading spaces and newlines, e.g. `["12|abcd|c    return x"]`.
+`exhash(text, cmds, sw=4)` takes the text and a required iterable of tuple command specs (use `[]` for no-op). Raw command strings are rejected by the Python API. `sw` controls how far `<` and `>` shift.
 
-For multiline `a`/`i`/`c` commands, include the inserted text in the same command string using newline characters. Payload starts immediately after the command character: use `f"{addr}cfirst line\nsecond line"` when `first line` is the first inserted line. If the command character is followed by a newline, that newline is part of the payload, so `f"{addr}c\nfirst line"` starts with a blank inserted line. Do not use `.` terminators, and do not split the text block into separate `cmds` entries. If you include a final `.` line, it is inserted literally and exhash emits a warning.
+A command is usually `(addr, op)` or `(addr, op, payload)`. `addr` is an lnhash address string from `lnhash(...)`/`lnhashview(...)`; put ranges in that same string, e.g. `f"{a1},{a2}"`. Substitute uses `(addr, "s", pattern, replacement[, flags])`, so patterns and replacements can contain `/` without delimiter escaping.
+
+Text fields can contain newlines. That covers multiline `a`/`i`/`c` payloads and substitute pattern/replacement. Commands such as `d`, `m`, and `sort` do not take text.
 
 ```py
 addr = lnhash(1, "foo")  # "1|a1b2|"
-res = exhash(text, [f"{addr}s/foo/baz/"])
+res = exhash(text, [(addr, "s", "foo", "baz")])
 print(res["lines"])    # ["baz", "bar"]
 print(res["modified"]) # [1]
 
 # Multiple commands
 a1, a2 = lnhash(1, "foo"), lnhash(2, "bar")
-res = exhash(text, [f"{a1}s/foo/FOO/", f"{a2}s/bar/BAR/"])
+res = exhash(text, [(a1, "s", "foo", "FOO"), (a2, "s", "bar", "BAR")])
 
 # Hashes are checked just-in-time per command.
 # If earlier commands change/shift a later target line, recompute lnhash first.
 
-# Change one line with inline text; spaces after c are part of the replacement
-res = exhash(text, [f"{addr}c    replacement line"])
+# Change one line; leading spaces are part of the replacement
+res = exhash(text, [(addr, "c", "    replacement line")])
 
-# Append multiline text in the same command string (no dot terminator)
-res = exhash(text, [f"{addr}anew line 1\nnew line 2"])
+# Append multiline text in one tuple payload (no dot terminator)
+res = exhash(text, [(addr, "a", "new line 1\nnew line 2")])
 
 # Wrong for the Python API: the trailing "." would be inserted literally
-# res = exhash(text, [f"{addr}anew line 1\nnew line 2\n."])
+# res = exhash(text, [(addr, "a", "new line 1\nnew line 2\n.")])
 
 # Also wrong: do not split the inserted text into separate cmds entries
-# res = exhash(text, [f"{addr}a", "new line 1", "new line 2"])
+# res = exhash(text, [(addr, "a"), "new line 1", "new line 2"])
 
 # Change shift width for < and >
-res = exhash(text, [f"{addr}>1"], sw=2)
+res = exhash(text, [(addr, ">", "1")], sw=2)
 
-# Custom delimiters (useful when pattern/replacement contains /)
-res = exhash(text, [f"{addr}s|foo|bar|"])
+# Literal / needs no delimiter escaping in tuple substitute fields
+res = exhash("a/b\n", [(lnhash(1, "a/b"), "s", "a/b", "c/d")])
 
-# Literal newlines in pattern/replacement (joins/splits lines)
+# Literal newlines in replacement split one line into multiple lines
+res = exhash("foo\n", [(lnhash(1, "foo"), "s", "foo", "bar\nbaz")])
+print(res["lines"])  # ["bar", "baz"]
+
+# Literal newlines in pattern can match across lines
 a1, a2 = lnhash(1, "foo"), lnhash(2, "bar")
-res = exhash("foo\nbar\n", [f"{a1},{a2}s/foo\nbar/replaced/"])
+res = exhash("foo\nbar\n", [(f"{a1},{a2}", "s", "foo\nbar", "replaced")])
 ```
 
 ### File helpers
 
-`lnhashview_file` reads directly from one file path. `exhash_file(path, cmds, sw=4, inplace=False)` uses `path` as the default file context for unqualified addresses, and also accepts file-qualified source and `m`/`t` destination addresses:
+`lnhashview_file` reads directly from one file path. `exhash_file(path, cmds, sw=4, inplace=False)` uses `path` as the default file context for unqualified addresses. Put file-qualified source and `m`/`t` destination addresses in the address/destination tuple fields:
 
 ```py
 view = lnhashview_file("file.py")
 
 # Returns FileSetEditResult, files unchanged
-res = exhash_file("file.py", [f"{addr}s/foo/bar/"])
+res = exhash_file("file.py", [(addr, "s", "foo", "bar")])
 print(res.changed)          # ["file.py"]
 print(res["file.py"].lines)
 print(res.format_diff())    # includes --- file.py / +++ file.py headers
 
 # With inplace=True, writes changed files after every command succeeds
 # and returns the combined diff string.
-diff = exhash_file("file.py", [f"{addr}s/foo/bar/"], inplace=True)
+diff = exhash_file("file.py", [(addr, "s", "foo", "bar")], inplace=True)
 
 # Missing files are treated as empty only when the command is valid on empty input.
-diff = exhash_file("new.py", ["0|0000|aprint('hi')"], inplace=True)
+diff = exhash_file("new.py", [("0|0000|", "a", "print('hi')")], inplace=True)
 
 # File-qualified addresses can edit or transfer lines across files.
 cmds = [
-    "src/a.py:24|8f12|,38|c0de|m src/b.py:$",
-    r"src/a.py:5|91aa|s/from \.b import old/from \.b import helper/",
+    ("src/a.py:24|8f12|,38|c0de|", "m", "src/b.py:$"),
+    (r"src/a.py:5|91aa|", "s", r"from \.b import old", r"from \.b import helper"),
 ]
 diff = exhash_file("src/a.py", cmds, inplace=True)
 ```
@@ -193,11 +199,15 @@ A file prefix is separated from the address with `:`. Escape literal colons in f
 
 `exhash_file(..., inplace=False)` returns a `FileSetEditResult`:
 
-- `res.files` — dict of path to `FileEditResult`
-- `res.changed` — changed paths, in first-touch order
-- `res.default_path` — the default path passed to `exhash_file`
-- `res[path]` — shorthand for `res.files[path]`
-- `res.format_diff(context=1)` — combined diff with `--- path` / `+++ path` headers
+- `res.files`: dict of path to `FileEditResult`
+- `res.changed`: changed paths, in first-touch order
+- `res.default_path`: the default path passed to `exhash_file`
+- `res[path]`: shorthand for `res.files[path]`
+- `res.format_diff(context=1)`: combined diff with `--- path` / `+++ path` headers
+
+### Notebook cells
+
+`lnhashview_cell(path, cell_id, ...)` returns a normal lnhash view for one cell. `lnhashview_cells(path, *cell_ids, ...)` returns the requested cells in order, using `# cell <id>` headers before each cell's normal `lineno|hash|content` lines. `exhash_cell(...)` edits one cell.
 
 ### Pyskill
 
@@ -207,16 +217,16 @@ The package registers `exhash.skill` as a pyskill exposing the primary Python AP
 
 `exhash()` returns an `EditResult` with attributes (also accessible via `res["key"]`):
 
-- `lines` — list of output lines
-- `hashes` — lnhash for each output line
-- `modified` — 1-based line numbers of modified/added lines
-- `deleted` — 1-based line numbers of removed lines (in original)
-- `origins` — for each output line, the 1-based original line number (None if inserted)
+- `lines`: list of output lines
+- `hashes`: lnhash for each output line
+- `modified`: 1-based line numbers of modified/added lines
+- `deleted`: 1-based line numbers of removed lines (in original)
+- `origins`: for each output line, the 1-based original line number (None if inserted)
 
 `res.format_diff(context=1)` returns a unified-diff-style summary showing only changed lines with context:
 
 ```py
-res = exhash(text, [f"{addr}s/foo/baz/"])
+res = exhash(text, [(addr, "s", "foo", "baz")])
 print(res.format_diff())
 # --- original
 # +++ modified

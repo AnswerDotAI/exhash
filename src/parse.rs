@@ -205,6 +205,7 @@ where
 }
 
 fn parse_address_prefix(input: &str) -> Result<(Address, &str), EditError> {
+    let input = input.trim_start();
     if let Some(rest) = input.strip_prefix('$') {
         return Ok((Address::LastLine, rest));
     }

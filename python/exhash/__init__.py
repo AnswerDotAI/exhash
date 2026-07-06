@@ -14,63 +14,93 @@ def lnhash(lineno:int, line:str) -> str:
 
 
 def lnhashview(text:str, start:int=None, end:int=None) -> list[str]:
-    'Return lines formatted as ``lineno|hash|content``. Optional 1-based ``start``/``end`` filter the range; ``end`` past EOF is clamped.'
+    'Return lines formatted as space-padded ``lineno|hash|content``. Optional 1-based ``start``/``end`` filter the range; ``end`` past EOF is clamped.'
     return _lnhashview(text, start, end)
 
 
 def lnhashview_file(path:str, start:int=None, end:int=None) -> list[str]:
-    'Return lines formatted as ``lineno|hash|content`` for file at ``path``. Optional 1-based ``start``/``end`` filter the range; ``end`` past EOF is clamped.'
+    'Return lines formatted as space-padded ``lineno|hash|content`` for file at ``path``. Optional 1-based ``start``/``end`` filter the range; ``end`` past EOF is clamped.'
     return _lnhashview(Path(path).read_text(), start, end)
 
 
-def exhash(text:str, cmds:list[str], sw:int=4):
+_SUBST_DELIMS = "/@#~%=:;,+^!|"
+
+
+def _normalize_subst_tuple(addr, parts):
+    if len(parts) not in {2, 3}: raise ValueError("s tuple must be (addr, 's', pattern, replacement[, flags])")
+    pat, repl = parts[:2]
+    flags = parts[2] if len(parts) == 3 else ''
+    if not all(isinstance(o, str) for o in (addr, pat, repl, flags)): raise TypeError("s tuple fields must be strings")
+    delim = next((d for d in _SUBST_DELIMS if d not in pat and d not in repl), None)
+    if delim is None: raise ValueError("pattern/replacement contain every supported substitute delimiter")
+    return f'{addr}s{delim}{pat}{delim}{repl}{delim}{flags}'
+
+
+def _normalize_cmd(cmd):
+    if not isinstance(cmd, tuple): raise TypeError("commands must be tuples")
+    if len(cmd) < 2: raise ValueError("tuple commands must start with (address, command)")
+    addr, op, *parts = cmd
+    if not isinstance(addr, str) or not isinstance(op, str): raise TypeError("tuple command address and command must be strings")
+    if op == 's': return _normalize_subst_tuple(addr, parts)
+    if len(parts) > 1: raise ValueError(f"{op!r} tuple accepts at most one payload field")
+    payload = parts[0] if parts else ''
+    if not isinstance(payload, str): raise TypeError("tuple command payload must be a string")
+    return f'{addr}{op}{payload}'
+
+
+def _normalize_cmds(cmds): return [_normalize_cmd(cmd) for cmd in cmds]
+
+
+def exhash(text:str, cmds:list[tuple], sw:int=4):
     """Verified line-addressed editor. Apply commands to `text`, return an EditResult.
+    Python commands are tuple specs; raw command strings are rejected. Use
+    ``lnhashview(text)`` or ``lnhash(lineno, line)`` to get hash-verified
+    address strings. Each command's hashes are checked against the current text
+    immediately before that command executes.
 
-    Commands primarily use lnhash addresses: ``lineno|hash|cmd`` where hash is
-    a 4-char hex content hash. Use ``lnhashview(text)`` or
-    ``lnhash(lineno, line)`` to get hashed addresses.
-    Each command's hashes are verified against current text immediately before
-    that command executes.
-
-    Addressing:
-      Single:   ``12|a3f2|cmd``
-      Range:    ``12|a3f2|,15|b1c3|cmd``
-      Last:     ``$cmd`` (last line)
-      Whole:    ``%cmd`` (whole file, same as ``1,$``)
+    Address strings:
+      Single:   ``12|a3f2|``
+      Range:    ``12|a3f2|,15|b1c3|``
+      Last:     ``$`` (last line)
+      Whole:    ``%`` (whole file, same as ``1,$``)
       Special:  ``0|0000|`` targets before line 1 (only with a or i)
 
-    Commands:
-      s/pat/rep/[flags]  Substitute using Rust regex syntax.
-                         Replacement supports $1, $0, ${name}. Flags: g=all, i=case-insensitive
-                         Any non-alphanumeric delimiter works: s@pat@rep@, s|pat|rep|g
-                         Literal newlines in pat/rep are supported (joins/splits lines)
-      y/src/dst/         Transliterate chars in-place (also supports custom delimiters;
-                         source and destination lengths must match)
-      d                  Delete line(s)
-      a[text]           Append payload after line
-      i[text]           Insert payload before line
-      c[text]           Change/replace with payload
-      j                  Join with next line; with range, joins all
-      m dest             Move line(s) after dest address
-      t dest             Copy line(s) after dest address
-      >[n]               Indent n levels (default 1, `sw` spaces each)
-      <[n]               Dedent n levels (default 1, `sw` spaces each)
-      sort               Sort lines alphabetically
-      p                  Print (include in output without changing)
-      g/pat/cmd          Global: run cmd on matching lines (custom delimiters ok: g@pat@cmd)
-      g!/pat/cmd         Inverted global (also v/pat/cmd; custom delimiters ok)
+    Command tuples:
+      (addr, "s", pattern, replacement[, flags])
+                         Substitute using Rust regex syntax. Replacement supports
+                         $1, $0, ${name}. Flags: g=all, i=case-insensitive.
+                         Pattern and replacement strings may contain literal
+                         slashes and newlines; replacement newlines split lines.
+      (addr, "d")       Delete line(s)
+      (addr, "a", text) Append payload after line
+      (addr, "i", text) Insert payload before line
+      (addr, "c", text) Change/replace with payload
+      (addr, "j")       Join with next line; with range, joins all
+      (addr, "m", dest) Move line(s) after dest address
+      (addr, "t", dest) Copy line(s) after dest address
+      (addr, ">", n)    Indent n levels (default 1, `sw` spaces each)
+      (addr, "<", n)    Dedent n levels (default 1, `sw` spaces each)
+      (addr, "sort")    Sort lines alphabetically
+      (addr, "p")       Print (include in output without changing)
+      (addr, "g", payload), (addr, "g!", payload), (addr, "v", payload)
+                         Global commands; payload uses compact ex syntax such as
+                         ``/pattern/d``.
+      (addr, "y", payload)
+                         Transliterate; payload uses compact ex syntax such as
+                         ``/abc/ABC/``.
 
     `sw` controls shift width for `<` and `>` and defaults to 4.
 
-    For a/i/c, text after the command character is literal text (including
-    leading spaces and newlines), e.g. ``["12|abcd|c    return x"]``.
-    For multiline a/i/c commands, include the inserted text in the same command
-    string using newline characters. Text starts immediately after the command
-    character: ``cfirst\nsecond`` makes ``first`` the first inserted line,
-    while ``c\nfirst`` inserts a leading blank line before ``first``. Do not use
-    ``.`` terminators, and do not split the text block into separate ``cmds``
-    entries. If you include a final ``.`` line, it is inserted literally and
-    exhash emits a warning.
+    Text fields can contain newlines. This includes
+    multiline a/i/c payloads and s pattern/replacement fields. Commands without
+    text fields, such as d, m, and sort, do not take text.
+
+    For a/i/c, the payload string is inserted literally, including leading spaces
+    and newlines, e.g. ``(addr, "c", "    return x")``. ``"first\nsecond"``
+    starts with ``first``; ``"\nfirst"`` inserts a leading blank line before
+    ``first``. Do not use ``.`` terminators, and do not split the text block
+    into separate ``cmds`` entries. If you include a final ``.`` line, it is
+    inserted literally and exhash emits a warning.
 
     Returns an EditResult with attributes (also accessible as dict keys):
       lines     list of output lines
@@ -87,11 +117,11 @@ def exhash(text:str, cmds:list[str], sw:int=4):
       from exhash import exhash, lnhash, lnhashview
       text = "foo\\nbar\\n"
       addr = lnhash(1, "foo")           # "1|a1b2|"
-      res = exhash(text, [f"{addr}s/foo/baz/"])
+      res = exhash(text, [(addr, "s", "foo", "baz")])
       print(res["lines"])                # ["baz", "bar"]
       print(res.format_diff())           # unified-diff-style summary
     """
-    return _exhash(text, *cmds, sw=sw)
+    return _exhash(text, *_normalize_cmds(cmds), sw=sw)
 
 
 class FileEditResult:
@@ -190,6 +220,7 @@ def _split_file_prefix(s):
 
 
 def _parse_fileaddr(s, default_path):
+    s = s.lstrip()
     path, rest = _split_file_prefix(s)
     path = path or default_path
     m = _ADDR_RE.match(rest)
@@ -292,34 +323,34 @@ def _apply_file_command(buffers, parsed, sw):
         _apply_transfer(buffers, parsed)
         return
     buf = _load_buffer(buffers, parsed['src'], missing_ok=_can_create_missing(parsed))
-    res = exhash(_text_from_lines(buf['lines']), [parsed['local']], sw=sw)
+    res = _exhash(_text_from_lines(buf['lines']), parsed['local'], sw=sw)
     buf['lines'] = list(res['lines'])
 
 
-def exhash_file(path:str, cmds:list[str], sw:int=4, inplace:bool=False):
+def exhash_file(path:str, cmds:list[tuple], sw:int=4, inplace:bool=False):
     r'''Read files, apply file-aware exhash commands, and return per-file results or a combined diff.
 
-    Core command syntax is the same as ``exhash(text, cmds, sw=sw)``; run
+    Core tuple syntax is the same as ``exhash(text, cmds, sw=sw)``; run
     ``doc(exhash)`` for the full command reference. Use ``path`` as the default
-    file context for unqualified addresses. Prefix any source address, and any
-    ``m``/``t`` destination, with ``path:`` to target another file::
+    file context for unqualified addresses. Prefix source address strings, and
+    ``m``/``t`` destination strings, with ``path:`` to target another file::
 
-      src/a.py:12|a3f2|s/foo/bar/
-      src/a.py:10|aaaa|,20|bbbb|m src/b.py:$
-      src/a.py:10|aaaa|t new.py:0|0000|
+      ("src/a.py:12|a3f2|", "s", "foo", "bar")
+      ("src/a.py:10|aaaa|,20|bbbb|", "m", "src/b.py:$")
+      ("src/a.py:10|aaaa|", "t", "new.py:0|0000|")
 
     A range must stay within one file. The second address may omit the filename
     and inherit it from the first address. Cross-file ranges are invalid. Escape
-    literal colons in filenames as ``\:`` and literal backslashes as ``\\\\``.
+    literal colons in filenames as ``\:`` and literal backslashes as ``\\``.
 
-    For multiline ``a``/``i``/``c`` commands, include the inserted text in the
-    same command string using newline characters. Text starts immediately after
-    the command character; a newline there inserts a leading blank line. Do not
-    use ``.`` terminators, and do not split the text block into separate ``cmds`` entries.
+    For multiline ``a``/``i``/``c`` commands, put all inserted text in the tuple
+    payload string. A leading newline in that payload inserts a leading blank
+    line. Do not use ``.`` terminators, and do not split the text block into
+    separate ``cmds`` entries.
 
     Missing files are treated as empty only when the command is valid against an
-    empty buffer, such as ``0|0000|aTEXT``/``0|0000|iTEXT`` or an ``m``/``t`` destination
-    of ``0|0000|``.
+    empty buffer, such as ``("0|0000|", "a", text)``/``("0|0000|", "i", text)``
+    or an ``m``/``t`` destination of ``0|0000|``.
 
     With ``inplace=False``, return a ``FileSetEditResult`` with ``files``,
     ``changed``, ``default_path``, ``res[path]``, and
@@ -328,7 +359,7 @@ def exhash_file(path:str, cmds:list[str], sw:int=4, inplace:bool=False):
     any command fails, write nothing.
     '''
     default_path, buffers = _norm_path(path), {}
-    for raw in cmds:
+    for raw in _normalize_cmds(cmds):
         parsed = _parse_file_command(raw, default_path)
         if parsed is not None: _apply_file_command(buffers, parsed, sw)
     if not buffers: _load_buffer(buffers, default_path)
@@ -363,7 +394,17 @@ def lnhashview_cell(path:str, cell_id:str, start:int=None, end:int=None) -> list
     return _lnhashview(_cell_text(_load_cell(path, cell_id)[1]), start, end)
 
 
-def exhash_cell(path:str, cell_id:str, cmds:list[str], sw:int=4, inplace:bool=False):
+def lnhashview_cells(path:str, *cell_ids:str, start:int=None, end:int=None) -> list[str]:
+    'Return grouped lnhash views for explicit notebook cell ids. Each group starts with ``# cell <id>``; following lines keep normal ``lineno|hash|content`` format.'
+    out = []
+    for cell_id in cell_ids:
+        _, cell = _load_cell(path, cell_id)
+        out.append(f"# cell {cell.get('id', cell_id)}")
+        out += _lnhashview(_cell_text(cell), start, end)
+    return out
+
+
+def exhash_cell(path:str, cell_id:str, cmds:list[tuple], sw:int=4, inplace:bool=False):
     """Apply exhash commands to the source of notebook cell ``cell_id`` in ipynb file at ``path``.
 
     Command syntax is the same as ``exhash(text, cmds, sw=sw)``; run ``doc(exhash)``
