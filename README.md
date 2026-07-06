@@ -169,30 +169,30 @@ res = exhash("foo\nbar\n", [(f"{a1},{a2}", "s", "foo\nbar", "replaced")])
 
 ### File helpers
 
-`lnhashview_file` reads directly from one file path. `exhash_file(path, cmds, sw=4, inplace=False)` uses `path` as the default file context for unqualified addresses. Put file-qualified source and `m`/`t` destination addresses in the address/destination tuple fields:
+`lnhashview_file` reads directly from one file path. `exhash_file(path, cmds, sw=4, inplace=True)` uses `path` as the default file context for unqualified addresses. Put file-qualified source and `m`/`t` destination addresses in the address/destination tuple fields:
 
 ```py
 view = lnhashview_file("file.py")
 
-# Returns FileSetEditResult, files unchanged
-res = exhash_file("file.py", [(addr, "s", "foo", "bar")])
+# By default, writes changed files after every command succeeds
+# and returns the combined diff string.
+diff = exhash_file("file.py", [(addr, "s", "foo", "bar")])
+
+# With inplace=False, files are unchanged and a FileSetEditResult is returned.
+res = exhash_file("file.py", [(addr, "s", "foo", "bar")], inplace=False)
 print(res.changed)          # ["file.py"]
 print(res["file.py"].lines)
 print(res.format_diff())    # includes --- file.py / +++ file.py headers
 
-# With inplace=True, writes changed files after every command succeeds
-# and returns the combined diff string.
-diff = exhash_file("file.py", [(addr, "s", "foo", "bar")], inplace=True)
-
 # Missing files are treated as empty only when the command is valid on empty input.
-diff = exhash_file("new.py", [("0|0000|", "a", "print('hi')")], inplace=True)
+diff = exhash_file("new.py", [("0|0000|", "a", "print('hi')")])
 
 # File-qualified addresses can edit or transfer lines across files.
 cmds = [
     ("src/a.py:24|8f12|,38|c0de|", "m", "src/b.py:$"),
     (r"src/a.py:5|91aa|", "s", r"from \.b import old", r"from \.b import helper"),
 ]
-diff = exhash_file("src/a.py", cmds, inplace=True)
+diff = exhash_file("src/a.py", cmds)
 ```
 
 A file prefix is separated from the address with `:`. Escape literal colons in filenames as `\:` and literal backslashes as `\\`.
@@ -207,7 +207,7 @@ A file prefix is separated from the address with `:`. Escape literal colons in f
 
 ### Notebook cells
 
-`lnhashview_cell(path, cell_id, ...)` returns a normal lnhash view for one cell. `lnhashview_cells(path, *cell_ids, ...)` returns the requested cells in order, using `# cell <id>` headers before each cell's normal `lineno|hash|content` lines. `exhash_cell(...)` edits one cell.
+`lnhashview_cell(path, cell_id, ...)` returns a normal lnhash view for one cell. `lnhashview_cells(path, *cell_ids, ...)` returns the requested cells in order, using `# cell <id>` headers before each cell's normal `lineno|hash|content` lines. `exhash_cell(path, cell_id, cmds, sw=4, inplace=True)` edits one cell; like `exhash_file` it writes and returns a diff by default, and `inplace=False` previews the `EditResult` without touching the file.
 
 ### Pyskill
 

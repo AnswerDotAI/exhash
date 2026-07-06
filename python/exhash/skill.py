@@ -14,7 +14,7 @@ Workflow:
 1. `lnhash_cat(...)`.
 2. Copy exact displayed `lineno|hash|` addresses.
 3. Use tuple command specs; use raw triple-quoted Python strings for address, pattern, replacement, and payload text when composing commands.
-4. Use `exhash_file(...)` to write and return diff.
+4. Use `exhash_file(...)` (or `exhash_cell(...)` for one notebook cell) to apply the edit: both write to disk and return a diff by default. Pass `inplace=False` to preview the result object without touching the file.
 
 Addressing:
   Address strings use lnhash addresses: lineno|hash| where hash is a 4-char

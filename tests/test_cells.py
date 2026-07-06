@@ -51,8 +51,16 @@ def test_exhash_cell_inplace_str_source(tmp_path):
 def test_exhash_cell_preview_and_stale(tmp_path):
     p = tmp_path/'t.ipynb'
     mk_nb(p, [('aaaa1111', 'x=1')])
-    res = exhash_cell(p, 'aaaa1111', [(lnhash(1, "x=1"), "s", "1", "9")])   # no inplace
+    res = exhash_cell(p, 'aaaa1111', [(lnhash(1, "x=1"), "s", "1", "9")], inplace=False)   # preview
     assert res['lines'] == ['x=9']
     assert json.loads(p.read_text())['cells'][0]['source'] == 'x=1'   # untouched
     with pytest.raises(ValueError): exhash_cell(p, 'aaaa1111', [("1|dead|", "s", "x", "y")], inplace=True)
     assert json.loads(p.read_text())['cells'][0]['source'] == 'x=1'   # stale hash leaves file alone
+
+
+def test_exhash_cell_writes_by_default(tmp_path):
+    p = tmp_path/'t.ipynb'
+    mk_nb(p, [('aaaa1111', 'x=1')])
+    diff = exhash_cell(p, 'aaaa1111', [(lnhash(1, "x=1"), "s", "1", "9")])
+    assert isinstance(diff, str) and 'x=9' in diff
+    assert json.loads(p.read_text())['cells'][0]['source'] == 'x=9'   # written by default

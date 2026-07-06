@@ -327,7 +327,7 @@ def _apply_file_command(buffers, parsed, sw):
     buf['lines'] = list(res['lines'])
 
 
-def exhash_file(path:str, cmds:list[tuple], sw:int=4, inplace:bool=False):
+def exhash_file(path:str, cmds:list[tuple], sw:int=4, inplace:bool=True):
     r'''Read files, apply file-aware exhash commands, and return per-file results or a combined diff.
 
     Core tuple syntax is the same as ``exhash(text, cmds, sw=sw)``; run
@@ -352,11 +352,11 @@ def exhash_file(path:str, cmds:list[tuple], sw:int=4, inplace:bool=False):
     empty buffer, such as ``("0|0000|", "a", text)``/``("0|0000|", "i", text)``
     or an ``m``/``t`` destination of ``0|0000|``.
 
-    With ``inplace=False``, return a ``FileSetEditResult`` with ``files``,
-    ``changed``, ``default_path``, ``res[path]``, and
-    ``res.format_diff(context=1)``. With ``inplace=True``, write changed files
-    only after every command succeeds and return the combined diff string. If
-    any command fails, write nothing.
+    By default (``inplace=True``) write changed files only after every command
+    succeeds and return the combined diff string; if any command fails, write
+    nothing. Pass ``inplace=False`` to preview instead: nothing is written and a
+    ``FileSetEditResult`` is returned with ``files``, ``changed``, ``default_path``,
+    ``res[path]``, and ``res.format_diff(context=1)``.
     '''
     default_path, buffers = _norm_path(path), {}
     for raw in _normalize_cmds(cmds):
@@ -404,17 +404,17 @@ def lnhashview_cells(path:str, *cell_ids:str, start:int=None, end:int=None) -> l
     return out
 
 
-def exhash_cell(path:str, cell_id:str, cmds:list[tuple], sw:int=4, inplace:bool=False):
+def exhash_cell(path:str, cell_id:str, cmds:list[tuple], sw:int=4, inplace:bool=True):
     """Apply exhash commands to the source of notebook cell ``cell_id`` in ipynb file at ``path``.
 
     Command syntax is the same as ``exhash(text, cmds, sw=sw)``; run ``doc(exhash)``
     for the full reference, and ``lnhashview_cell(path, cell_id)`` for addresses.
     ``cell_id`` may be an exact id or unique prefix.
 
-    With ``inplace=False``, return the EditResult without touching the file. With
-    ``inplace=True``, write the edited source back (preserving the cell's original
-    str-or-list-of-lines form; the notebook re-serializes in Jupyter's JSON layout)
-    and return the diff string. If any command fails, write nothing.
+    By default (``inplace=True``) write the edited source back (preserving the cell's
+    original str-or-list-of-lines form; the notebook re-serializes in Jupyter's JSON
+    layout) and return the diff string; if any command fails, write nothing. Pass
+    ``inplace=False`` to preview instead: the EditResult is returned without touching the file.
     """
     nb, cell = _load_cell(path, cell_id)
     text = _cell_text(cell)

@@ -304,7 +304,7 @@ def test_exhash_file_returns_file_set_result(tmp_path):
     f = tmp_path / "test.txt"
     f.write_text("foo\nbar\n")
     addr = lnhash(1, "foo")
-    res = exhash_file(str(f), [(addr, "s", "foo", "baz")])
+    res = exhash_file(str(f), [(addr, "s", "foo", "baz")], inplace=False)
     assert res.default_path == str(f)
     assert res.changed == [str(f)]
     assert res[str(f)]["lines"] == ["baz", "bar"]
@@ -313,6 +313,15 @@ def test_exhash_file_returns_file_set_result(tmp_path):
     assert f"--- {f}" in diff
     assert f"+++ {f}" in diff
     assert f"+{lnhash(1, 'baz')}baz" in diff
+
+
+def test_exhash_file_writes_by_default(tmp_path):
+    from exhash import exhash_file, lnhash
+    f = tmp_path / "test.txt"
+    f.write_text("foo\nbar\n")
+    diff = exhash_file(str(f), [(lnhash(1, "foo"), "s", "foo", "baz")])
+    assert isinstance(diff, str) and f"+{lnhash(1, 'baz')}baz" in diff
+    assert f.read_text() == "baz\nbar\n"
 
 
 
@@ -331,7 +340,7 @@ def test_exhash_file_copies_to_file_qualified_destination(tmp_path):
     a.write_text("one\ntwo\n")
     b.write_text("alpha\n")
     cmd = (f"{a}:{lnhash(2, 'two')}", "t", f"{b}:0|0000|")
-    res = exhash_file(str(a), [cmd])
+    res = exhash_file(str(a), [cmd], inplace=False)
     assert res.changed == [str(b)]
     assert res[str(b)]["lines"] == ["two", "alpha"]
     assert a.read_text() == "one\ntwo\n"
@@ -388,7 +397,7 @@ def test_exhash_file_accepts_escaped_colon_in_file_prefix(tmp_path):
     target.write_text("foo\n")
     prefix = str(target).replace("\\", "\\\\").replace(":", "\\:")
     cmd = (f"{prefix}:{lnhash(1, 'foo')}", "s", "foo", "bar")
-    res = exhash_file(str(default), [cmd])
+    res = exhash_file(str(default), [cmd], inplace=False)
     assert res.changed == [str(target)]
     assert res[str(target)]["lines"] == ["bar"]
 
@@ -450,6 +459,6 @@ def test_exhash_file_accepts_padded_range_addresses(tmp_path):
     from exhash import exhash_file
     f = tmp_path / "test.txt"
     f.write_text("a\nb\nc\n")
-    res = exhash_file(str(f), [(f" {lnhash(1, 'a')}, {lnhash(2, 'b')}", "d")])
+    res = exhash_file(str(f), [(f" {lnhash(1, 'a')}, {lnhash(2, 'b')}", "d")], inplace=False)
     assert res[str(f)]["lines"] == ["c"]
 
