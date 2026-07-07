@@ -1,3 +1,5 @@
+"Hash-verified line-addressed text editing. See `exhash.skill` for the workflow guide: view with `lnhashview_*` first, then edit with addresses taken from that view."
+
 import json, re
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -111,6 +113,8 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
 
     Call ``res.format_diff(context=1)`` for a unified-diff-style summary.
     Non-empty diffs start with ``--- original`` and ``+++ modified`` headers.
+    NB: ``exhash_file``/``exhash_cell`` with ``inplace=True`` (their default) do not
+    return an EditResult: they return the formatted diff string directly.
 
     Examples::
 
