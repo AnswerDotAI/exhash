@@ -54,10 +54,18 @@ def test_move_destination_in_range_errors():
 def test_zero_address_delete_rejected():
     with pytest.raises(ValueError, match="only allowed"): exhash("a\n", [("0|0000|", "d")])
 
-def test_substitute_lenient_no_match():
-    res = exhash("abc\n", [(lnhash(1, "abc"), "s", "zzz", "yyy")])
+def test_substitute_no_match_fails():
+    with pytest.raises(ValueError, match="no match"):
+        exhash("abc\n", [(lnhash(1, "abc"), "s", "zzz", "yyy")])
+    with pytest.raises(ValueError, match="no match"):
+        exhash("abc\n", [(lnhash(1, "abc"), "s", "zzz", "yyy", "g")])
+    # a match that leaves the text unchanged is not an error
+    res = exhash("abc\n", [(lnhash(1, "abc"), "s", "abc", "abc")])
     assert res["lines"] == ["abc"]
     assert res["modified"] == []
+    # g// payloads stay lenient: not every selected line need match the sub
+    res = exhash("ab\na\n", [("%", "g", "/a/s/b/X/")])
+    assert res["lines"] == ["aX", "a"]
 
 def test_substitute_global_case_insensitive():
     res = exhash("Foo foo\n", [(lnhash(1, "Foo foo"), "s", "foo", "bar", "gi")])

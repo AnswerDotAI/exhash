@@ -79,6 +79,8 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
                          $1, $0, ${name}. Flags: g=all, i=case-insensitive.
                          Pattern and replacement strings may contain literal
                          slashes and newlines; replacement newlines split lines.
+                         Fails if the pattern matches nothing in the addressed
+                         range (substitutes inside g// payloads stay lenient).
       (addr, "d")       Delete line(s)
       (addr, "a", text) Append payload after line
       (addr, "i", text) Insert payload before line

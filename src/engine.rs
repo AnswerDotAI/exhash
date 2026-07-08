@@ -152,7 +152,7 @@ impl Engine {
         if start > end && start != 0 {
             return Err(EditError::new(format!("invalid range: {start}..{end}")));
         }
-        self.apply_subcommand(start, end, is_range, &cmd.cmd)
+        self.apply_subcommand(start, end, is_range, &cmd.cmd, true)
     }
 
     fn verify_command(&self, cmd: &Command) -> Result<(), EditError> {
@@ -281,13 +281,23 @@ impl Engine {
         end: usize,
         has_comma: bool,
         sub: &Subcommand,
+        strict: bool,
     ) -> Result<(), EditError> {
         if has_comma && start == 0 && end == 0 {
             return self.apply_empty_range(sub);
         }
         match sub {
             Subcommand::Delete => self.delete_range(start, end),
-            Subcommand::Substitute(s) => self.substitute_range(start, end, s),
+            Subcommand::Substitute(s) => {
+                let matched = self.substitute_range(start, end, s)?;
+                if strict && !matched {
+                    return Err(EditError::new(format!(
+                        "s: no match for pattern `{}` in {start},{end}",
+                        s.pattern
+                    )));
+                }
+                Ok(())
+            }
             Subcommand::Transliterate { source, dest } => {
                 self.transliterate_range(start, end, source, dest)
             }
@@ -355,26 +365,28 @@ impl Engine {
         Ok(())
     }
 
-    fn substitute_range(&mut self, start: usize, end: usize, s: &Subst) -> Result<(), EditError> {
+    fn substitute_range(&mut self, start: usize, end: usize, s: &Subst) -> Result<bool, EditError> {
         let (s_idx, e_idx) = self.resolve_range(start, end)?;
         let re = build_regex(&s.pattern, s.case_insensitive)?;
         let multiline = s.pattern.contains('\n') || s.replacement.contains('\n');
+        let mut matched = false;
         if multiline {
             // Join range into single string, apply substitute, split back
             let joined: String = (s_idx..=e_idx)
                 .map(|i| self.lines[i].text.as_str())
                 .collect::<Vec<_>>()
                 .join("\n");
+            if !re.is_match(&joined) {
+                return Ok(false);
+            }
+            matched = true;
             let result = if s.global {
                 re.replace_all(&joined, s.replacement.as_str()).to_string()
             } else {
-                if !re.is_match(&joined) {
-                    return Ok(());
-                }
                 re.replace(&joined, s.replacement.as_str()).to_string()
             };
             if result == joined {
-                return Ok(());
+                return Ok(true);
             }
             let new_lines: Vec<String> = result.split('\n').map(|s| s.to_string()).collect();
             let origins: Vec<Option<usize>> =
@@ -393,12 +405,13 @@ impl Engine {
         } else {
             for idx in s_idx..=e_idx {
                 let old = self.lines[idx].text.clone();
+                if !re.is_match(&old) {
+                    continue;
+                }
+                matched = true;
                 let new = if s.global {
                     re.replace_all(&old, s.replacement.as_str()).to_string()
                 } else {
-                    if !re.is_match(&old) {
-                        continue;
-                    }
                     re.replace(&old, s.replacement.as_str()).to_string()
                 };
                 if new != old {
@@ -407,7 +420,7 @@ impl Engine {
                 }
             }
         }
-        Ok(())
+        Ok(matched)
     }
 
     fn transliterate_range(
@@ -710,7 +723,7 @@ impl Engine {
                 self.lines[idx].global_mark = false;
                 // Apply subcommand to this line (single-line address, no comma).
                 let line_no = idx + 1;
-                self.apply_subcommand(line_no, line_no, false, subcmd)?;
+                self.apply_subcommand(line_no, line_no, false, subcmd, false)?;
                 // Do not increment idx; after mutations, re-check this position.
                 continue;
             }

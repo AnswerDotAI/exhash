@@ -86,6 +86,7 @@ Substitute uses Rust regex syntax:
 - Custom delimiters: `s`, `y`, `g`, `g!`, and `v` all accept any non-alphanumeric char as delimiter instead of `/`, e.g. `s@pat@rep@`, `g@pat@cmd`. Each command in a combo picks its own delimiter independently: `g@a/b@s/old/new/`
 - For example, `s///` accepts newlines in pattern/replacement; replacement newlines split one line into multiple lines.
 - Transliteration uses `y/src/dst/` and requires source/destination to have equal character counts
+- A substitute whose pattern matches nothing in its addressed range fails (nothing is written), so a typo cannot silently no-op; substitutes running inside `g`/`g!`/`v` payloads stay lenient, since not every selected line need match
 
 When passing multiple commands, each command's lnhashes are verified immediately before that command runs.
 
