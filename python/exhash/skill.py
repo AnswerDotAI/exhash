@@ -2,16 +2,16 @@ r"""Universal hash-verified text editing for local files. Use this when an LLM n
 
 Exhash's purpose is to make edits precise and auditable. First view a file as `lineno|hash|text` (line numbers may be space-padded for alignment); then issue ex-style commands against those exact addresses. Every addressed line's hash is checked immediately before the command runs, so stale context or wrong targets fail instead of editing nearby text. Hashes are checked immediately before each command and lines shift as edits apply; for multiple edits in one call always work *backwards* (bottom-to-top).
 
-Prefer exhash over ad hoc patching for text file modifications, and prefer reading with `lnhashview_file`/`lnhash_cat` over plain file reads whenever an edit may follow: the view doubles as the address book, so the edit needs no second read.
+Prefer exhash over ad hoc patching for text file modifications, and prefer reading with `lnhashview_file` over plain file reads whenever an edit may follow: the view doubles as the address book, so the edit needs no second read.
 
 Core APIs:
-- `lnhashview_file` (or the lnhash_cat helper) lists hashed lines.
+- `lnhashview_file` lists hashed lines.
 - `exhash` is the in-memory command engine; run `doc(exhash)` for complete command syntax.
 - `exhash_file` is the file-aware engine; unqualified addresses use `path` and file-qualified addresses can edit or transfer across files.
 - `lnhashview_cell` views one notebook cell's source in an `.ipynb` file; `lnhashview_cells` views several explicit cells with `# cell <id>` headers. `exhash_cell` edits one cell.
 
 Workflow:
-1. `lnhash_cat(...)`.
+1. `lnhashview_file(...)`, ending the cell with the bare call: the result displays verbatim, one `lineno|hash|content` line each, so never join, print, or reformat it.
 2. Copy exact displayed `lineno|hash|` addresses.
 3. Use tuple command specs; use raw triple-quoted Python strings for address, pattern, replacement, and payload text when composing commands.
 4. Use `exhash_file(...)` (or `exhash_cell(...)` for one notebook cell) to apply the edit: both write to disk and return a diff by default. Pass `inplace=False` to preview the result object without touching the file.
@@ -48,8 +48,5 @@ Do not pass raw commands to Python APIs. Do not create addresses by text search 
 
 from . import exhash, exhash_cell, exhash_file, line_hash, lnhash, lnhashview, lnhashview_cell, lnhashview_cells, lnhashview_file
 
-__all__ = ["line_hash", "lnhash", "lnhashview", "lnhashview_file", "lnhashview_cell", "lnhashview_cells", "exhash", "exhash_file", "exhash_cell", "lnhash_cat"]
+__all__ = ["line_hash", "lnhash", "lnhashview", "lnhashview_file", "lnhashview_cell", "lnhashview_cells", "exhash", "exhash_file", "exhash_cell"]
 
-def lnhash_cat(fname:str, start:int=None, end:int=None):
-    "Little shortcut for printing concatenated lines of lnhashview_file"
-    print("\n".join(lnhashview_file(fname, start=start, end=end)))

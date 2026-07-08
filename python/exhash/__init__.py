@@ -14,15 +14,21 @@ def lnhash(lineno:int, line:str) -> str:
     'Return an lnhash address ``lineno|hash|`` for ``line`` at 1-based ``lineno``.'
     return _lnhash(lineno, line)
 
+class LnhashView(list):
+    'List of ``lineno|hash|content`` lines, displayed verbatim one per line.'
+    def __str__(self): return '\n'.join(self)
+    def _repr_pretty_(self, p, cycle): p.text('...' if cycle else str(self))
 
-def lnhashview(text:str, start:int=None, end:int=None) -> list[str]:
+
+
+def lnhashview(text:str, start:int=None, end:int=None) -> "LnhashView":
     'Return lines formatted as space-padded ``lineno|hash|content``. Optional 1-based ``start``/``end`` filter the range; ``end`` past EOF is clamped.'
-    return _lnhashview(text, start, end)
+    return LnhashView(_lnhashview(text, start, end))
 
 
-def lnhashview_file(path:str, start:int=None, end:int=None) -> list[str]:
+def lnhashview_file(path:str, start:int=None, end:int=None) -> "LnhashView":
     'Return lines formatted as space-padded ``lineno|hash|content`` for file at ``path``. Optional 1-based ``start``/``end`` filter the range; ``end`` past EOF is clamped.'
-    return _lnhashview(Path(path).read_text(), start, end)
+    return LnhashView(_lnhashview(Path(path).read_text(), start, end))
 
 
 _SUBST_DELIMS = "/@#~%=:;,+^!|"
@@ -393,19 +399,19 @@ def _cell_text(cell):
     return src if isinstance(src, str) else ''.join(src)
 
 
-def lnhashview_cell(path:str, cell_id:str, start:int=None, end:int=None) -> list[str]:
+def lnhashview_cell(path:str, cell_id:str, start:int=None, end:int=None) -> "LnhashView":
     'Return lines formatted as ``lineno|hash|content`` for the source of notebook cell ``cell_id`` in ipynb file at ``path``. ``cell_id`` may be an exact id or unique prefix; optional 1-based ``start``/``end`` filter the range.'
-    return _lnhashview(_cell_text(_load_cell(path, cell_id)[1]), start, end)
+    return LnhashView(_lnhashview(_cell_text(_load_cell(path, cell_id)[1]), start, end))
 
 
-def lnhashview_cells(path:str, *cell_ids:str, start:int=None, end:int=None) -> list[str]:
+def lnhashview_cells(path:str, *cell_ids:str, start:int=None, end:int=None) -> "LnhashView":
     'Return grouped lnhash views for explicit notebook cell ids. Each group starts with ``# cell <id>``; following lines keep normal ``lineno|hash|content`` format.'
     out = []
     for cell_id in cell_ids:
         _, cell = _load_cell(path, cell_id)
         out.append(f"# cell {cell.get('id', cell_id)}")
         out += _lnhashview(_cell_text(cell), start, end)
-    return out
+    return LnhashView(out)
 
 
 def exhash_cell(path:str, cell_id:str, cmds:list[tuple], sw:int=4, inplace:bool=True):

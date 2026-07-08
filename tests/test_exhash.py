@@ -1,5 +1,16 @@
 import warnings, pytest
-from exhash import line_hash, lnhash, lnhashview, exhash
+from exhash import line_hash, lnhash, lnhashview, lnhashview_file, exhash
+def test_lnhashview_display(tmp_path):
+    q = chr(39)
+    txt = f'x = "a" + {q}b{q}' + chr(10) + 'y = 1' + chr(10)
+    v = lnhashview(txt)
+    assert str(v) == chr(10).join(v)
+    assert f'"a" + {q}b{q}' in str(v)
+    f = tmp_path/'t.py'
+    f.write_text(txt)
+    assert str(lnhashview_file(str(f))) == str(v)
+
+
 
 def test_line_hash_returns_4_hex():
     h = line_hash("hello")

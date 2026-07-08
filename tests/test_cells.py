@@ -15,6 +15,7 @@ def test_lnhashview_cell(tmp_path):
     assert len(lines) == 2
     assert lines[0].startswith(lnhash(1, 'def f():'))
     assert lines[1].endswith('|    return 1')
+    assert str(lines) == chr(10).join(lines)
 
 
 def test_lnhashview_cells(tmp_path):
@@ -25,6 +26,7 @@ def test_lnhashview_cells(tmp_path):
     assert lines[1].startswith(lnhash(1, 'def f():'))
     assert lines[3] == '# cell bbbb2222'
     assert lines[4].startswith(lnhash(1, 'x=1'))
+    assert str(lines) == chr(10).join(lines)
 
 def test_lnhashview_cell_prefix_and_errors(tmp_path):
     p = tmp_path/'t.ipynb'
