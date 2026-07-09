@@ -44,9 +44,16 @@ Tuple commands:
 
 Important:
 Do not pass raw commands to Python APIs. Do not create addresses by text search or remembered line numbers, and never construct them by computing hashes (e.g. via `line_hash`): addresses come only from a fresh view immediately before the edit. On stale hash, re-view and rebuild. Tuple text fields can contain newlines wherever the command accepts text. For example, `(addr, "s", "foo", "bar\nbaz")` replaces one line with two. Text fields are taken verbatim: a two-character `\n` sequence stays literal; use an actual newline when you want a line break. For `a`/`i`/`c`, put all text in one tuple payload: `"first\nsecond"` starts with `first`, while `"\nfirst"` inserts a leading blank line before `first`. For moving/copying across files, use file-qualified `m`/`t` address or destination strings; cross-file source ranges are invalid. Missing files can only be created through `(r"0|0000|", "a", text)` or `(r"0|0000|", "i", text)` creation semantics.
+
+The `%%exhash` cell magic:
+In IPython sessions, importing this module registers the `%%exhash` cell magic: `%%exhash <path> [<cell_id>] <address> <a|i|c>` applies one command whose payload is everything below the magic line, taken verbatim (one trailing newline stripped). Passing `<cell_id>` targets that cell in an .ipynb file instead of a plain file (`exhash_cell`); the magic dispatches on token count, so no separate cell magic exists. Because the payload is never parsed as Python, no quoting or escaping applies, so this is the idiomatic way to create a file (`%%exhash path 0|0000| a`) and to make any large insert. It is also the idiomatic way to replace a large region: first delete the old lines with a tuple `d` command, then `%%exhash` an `a` payload addressed to the line just above the deleted range -- that line keeps its lineno and hash across the delete, so both addresses come straight from the one view taken before editing. Reserve tuple `a`/`i`/`c` payloads for short, quote-free text.
 """
 
-from . import exhash, exhash_cell, exhash_file, line_hash, lnhash, lnhashview, lnhashview_cell, lnhashview_cells, lnhashview_file
+from . import exhash, exhash_cell, exhash_file, line_hash, lnhash, lnhashview, lnhashview_cell, lnhashview_cells, lnhashview_file, magic
 
 __all__ = ["line_hash", "lnhash", "lnhashview", "lnhashview_file", "lnhashview_cell", "lnhashview_cells", "exhash", "exhash_file", "exhash_cell"]
+
+import builtins
+_ip = getattr(builtins, 'get_ipython', lambda: None)()
+if _ip is not None: magic.load_ipython_extension(_ip)
 
