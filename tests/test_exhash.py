@@ -473,3 +473,19 @@ def test_exhash_file_accepts_padded_range_addresses(tmp_path):
     res = exhash_file(str(f), [(f" {lnhash(1, 'a')}, {lnhash(2, 'b')}", "d")], inplace=False)
     assert res[str(f)]["lines"] == ["c"]
 
+
+def test_tilde_expansion(tmp_path, monkeypatch):
+    import json
+    from exhash import exhash_file, lnhashview_cell, exhash_cell
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / "f.txt").write_text("foo\nbar\n")
+    assert "foo" in lnhashview_file("~/f.txt")[0]
+    exhash_file("~/f.txt", [(lnhash(1, "foo"), "s", "foo", "baz")])
+    assert (tmp_path / "f.txt").read_text() == "baz\nbar\n"
+    exhash_file("~/f.txt", [(r"~/g.txt:0|0000|", "a", "hi")])
+    assert (tmp_path / "g.txt").read_text() == "hi\n"
+    nb = dict(cells=[dict(id="abc", cell_type="code", source="x=1\n", metadata={})], metadata={}, nbformat=4, nbformat_minor=5)
+    (tmp_path / "nb.ipynb").write_text(json.dumps(nb))
+    assert "x=1" in lnhashview_cell("~/nb.ipynb", "abc")[0]
+    exhash_cell("~/nb.ipynb", "abc", [(lnhash(1, "x=1"), "s", "x=1", "x=2")])
+    assert json.loads((tmp_path / "nb.ipynb").read_text())["cells"][0]["source"] == "x=2\n"

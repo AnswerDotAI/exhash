@@ -138,3 +138,14 @@ def test_stdin_mode_edits_and_prints_full_file():
     out = run(["--stdin", "-", f"{lnhash(1, 'foo')}s/foo/baz/"], input="foo\nbar\n")
     assert out.returncode == 0
     assert out.stdout == f'{lnhash(1, "baz")}baz\n{lnhash(2, "bar")}bar\n'
+
+def test_tilde_expansion(tmp_path):
+    import os, subprocess
+    env = {**os.environ, "HOME": str(tmp_path)}
+    f = tmp_path / "f.txt"
+    f.write_text("foo\nbar\n")
+    out = subprocess.run(["lnhashview", "~/f.txt"], text=True, capture_output=True, env=env)
+    assert out.returncode == 0 and "foo" in out.stdout
+    out = subprocess.run(["exhash", "~/f.txt", f"{lnhash(1, 'foo')}s/foo/baz/"], input="", text=True, capture_output=True, env=env)
+    assert out.returncode == 0
+    assert f.read_text() == "baz\nbar\n"

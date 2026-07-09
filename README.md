@@ -170,7 +170,7 @@ res = exhash("foo\nbar\n", [(f"{a1},{a2}", "s", "foo\nbar", "replaced")])
 
 ### File helpers
 
-`lnhashview_file` reads directly from one file path. `exhash_file(path, cmds, sw=4, inplace=True)` uses `path` as the default file context for unqualified addresses. Put file-qualified source and `m`/`t` destination addresses in the address/destination tuple fields:
+`lnhashview_file` reads directly from one file path. All file paths, including file-qualified addresses, expand a leading `~` to your home directory. `exhash_file(path, cmds, sw=4, inplace=True)` uses `path` as the default file context for unqualified addresses. Put file-qualified source and `m`/`t` destination addresses in the address/destination tuple fields:
 
 ```py
 view = lnhashview_file("file.py")

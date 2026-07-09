@@ -39,20 +39,20 @@ def _die(msg, code=1):
     sys.exit(code)
 
 def _read_text_or_die(path):
-    data = Path(path).read_bytes()
+    data = Path(path).expanduser().read_bytes()
     if b"\0" in data: _die("error: binary file rejected (NUL byte found)")
     try: return data.decode("utf-8")
     except UnicodeDecodeError: _die("error: non-UTF8 file rejected")
 
 def _atomic_write(path, content):
-    p = Path(path)
+    p = Path(path).expanduser()
     d = str(p.parent) or "."
     fd, tmp = tempfile.mkstemp(dir=d, prefix=f".{p.name}.exhash.tmp.")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f: f.write(content)
-        try: os.chmod(tmp, os.stat(path).st_mode)
+        try: os.chmod(tmp, os.stat(p).st_mode)
         except FileNotFoundError: pass
-        os.replace(tmp, path)
+        os.replace(tmp, p)
     except BaseException:
         try: os.unlink(tmp)
         except OSError: pass

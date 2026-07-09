@@ -29,7 +29,7 @@ def lnhashview(text:str, start:int=None, end:int=None) -> "LnhashView":
 
 def lnhashview_file(path:str, start:int=None, end:int=None) -> "LnhashView":
     'Return lines formatted as space-padded ``lineno|hash|content`` for file at ``path``. Optional 1-based ``start``/``end`` filter the range; ``end`` past EOF is clamped.'
-    return LnhashView(_lnhashview(Path(path).read_text(), start, end))
+    return LnhashView(_lnhashview(Path(path).expanduser().read_text(), start, end))
 
 
 _SUBST_DELIMS = "/@#~%=:;,+^!|"
@@ -172,7 +172,7 @@ _ADDR_RE = re.compile(r'(?:\$|%|\d+\|[0-9a-fA-F]{4}\|)')
 _LNHASH_RE = re.compile(r'(\d+)\|([0-9a-fA-F]{4})\|')
 
 
-def _norm_path(path): return str(Path(path))
+def _norm_path(path): return str(Path(path).expanduser())
 
 
 def _text_from_lines(lines): return '\n'.join(lines) + ('\n' if lines else '')
@@ -390,7 +390,7 @@ def exhash_file(path:str, cmds:list[tuple], sw:int=4, inplace:bool=True):
 
 def _load_cell(path, cell_id):
     'Return ``(nb, cell)`` for the cell whose id is ``cell_id`` (exact match or unique prefix).'
-    nb = json.loads(Path(path).read_text())
+    nb = json.loads(Path(path).expanduser().read_text())
     cells = [c for c in nb['cells'] if c.get('id','').startswith(cell_id)]
     exact = [c for c in cells if c.get('id')==cell_id]
     if exact: cells = exact
@@ -439,5 +439,5 @@ def exhash_cell(path:str, cell_id:str, cmds:list[tuple], sw:int=4, inplace:bool=
     new = '\n'.join(res['lines'])
     if text.endswith('\n') and new: new += '\n'
     cell['source'] = new.splitlines(keepends=True) if isinstance(cell['source'], list) else new
-    Path(path).write_text(json.dumps(nb, sort_keys=True, indent=1, ensure_ascii=False) + '\n')
+    Path(path).expanduser().write_text(json.dumps(nb, sort_keys=True, indent=1, ensure_ascii=False) + '\n')
     return res.format_diff()
