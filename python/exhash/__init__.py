@@ -4,6 +4,7 @@ import json, re
 from difflib import SequenceMatcher
 from pathlib import Path
 from .exhash import line_hash as _line_hash, lnhash as _lnhash, lnhashview as _lnhashview, exhash as _exhash
+from fastcore.basics import fail_clean
 
 def line_hash(line:str) -> str:
     'Return a 4-char lowercase hex hash for a single line of text.'
@@ -59,6 +60,7 @@ def _normalize_cmd(cmd):
 def _normalize_cmds(cmds): return [_normalize_cmd(cmd) for cmd in cmds]
 
 
+@fail_clean(ValueError)
 def exhash(text:str, cmds:list[tuple], sw:int=4):
     """Verified line-addressed editor. Apply commands to `text`, return an EditResult.
     Python commands are tuple specs; raw command strings are rejected. Use
@@ -339,6 +341,7 @@ def _apply_file_command(buffers, parsed, sw):
     buf['lines'] = list(res['lines'])
 
 
+@fail_clean(ValueError)
 def exhash_file(path:str, cmds:list[tuple], sw:int=4, inplace:bool=True):
     r'''Read files, apply file-aware exhash commands, and return per-file results or a combined diff.
 
@@ -416,6 +419,7 @@ def lnhashview_cells(path:str, *cell_ids:str, start:int=None, end:int=None) -> "
     return LnhashView(out)
 
 
+@fail_clean(ValueError)
 def exhash_cell(path:str, cell_id:str, cmds:list[tuple], sw:int=4, inplace:bool=True):
     """Apply exhash commands to the source of notebook cell ``cell_id`` in ipynb file at ``path``.
 

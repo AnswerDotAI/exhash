@@ -105,3 +105,17 @@ def test_join_collapses_indented_next_line():
 
 def test_transliterate_requires_equal_char_counts():
     with pytest.raises(ValueError): exhash("abc\n", [(lnhash(1, "abc"), "y", "/abc/AB/")])
+
+
+def test_clean_traceback(tmp_path):
+    "Errors from bad addresses show the caller's frame, not exhash internals"
+    import traceback
+    from exhash import exhash_file
+    p = tmp_path/'t.txt'
+    p.write_text('a\n')
+    for fn,args in [(exhash, ('a\n', [('1|dead|', 'c', 'x')])), (exhash_file, (str(p), [('1|dead|', 'c', 'x')]))]:
+        try: fn(*args)
+        except ValueError as e:
+            assert e.__cause__ is None
+            assert len(traceback.extract_tb(e.__traceback__)) <= 2, fn.__name__
+        else: assert False

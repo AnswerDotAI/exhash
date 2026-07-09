@@ -28,7 +28,7 @@ Addressing:
   Special:  0|0000| targets before line 1 (only with a or i)
 
 Tuple commands:
-  (addr, "s", pat, repl[, flags]) Substitute (regex). Flags: g=all, i=case-insensitive. Literal newlines work in pat/repl.
+  (addr, "s", pat, repl[, flags]) Substitute (Rust regex syntax: backrefs in repl are $1/$0/${name}; a two-char \1 stays literal). Flags: g=all, i=case-insensitive. Literal newlines work in pat/repl.
   (addr, "d")       Delete line(s)
   (addr, "a", text) Append payload after line
   (addr, "i", text) Insert payload before line
