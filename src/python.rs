@@ -16,6 +16,11 @@ fn guard<T>(what: &str, f: impl FnOnce() -> T) -> PyResult<T> {
     })
 }
 
+/// Wrap `s` in fastcore's `PrettyString` so bare display shows it verbatim.
+fn pretty_string(py: Python<'_>, s: String) -> PyResult<Py<PyAny>> {
+    Ok(py.import("fastcore.basics")?.getattr("PrettyString")?.call1((s,))?.unbind())
+}
+
 #[pyclass(skip_from_py_object)]
 #[derive(Clone)]
 struct EditResultPy {
@@ -32,10 +37,8 @@ struct EditResultPy {
     original_text: String,
 }
 
-#[pymethods]
 impl EditResultPy {
-    #[pyo3(signature = (context=1))]
-    fn format_diff(&self, context: usize) -> String {
+    fn diff_text(&self, context: usize) -> String {
         let original_lines: Vec<&str> = self.original_text.lines().collect();
         let result = crate::EditResult {
             lines: self.lines.clone(),
@@ -46,13 +49,22 @@ impl EditResultPy {
         };
         result.format_diff(&original_lines, context)
     }
+}
+
+#[pymethods]
+impl EditResultPy {
+    #[pyo3(signature = (context=1))]
+    fn format_diff(&self, py: Python<'_>, context: usize) -> PyResult<Py<PyAny>> {
+        pretty_string(py, self.diff_text(context))
+    }
+
 
     fn __str__(&self) -> String {
-        self.format_diff(1)
+        self.diff_text(1)
     }
 
     fn __repr__(&self) -> String {
-        let diff = self.format_diff(1);
+        let diff = self.diff_text(1);
         if diff.is_empty() {
             format!("EditResult({} lines, no changes)", self.lines.len())
         } else {

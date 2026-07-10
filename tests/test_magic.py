@@ -10,6 +10,7 @@ def test_exhash_magic(tmp_path):
     assert Path(p).read_text() == payload + "\n"
     res = exhash_magic(f"{p} {lnhash(2, 'y = \"\"\"two\"\"\"')} c", "y = 2\n")
     assert "y = 2" in str(res)
+    assert repr(res) == str(res)  # displays verbatim under IPython, not as a quoted repr
     assert Path(p).read_text() == "x = '''one'''\ny = 2\nz = r'\\n raw'\n"
     exhash_magic(f"{p} 0|0000| i", "# header\n")
     assert Path(p).read_text().startswith("# header\n")

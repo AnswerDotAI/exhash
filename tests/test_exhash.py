@@ -219,6 +219,7 @@ def test_exhash_format_diff():
     res = exhash(text, [(addr, "s", "foo", "baz")])
     diff = res.format_diff()
     assert diff.startswith("--- original\n+++ modified\n")
+    assert repr(diff) == str(diff)
     assert f"-{lnhash(1, 'foo')}foo" in diff
     assert f"+{lnhash(1, 'baz')}baz" in diff
 
@@ -300,6 +301,7 @@ def test_exhash_file_inplace(tmp_path):
     addr = lnhash(1, "foo")
     diff = exhash_file(str(f), [(addr, "s", "foo", "baz")], inplace=True)
     assert isinstance(diff, str)
+    assert repr(diff) == str(diff)
     assert "+{}baz".format(lnhash(1, "baz")) in diff
     assert f.read_text() == "baz\nbar\n"
 
@@ -321,9 +323,11 @@ def test_exhash_file_returns_file_set_result(tmp_path):
     assert res[str(f)]["lines"] == ["baz", "bar"]
     assert f.read_text() == "foo\nbar\n"
     diff = res.format_diff()
+    assert repr(diff) == str(diff)
     assert f"--- {f}" in diff
     assert f"+++ {f}" in diff
     assert f"+{lnhash(1, 'baz')}baz" in diff
+    assert str(diff) in repr(res) and str(diff) in repr(res[str(f)])  # bare display shows the diff
 
 
 def test_exhash_file_writes_by_default(tmp_path):

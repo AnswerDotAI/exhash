@@ -4,7 +4,7 @@ import json, re
 from difflib import SequenceMatcher
 from pathlib import Path
 from .exhash import line_hash as _line_hash, lnhash as _lnhash, lnhashview as _lnhashview, exhash as _exhash
-from fastcore.basics import fail_clean
+from fastcore.basics import fail_clean, PrettyString
 
 def line_hash(line:str) -> str:
     'Return a 4-char lowercase hex hash for a single line of text.'
@@ -153,7 +153,13 @@ class FileEditResult:
         if key in {"lines", "hashes", "original_lines"}: return getattr(self, key)
         raise KeyError(key)
 
-    def format_diff(self, context=1): return _format_file_diff(self.path, self.original_lines, self.lines, context)
+    def format_diff(self, context=1): return PrettyString(_format_file_diff(self.path, self.original_lines, self.lines, context))
+
+    def __str__(self): return str(self.format_diff())
+
+    def __repr__(self):
+        diff = self.format_diff()
+        return f'FileEditResult({self.path}: {len(self.lines)} lines{"" if diff else ", no changes"})' + (f'\n{diff}' if diff else '')
 
 
 class FileSetEditResult:
@@ -165,7 +171,13 @@ class FileSetEditResult:
 
     def __getitem__(self, path): return self.files[_norm_path(path)]
 
-    def format_diff(self, context=1): return ''.join(self.files[path].format_diff(context) for path in self.changed)
+    def format_diff(self, context=1): return PrettyString(''.join(str(self.files[path].format_diff(context)) for path in self.changed))
+
+    def __str__(self): return str(self.format_diff())
+
+    def __repr__(self):
+        diff = self.format_diff()
+        return f'FileSetEditResult({len(self.files)} files, {len(self.changed)} changed)' + (f'\n{diff}' if diff else '')
 
 
 _ADDR_RE = re.compile(r'(?:\$|%|\d+\|[0-9a-fA-F]{4}\|)')

@@ -39,6 +39,7 @@ def test_exhash_cell_inplace_list_source(tmp_path):
     p = tmp_path/'t.ipynb'
     mk_nb(p, [('aaaa1111', ['def f():\n', '    return 1'])])
     diff = exhash_cell(p, 'aaaa1111', [(lnhash(2, "    return 1"), "s", "1", "2")], inplace=True)
+    assert repr(diff) == str(diff)
     assert '+' in diff and 'return 2' in diff
     src = json.loads(p.read_text())['cells'][0]['source']
     assert src == ['def f():\n', '    return 2']              # list form preserved
