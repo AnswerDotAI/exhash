@@ -2,16 +2,10 @@
 
 exhash combines Can Bölük's very clever [line number + hash editing system](https://blog.can.ac/2026/02/12/the-harness-problem/) with the powerful and expressive syntax of the classic [ex editor](https://en.wikipedia.org/wiki/Ex_(text_editor)).
 
-Install via pip to get both a convenient Python API, and native CLI binaries:
+Install via pip to get a convenient Python API, an IPython cell magic, and the `exhash`/`lnhashview` CLI commands:
 
 ```bash
 pip install exhash
-```
-
-Or install just the CLI binaries via cargo:
-
-```bash
-cargo install exhash
 ```
 
 ## lnhash format
@@ -26,7 +20,7 @@ Address forms:
 
 ## CLI
 
-The native Rust binaries are installed into your PATH via pip.
+The `exhash` and `lnhashview` commands are Python console scripts over the native Rust extension, installed into your PATH by pip.
 
 ### View
 
@@ -120,6 +114,8 @@ view = lnhashview(text)                        # ["1|a1b2|foo", "2|c3d4|bar"]
 view = lnhashview_file("f.py", start=1, end=260) # end past EOF is clamped
 ```
 
+`lnhashview`/`lnhashview_file` return a `list` subclass whose repr shows the rows verbatim, one per line, so a bare call in IPython displays a ready-to-copy view.
+
 ### Editing
 
 `exhash(text, cmds, sw=4)` takes the text and a required iterable of tuple command specs (use `[]` for no-op). Raw command strings are rejected by the Python API. `sw` controls how far `<` and `>` shift.
@@ -210,6 +206,24 @@ A file prefix is separated from the address with `:`. Escape literal colons in f
 
 `lnhashview_cell(path, cell_id, ...)` returns a normal lnhash view for one cell. `lnhashview_cells(path, *cell_ids, ...)` returns the requested cells in order, using `# cell <id>` headers before each cell's normal `lineno|hash|content` lines. `exhash_cell(path, cell_id, cmds, sw=4, inplace=True)` edits one cell; like `exhash_file` it writes and returns a diff by default, and `inplace=False` previews the `EditResult` without touching the file.
 
+### The `%%exhash` cell magic
+
+Importing `exhash.skill` under IPython or Jupyter registers the `%%exhash` cell magic - the standard way to apply `a`/`i`/`c` payload commands interactively. The magic line is `%%exhash <path> [<cell_id>] <address> <a|i|c>`; the payload is everything below it, taken verbatim. Nothing in the payload is parsed as Python, so there is no quoting or escaping at all:
+
+```
+%%exhash notes.txt 2|beef|a
+new line 1
+new line 2
+```
+
+- `%%exhash new.py 0|0000| a` creates a missing file.
+- `%%exhash f.py % c` replaces the whole file (`%` needs no hashes). With a cell id, `%%exhash nb.ipynb ab12 % c` replaces that notebook cell's source.
+- `%%exhash f.py 12|a3f2|,15|b1c3| c` replaces just that range, both addresses from one `lnhashview_file` view.
+- One trailing newline (the cell terminator) is stripped; to end the payload with a blank line, leave one extra blank line at the bottom.
+- Each magic cell applies one command and returns the diff.
+
+Tuple `a`/`i`/`c` payloads (as in the examples above) remain for scripts and tests, where magics don't exist. Interactively, prefer the magic: a Python string layer invites quoting mistakes.
+
 ### Pyskill
 
 The package registers `exhash.skill` as a pyskill exposing the primary Python APIs with LLM-oriented workflow docs. Use `doc(exhash.skill)` after importing it through a pyskills host.
@@ -236,8 +250,10 @@ print(res.format_diff())
 #  2|e5f6|bar
 ```
 
+All diff strings returned by `format_diff`, `exhash_file`, and `exhash_cell` are fastcore `PrettyString`s, and the result objects' reprs show the diff too - so in IPython, ending a cell with the bare call displays the diff verbatim, no `print` needed.
+
 ## Tests
 
 ```bash
-cargo test && pytest -q
+pytest -q
 ```
