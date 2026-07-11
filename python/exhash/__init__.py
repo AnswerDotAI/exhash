@@ -53,6 +53,7 @@ def _normalize_cmd(cmd):
     if op == 's': return _normalize_subst_tuple(addr, parts)
     if len(parts) > 1: raise ValueError(f"{op!r} tuple accepts at most one payload field")
     payload = parts[0] if parts else ''
+    if op in '><' and isinstance(payload, int): payload = str(payload)
     if not isinstance(payload, str): raise TypeError("tuple command payload must be a string")
     return f'{addr}{op}{payload}'
 

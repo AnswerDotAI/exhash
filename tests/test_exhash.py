@@ -200,6 +200,15 @@ def test_exhash_text_block_can_start_on_command_line():
     res = exhash(text, [(addr, "a", "    indented\nnext")])
     assert res["lines"] == ["a", "    indented", "next", "b"]
 
+def test_exhash_indent_int_level():
+    "Doc says `(addr, '>', n)` with numeric n: ints must be accepted (and mean levels, not text)"
+    text = "a\nb\n"
+    addr = lnhash(1, "a")
+    res = exhash(text, [(addr, ">", 2)])
+    assert res["lines"] == ["        a", "b"]
+    res = exhash("        a\nb\n", [(lnhash(1, "        a"), "<", 1)])
+    assert res["lines"] == ["    a", "b"]
+
 def test_exhash_stale_hash_raises():
     text = "hello\nworld\n"
     addr = lnhash(1, "wrong")
