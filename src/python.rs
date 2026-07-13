@@ -3,7 +3,11 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use pyo3::exceptions::{PyRuntimeError, PyUserWarning, PyValueError};
 use pyo3::prelude::*;
 
-use crate::{Command, Subcommand};
+use crate::parse::{
+    command_from_parts, parse_destination_address, parse_optional_usize, split_text_payload,
+    subst_from_parts, translit_from_parts,
+};
+use crate::{Command, EditError, Subcommand};
 
 /// Run a panic-prone pure-Rust step, converting any panic into a clean
 /// `RuntimeError` instead of surfacing pyo3's `BaseException`-derived
@@ -108,15 +112,105 @@ fn lnhashview(text: &str, start: Option<usize>, end: Option<usize>) -> PyResult<
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
+/// A tuple-command field: a string, or a nested tuple (a global's subcommand).
+#[derive(FromPyObject)]
+enum PyField {
+    #[pyo3(transparent)]
+    Str(String),
+    #[pyo3(transparent)]
+    Seq(Vec<PyField>),
+}
+
+fn command_from_pyfields(fields: &[PyField]) -> Result<Command, EditError> {
+    let [PyField::Str(addr), PyField::Str(op), rest @ ..] = fields else {
+        return Err(EditError::new(
+            "command must start with (address, op) strings",
+        ));
+    };
+    command_from_parts(addr, subcommand_from_pyfields(op, rest)?)
+}
+
+fn str_fields<'a>(op: &str, fields: &'a [PyField]) -> Result<Vec<&'a str>, EditError> {
+    fields
+        .iter()
+        .map(|f| match f {
+            PyField::Str(s) => Ok(s.as_str()),
+            PyField::Seq(_) => Err(EditError::new(format!("{op} fields must be strings"))),
+        })
+        .collect()
+}
+
+fn subcommand_from_pyfields(op: &str, fields: &[PyField]) -> Result<Subcommand, EditError> {
+    if let "g" | "g!" | "v" = op {
+        let [PyField::Str(pattern), PyField::Seq(inner)] = fields else {
+            return Err(EditError::new(format!(
+                "{op} takes (pattern, (subcommand, ...))"
+            )));
+        };
+        let [PyField::Str(iop), irest @ ..] = inner.as_slice() else {
+            return Err(EditError::new("global subcommand must start with an op string"));
+        };
+        if matches!(iop.as_str(), "g" | "g!" | "v") {
+            return Err(EditError::new("global commands cannot nest"));
+        }
+        return Ok(Subcommand::Global {
+            invert: op != "g",
+            pattern: pattern.clone(),
+            cmd: Box::new(subcommand_from_pyfields(iop, irest)?),
+        });
+    }
+    let f = str_fields(op, fields)?;
+    match (op, f.as_slice()) {
+        ("d", []) => Ok(Subcommand::Delete),
+        ("p", []) => Ok(Subcommand::Print),
+        ("j", []) => Ok(Subcommand::Join),
+        ("sort", []) => Ok(Subcommand::Sort),
+        ("a", [text]) => Ok(Subcommand::Append(split_text_payload(text))),
+        ("i", [text]) => Ok(Subcommand::Insert(split_text_payload(text))),
+        ("c", [text]) => Ok(Subcommand::Change(split_text_payload(text))),
+        ("s", [pat, rep]) => Ok(Subcommand::Substitute(subst_from_parts(
+            (*pat).into(),
+            (*rep).into(),
+            "",
+        )?)),
+        ("s", [pat, rep, flags]) => Ok(Subcommand::Substitute(subst_from_parts(
+            (*pat).into(),
+            (*rep).into(),
+            flags,
+        )?)),
+        ("y", [source, dest]) => {
+            let (source, dest) = translit_from_parts((*source).into(), (*dest).into())?;
+            Ok(Subcommand::Transliterate { source, dest })
+        }
+        ("m", [dest]) => Ok(Subcommand::Move {
+            dest: parse_destination_address(dest, 'm')?,
+        }),
+        ("t", [dest]) => Ok(Subcommand::Copy {
+            dest: parse_destination_address(dest, 't')?,
+        }),
+        (">", rest @ ([] | [_])) => Ok(Subcommand::Indent {
+            levels: parse_optional_usize(rest.first().copied().unwrap_or(""))?,
+        }),
+        ("<", rest @ ([] | [_])) => Ok(Subcommand::Dedent {
+            levels: parse_optional_usize(rest.first().copied().unwrap_or(""))?,
+        }),
+        _ => Err(EditError::new(format!(
+            "invalid tuple command: {op:?} with {} field(s)",
+            f.len()
+        ))),
+    }
+}
+
 #[pyfunction]
 #[pyo3(name = "exhash", signature = (text, *cmds, sw=4))]
-fn py_exhash(py: Python<'_>, text: &str, cmds: Vec<String>, sw: usize) -> PyResult<EditResultPy> {
-    let cmd_refs: Vec<&str> = cmds.iter().map(|s| s.as_str()).collect();
+fn py_exhash(py: Python<'_>, text: &str, cmds: Vec<Vec<PyField>>, sw: usize) -> PyResult<EditResultPy> {
     let parsed = guard("parsing commands", || {
-        crate::parse_commands_from_strs(&cmd_refs)
+        cmds.iter()
+            .map(|c| command_from_pyfields(c))
+            .collect::<Result<Vec<_>, _>>()
     })?
     .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    warn_on_ex_style_dot_terminators(py, &cmds, &parsed)?;
+    warn_on_ex_style_dot_terminators(py, &parsed)?;
     let res = guard("applying edits", || {
         crate::edit_text_with_sw(text, &parsed, sw)
     })?
@@ -169,13 +263,14 @@ fn exhash(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-fn warn_on_ex_style_dot_terminators(
-    py: Python<'_>,
-    inputs: &[String],
-    parsed: &[Command],
-) -> PyResult<()> {
-    for (i, (input, cmd)) in inputs.iter().zip(parsed.iter()).enumerate() {
-        if command_has_text_block(cmd) && looks_like_ex_style_dot_terminator(input) {
+fn warn_on_ex_style_dot_terminators(py: Python<'_>, parsed: &[Command]) -> PyResult<()> {
+    for (i, cmd) in parsed.iter().enumerate() {
+        let Some(text) = command_text_block(cmd) else { continue };
+        let mut lines: Vec<&str> = text.iter().map(|s| s.as_str()).collect();
+        while matches!(lines.last(), Some(&"")) {
+            lines.pop();
+        }
+        if lines.len() >= 2 && matches!(lines.last(), Some(&".")) {
             let msg = format!(
                 "cmds[{i}] ends with a '.' line. In exhash(text, cmds), a/i/c text blocks do not use ex-style '.' terminators; that final '.' line will be inserted literally."
             );
@@ -186,27 +281,13 @@ fn warn_on_ex_style_dot_terminators(
     Ok(())
 }
 
-fn command_has_text_block(cmd: &Command) -> bool {
+fn command_text_block(cmd: &Command) -> Option<&[String]> {
     match &cmd.cmd {
-        Subcommand::Append(_) | Subcommand::Insert(_) | Subcommand::Change(_) => true,
-        Subcommand::Global { cmd, .. } => matches!(
-            cmd.as_ref(),
-            Subcommand::Append(_) | Subcommand::Insert(_) | Subcommand::Change(_)
-        ),
-        _ => false,
+        Subcommand::Append(t) | Subcommand::Insert(t) | Subcommand::Change(t) => Some(t),
+        Subcommand::Global { cmd, .. } => match cmd.as_ref() {
+            Subcommand::Append(t) | Subcommand::Insert(t) | Subcommand::Change(t) => Some(t),
+            _ => None,
+        },
+        _ => None,
     }
-}
-
-fn looks_like_ex_style_dot_terminator(input: &str) -> bool {
-    let Some((_, rest)) = input.split_once('\n') else {
-        return false;
-    };
-    let mut lines: Vec<&str> = rest
-        .split('\n')
-        .map(|line| line.strip_suffix('\r').unwrap_or(line))
-        .collect();
-    while matches!(lines.last(), Some(&"")) {
-        lines.pop();
-    }
-    matches!(lines.last(), Some(&"."))
 }

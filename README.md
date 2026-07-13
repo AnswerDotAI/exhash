@@ -162,34 +162,38 @@ print(res["lines"])  # ["bar", "baz"]
 # Literal newlines in pattern can match across lines
 a1, a2 = lnhash(1, "foo"), lnhash(2, "bar")
 res = exhash("foo\nbar\n", [(f"{a1},{a2}", "s", "foo\nbar", "replaced")])
+
+# Global commands take a pattern plus a nested subcommand tuple (no address)
+res = exhash("keep\nTODO x\n", [("%", "g", "TODO", ("d",))])
+
+# Transliterate takes source/dest fields (equal character counts)
+res = exhash("abc\n", [(lnhash(1, "abc"), "y", "abc", "ABC")])
 ```
 
 ### File helpers
 
-`lnhashview_file` reads directly from one file path. All file paths, including file-qualified addresses, expand a leading `~` to your home directory. `exhash_file(path, cmds, sw=4, inplace=True)` uses `path` as the default file context for unqualified addresses. Put file-qualified source and `m`/`t` destination addresses in the address/destination tuple fields:
+`lnhashview_file` reads directly from one file path. All file paths, including file-qualified addresses, expand a leading `~` to your home directory. `exhash_file(path, *cmds, sw=4, inplace=True)` uses `path` as the default file context for unqualified addresses. Pass each command as its own tuple argument. Put file-qualified source and `m`/`t` destination addresses in the address/destination tuple fields:
 
 ```py
 view = lnhashview_file("file.py")
 
 # By default, writes changed files after every command succeeds
 # and returns the combined diff string.
-diff = exhash_file("file.py", [(addr, "s", "foo", "bar")])
+diff = exhash_file("file.py", (addr, "s", "foo", "bar"))
 
 # With inplace=False, files are unchanged and a FileSetEditResult is returned.
-res = exhash_file("file.py", [(addr, "s", "foo", "bar")], inplace=False)
+res = exhash_file("file.py", (addr, "s", "foo", "bar"), inplace=False)
 print(res.changed)          # ["file.py"]
 print(res["file.py"].lines)
 print(res.format_diff())    # includes --- file.py / +++ file.py headers
 
 # Missing files are treated as empty only when the command is valid on empty input.
-diff = exhash_file("new.py", [("0|0000|", "a", "print('hi')")])
+diff = exhash_file("new.py", ("0|0000|", "a", "print('hi')"))
 
 # File-qualified addresses can edit or transfer lines across files.
-cmds = [
+diff = exhash_file("src/a.py",
     ("src/a.py:24|8f12|,38|c0de|", "m", "src/b.py:$"),
-    (r"src/a.py:5|91aa|", "s", r"from \.b import old", r"from \.b import helper"),
-]
-diff = exhash_file("src/a.py", cmds)
+    (r"src/a.py:5|91aa|", "s", r"from \.b import old", r"from \.b import helper"))
 ```
 
 A file prefix is separated from the address with `:`. Escape literal colons in filenames as `\:` and literal backslashes as `\\`.
@@ -204,7 +208,7 @@ A file prefix is separated from the address with `:`. Escape literal colons in f
 
 ### Notebook cells
 
-`lnhashview_cell(path, cell_id, ...)` returns a normal lnhash view for one cell. `lnhashview_cells(path, *cell_ids, ...)` returns the requested cells in order, using `# cell <id>` headers before each cell's normal `lineno|hash|content` lines. `exhash_cell(path, cell_id, cmds, sw=4, inplace=True)` edits one cell; like `exhash_file` it writes and returns a diff by default, and `inplace=False` previews the `EditResult` without touching the file.
+`lnhashview_cell(path, cell_id, ...)` returns a normal lnhash view for one cell. `lnhashview_cells(path, *cell_ids, ...)` returns the requested cells in order, using `# cell <id>` headers before each cell's normal `lineno|hash|content` lines. `exhash_cell(path, cell_id, *cmds, sw=4, inplace=True)` edits one cell; pass each command as its own tuple argument. Like `exhash_file` it writes and returns a diff by default, and `inplace=False` previews the `EditResult` without touching the file.
 
 ### The `%%exhash` cell magic
 

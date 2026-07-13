@@ -79,31 +79,7 @@ pub fn parse_commands_from_args(
     Ok(out)
 }
 
-/// Parse commands from a list of individual command strings (for programmatic APIs).
-///
-/// Each string is one command. For `a`/`i`/`c`, all text after the
-/// command character is literal payload. Use `cfirst\nsecond` when `first`
-/// is the first inserted line; `c\nfirst` inserts a leading blank line before
-/// `first`. Do not use `.` terminators or split text into separate entries;
-/// a trailing `.` line is literal text.
-/// For other commands, extra lines are an error.
-pub fn parse_commands_from_strs(cmds: &[&str]) -> Result<Vec<Command>, EditError> {
-    let mut out = Vec::with_capacity(cmds.len());
-    for s in cmds {
-        if s.trim().is_empty() {
-            continue;
-        }
-        let cmd = parse_command_with_text_from_str(s)?;
-        out.push(cmd);
-    }
-    Ok(out)
-}
-
-fn parse_command_with_text_from_str(input: &str) -> Result<Command, EditError> {
-    parse_command_with_text(input, || Ok(vec![]))
-}
-
-fn split_text_payload(text: &str) -> Vec<String> {
+pub fn split_text_payload(text: &str) -> Vec<String> {
     text.split('\n')
         .map(|line| line.strip_suffix('\r').unwrap_or(line).to_string())
         .collect()
@@ -136,18 +112,7 @@ fn parse_command_with_text<F>(line: &str, mut read_text: F) -> Result<Command, E
 where
     F: FnMut() -> Result<Vec<String>, EditError>,
 {
-    let line = line.trim_start();
-    let (addr1, mut rest) = parse_address_prefix(line)?;
-    let mut has_comma = false;
-    let mut addr2: Option<Address> = None;
-
-    if rest.starts_with(',') {
-        has_comma = true;
-        let (a2, r2) = parse_address_prefix(&rest[1..])?;
-        addr2 = Some(a2);
-        rest = r2;
-    }
-
+    let (addr1, addr2, has_comma, rest) = parse_addresses(line)?;
     let rest = rest.trim_start();
     if rest.is_empty() {
         return Err(EditError::new("missing command"));
@@ -163,6 +128,43 @@ where
         )));
     }
 
+    build_command(addr1, addr2, has_comma, cmd)
+}
+
+/// Parse `addr[,addr]` from the start of `input`, returning the remainder.
+fn parse_addresses(input: &str) -> Result<(Address, Option<Address>, bool, &str), EditError> {
+    let (addr1, mut rest) = parse_address_prefix(input.trim_start())?;
+    let mut has_comma = false;
+    let mut addr2: Option<Address> = None;
+
+    if rest.starts_with(',') {
+        has_comma = true;
+        let (a2, r2) = parse_address_prefix(&rest[1..])?;
+        addr2 = Some(a2);
+        rest = r2;
+    }
+    Ok((addr1, addr2, has_comma, rest))
+}
+
+/// Build a command from an address string and an already-built subcommand (the tuple form).
+pub fn command_from_parts(addr: &str, cmd: Subcommand) -> Result<Command, EditError> {
+    let (addr1, addr2, has_comma, rest) = parse_addresses(addr)?;
+    if !rest.trim().is_empty() {
+        return Err(EditError::new(format!(
+            "unexpected trailing characters in address: {:?}",
+            rest
+        )));
+    }
+    build_command(addr1, addr2, has_comma, cmd)
+}
+
+/// Validate address/command combinations and assemble the `Command`.
+fn build_command(
+    addr1: Address,
+    addr2: Option<Address>,
+    has_comma: bool,
+    cmd: Subcommand,
+) -> Result<Command, EditError> {
     if matches!(addr1, Address::WholeFile) {
         if has_comma || addr2.is_some() {
             return Err(EditError::new("% is already a whole-file range"));
@@ -216,7 +218,7 @@ fn parse_address_prefix(input: &str) -> Result<(Address, &str), EditError> {
     Ok((Address::LnHash(lh), rest))
 }
 
-fn parse_destination_address(input: &str, op: char) -> Result<Address, EditError> {
+pub fn parse_destination_address(input: &str, op: char) -> Result<Address, EditError> {
     let (addr, rest) = parse_address_prefix(input)?;
     if !rest.trim().is_empty() {
         return Err(EditError::new(format!(
@@ -322,7 +324,7 @@ where
     }
 }
 
-fn parse_optional_usize(s: &str) -> Result<usize, EditError> {
+pub fn parse_optional_usize(s: &str) -> Result<usize, EditError> {
     let s = s.trim();
     if s.is_empty() {
         return Ok(1);
@@ -386,10 +388,19 @@ fn parse_substitute(rest: &str) -> Result<(Subst, &str), EditError> {
     let (pat, after_pat) = parse_delimited(rest, delim)?;
     let (rep, after_rep) = scan_to_delim(after_pat, delim)?;
 
+    Ok((subst_from_parts(pat, rep, after_rep)?, ""))
+}
+
+/// Validate substitute fields and flags (shared by the compact and tuple forms).
+pub fn subst_from_parts(
+    pattern: String,
+    replacement: String,
+    flags: &str,
+) -> Result<Subst, EditError> {
     let mut global = false;
     let mut case_insensitive = false;
 
-    for ch in after_rep.trim().chars() {
+    for ch in flags.trim().chars() {
         match ch {
             'g' => global = true,
             'i' => case_insensitive = true,
@@ -397,19 +408,16 @@ fn parse_substitute(rest: &str) -> Result<(Subst, &str), EditError> {
         }
     }
 
-    if pat.is_empty() {
+    if pattern.is_empty() {
         return Err(EditError::new("substitute pattern may not be empty"));
     }
 
-    Ok((
-        Subst {
-            pattern: pat,
-            replacement: rep,
-            global,
-            case_insensitive,
-        },
-        "",
-    ))
+    Ok(Subst {
+        pattern,
+        replacement,
+        global,
+        case_insensitive,
+    })
 }
 
 fn parse_transliterate(rest: &str) -> Result<((String, String), &str), EditError> {
@@ -427,13 +435,17 @@ fn parse_transliterate(rest: &str) -> Result<((String, String), &str), EditError
     let (source, after_source) = parse_delimited(rest, delim)?;
     let (dest, trailing) = scan_to_delim(after_source, delim)?;
 
+    Ok((translit_from_parts(source, dest)?, trailing))
+}
+
+/// Validate transliterate source/dest fields (shared by the compact and tuple forms).
+pub fn translit_from_parts(source: String, dest: String) -> Result<(String, String), EditError> {
     if source.chars().count() != dest.chars().count() {
         return Err(EditError::new(
             "transliterate source and destination must have the same number of characters",
         ));
     }
-
-    Ok(((source, dest), trailing))
+    Ok((source, dest))
 }
 
 /// Parse a `/.../` delimited string from the start of `input`.

@@ -32,17 +32,30 @@ def lnhashview_file(path:str, start:int=None, end:int=None) -> "LnhashView":
     return LnhashView(_lnhashview(Path(path).expanduser().read_text(), start, end))
 
 
-_SUBST_DELIMS = "/@#~%=:;,+^!|"
+_NOFIELD = {'d', 'p', 'j', 'sort'}
 
 
-def _normalize_subst_tuple(addr, parts):
-    if len(parts) not in {2, 3}: raise ValueError("s tuple must be (addr, 's', pattern, replacement[, flags])")
-    pat, repl = parts[:2]
-    flags = parts[2] if len(parts) == 3 else ''
-    if not all(isinstance(o, str) for o in (addr, pat, repl, flags)): raise TypeError("s tuple fields must be strings")
-    delim = next((d for d in _SUBST_DELIMS if d not in pat and d not in repl), None)
-    if delim is None: raise ValueError("pattern/replacement contain every supported substitute delimiter")
-    return f'{addr}s{delim}{pat}{delim}{repl}{delim}{flags}'
+def _normalize_subcmd(op, parts):
+    "Validate and canonicalize the post-address fields of a tuple command"
+    if op == 's':
+        if len(parts) not in {2, 3}: raise ValueError("s tuple must be (addr, 's', pattern, replacement[, flags])")
+        if not all(isinstance(o, str) for o in parts): raise TypeError("s tuple fields must be strings")
+        return (op, *parts)
+    if op == 'y':
+        if len(parts) != 2 or not all(isinstance(o, str) for o in parts): raise ValueError("y tuple must be (addr, 'y', source, dest)")
+        return (op, *parts)
+    if op in ('g', 'g!', 'v'):
+        if len(parts) != 2 or not isinstance(parts[0], str) or not isinstance(parts[1], tuple) or not parts[1]:
+            raise ValueError(f"{op} tuple must be (addr, {op!r}, pattern, (op, ...))")
+        return (op, parts[0], _normalize_subcmd(parts[1][0], list(parts[1][1:])))
+    if op in _NOFIELD:
+        if parts: raise ValueError(f"{op!r} tuple takes no payload")
+        return (op,)
+    if len(parts) > 1: raise ValueError(f"{op!r} tuple accepts at most one payload field")
+    payload = parts[0] if parts else ''
+    if op in '><' and isinstance(payload, int): payload = str(payload)
+    if not isinstance(payload, str): raise TypeError("tuple command payload must be a string")
+    return (op, payload)
 
 
 def _normalize_cmd(cmd):
@@ -50,12 +63,7 @@ def _normalize_cmd(cmd):
     if len(cmd) < 2: raise ValueError("tuple commands must start with (address, command)")
     addr, op, *parts = cmd
     if not isinstance(addr, str) or not isinstance(op, str): raise TypeError("tuple command address and command must be strings")
-    if op == 's': return _normalize_subst_tuple(addr, parts)
-    if len(parts) > 1: raise ValueError(f"{op!r} tuple accepts at most one payload field")
-    payload = parts[0] if parts else ''
-    if op in '><' and isinstance(payload, int): payload = str(payload)
-    if not isinstance(payload, str): raise TypeError("tuple command payload must be a string")
-    return f'{addr}{op}{payload}'
+    return (addr, *_normalize_subcmd(op, parts))
 
 
 def _normalize_cmds(cmds): return [_normalize_cmd(cmd) for cmd in cmds]
@@ -80,10 +88,11 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
       (addr, "s", pattern, replacement[, flags])
                          Substitute using Rust regex syntax. Replacement supports
                          $1, $0, ${name}. Flags: g=all, i=case-insensitive.
-                         Pattern and replacement strings may contain literal
-                         slashes and newlines; replacement newlines split lines.
+                         Pattern and replacement are taken verbatim (any
+                         characters, including slashes, backslashes, and
+                         newlines); replacement newlines split lines.
                          Fails if the pattern matches nothing in the addressed
-                         range (substitutes inside g// payloads stay lenient).
+                         range (substitutes inside g subcommands stay lenient).
       (addr, "d")       Delete line(s)
       (addr, "a", text) Append payload after line
       (addr, "i", text) Insert payload before line
@@ -95,12 +104,15 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
       (addr, "<", n)    Dedent n levels (default 1, `sw` spaces each)
       (addr, "sort")    Sort lines alphabetically
       (addr, "p")       Print (include in output without changing)
-      (addr, "g", payload), (addr, "g!", payload), (addr, "v", payload)
-                         Global commands; payload uses compact ex syntax such as
-                         ``/pattern/d``.
-      (addr, "y", payload)
-                         Transliterate; payload uses compact ex syntax such as
-                         ``/abc/ABC/``.
+      (addr, "g", pattern, sub), (addr, "g!", pattern, sub), (addr, "v", pattern, sub)
+                         Global commands: apply `sub` to each addressed line
+                         matching `pattern` (`g!`/`v`: not matching). `sub` is a
+                         nested subcommand tuple without an address, e.g.
+                         ``("d",)`` or ``("s", "foo", "bar", "g")``. Globals
+                         cannot nest.
+      (addr, "y", source, dest)
+                         Transliterate `source` characters to `dest` (equal
+                         character counts required).
 
     `sw` controls shift width for `<` and `>` and defaults to 4.
 
@@ -246,47 +258,65 @@ def _split_file_prefix(s):
     return None, s
 
 
-def _parse_fileaddr(s, default_path):
+_CELLPATH_RE = re.compile(r'(.*\.ipynb):([A-Za-z0-9_-]+)')
+
+def _target_key(target):
+    path, cell = target
+    return path if cell is None else f'{path}:{cell}'
+
+
+def _parse_fileaddr(s, default):
     s = s.lstrip()
     path, rest = _split_file_prefix(s)
-    path = path or default_path
+    target = (path, None) if path else default
+    if path and (m2 := _CELLPATH_RE.fullmatch(path)): target = (m2.group(1), m2.group(2))
     m = _ADDR_RE.match(rest)
     if not m: raise ValueError(f'expected exhash address near {s[:40]!r}')
-    return path, m.group(0), rest[m.end():]
+    return target, m.group(0), rest[m.end():]
 
 
-def _parse_file_command(raw, default_path):
-    if not raw.strip(): return None
-    src, addr1, rest = _parse_fileaddr(raw.lstrip(), default_path)
-    has_comma, addr2, local = False, None, addr1
+def _parse_file_command(cmd, default):
+    addr, op, *fields = cmd
+    src, addr1, rest = _parse_fileaddr(addr, default)
+    has_comma, addr2 = False, None
     if rest.startswith(','):
         has_comma = True
         src2, addr2, rest = _parse_fileaddr(rest[1:], src)
-        if src2 != src: raise ValueError('cross-file ranges are invalid')
-        local += ',' + addr2
-    local += rest
-    body = rest.lstrip()
-    op = body[:1] if body[:1] in {'m', 't'} else None
-    dest = dest_addr = None
-    if op:
-        dest, dest_addr, tail = _parse_fileaddr(body[1:].strip(), src)
+        if src2 != src: raise ValueError('a range must stay within one file or cell')
+    if rest.strip(): raise ValueError(f'unexpected trailing characters in address: {rest!r}')
+    parsed = dict(src=src, addr1=addr1, addr2=addr2, has_comma=has_comma, op=op, dest=None, dest_addr=None, local=None)
+    if op in ('m', 't'):
+        dest, dest_addr, tail = _parse_fileaddr(fields[0], src)
         if tail.strip(): raise ValueError(f'unexpected trailing characters after destination: {tail!r}')
-    return dict(src=src, addr1=addr1, addr2=addr2, has_comma=has_comma, rest=rest, local=local, op=op, dest=dest, dest_addr=dest_addr)
+        parsed.update(dest=dest, dest_addr=dest_addr)
+    else:
+        local_addr = addr1 if addr2 is None else f'{addr1},{addr2}'
+        parsed['local'] = (local_addr, op, *fields)
+    return parsed
 
 
-def _load_buffer(buffers, path, missing_ok=False):
-    if path in buffers: return buffers[path]
+def _load_buffer(st, target, missing_ok=False):
+    path, cell = target
+    if cell is not None:
+        if path not in st['nbs']: st['nbs'][path] = json.loads(Path(path).expanduser().read_text())
+        c = _find_cell(st['nbs'][path], cell, path)
+        target = (path, c['id'])
+        if target not in st['bufs']:
+            text = _cell_text(c)
+            st['bufs'][target] = dict(path=path, cellref=c, trail_nl=text.endswith('\n'), original=text.splitlines(), lines=text.splitlines())
+        return st['bufs'][target]
+    if target in st['bufs']: return st['bufs'][target]
     p = Path(path)
     try: lines = p.read_text().splitlines()
     except FileNotFoundError:
         if not missing_ok: raise
         if not p.parent.exists(): raise
         lines = []
-    buffers[path] = dict(path=path, original=list(lines), lines=list(lines))
-    return buffers[path]
+    st['bufs'][target] = dict(path=path, cellref=None, original=list(lines), lines=list(lines))
+    return st['bufs'][target]
 
 
-def _can_create_missing(parsed): return parsed['addr1'] == '0|0000|' and parsed['rest'].lstrip()[:1] in {'a', 'i'}
+def _can_create_missing(parsed): return parsed['addr1'] == '0|0000|' and parsed['op'] in ('a', 'i')
 
 
 def _split_lnhash_addr(addr):
@@ -326,9 +356,9 @@ def _dest_index(lines, addr):
     return _line_no(lines, addr, allow_zero=True)
 
 
-def _apply_transfer(buffers, parsed):
-    src = _load_buffer(buffers, parsed['src'])
-    dst = _load_buffer(buffers, parsed['dest'], missing_ok=parsed['dest_addr'] == '0|0000|')
+def _apply_transfer(st, parsed):
+    src = _load_buffer(st, parsed['src'])
+    dst = _load_buffer(st, parsed['dest'], missing_ok=parsed['dest_addr'] == '0|0000|' and parsed['dest'][1] is None)
     s, e = _source_indexes(src['lines'], parsed)
     dest = _dest_index(dst['lines'], parsed['dest_addr'])
     segment = src['lines'][s:e + 1] if s <= e else []
@@ -345,31 +375,35 @@ def _apply_transfer(buffers, parsed):
         dst['lines'][dest:dest] = segment
 
 
-def _apply_file_command(buffers, parsed, sw):
-    if parsed['op']:
-        _apply_transfer(buffers, parsed)
+def _apply_file_command(st, parsed, sw):
+    if parsed['op'] in ('m', 't'):
+        _apply_transfer(st, parsed)
         return
-    buf = _load_buffer(buffers, parsed['src'], missing_ok=_can_create_missing(parsed))
+    buf = _load_buffer(st, parsed['src'], missing_ok=_can_create_missing(parsed) and parsed['src'][1] is None)
     res = _exhash(_text_from_lines(buf['lines']), parsed['local'], sw=sw)
     buf['lines'] = list(res['lines'])
 
 
 @fail_clean(ValueError)
-def exhash_file(path:str, cmds:list[tuple], sw:int=4, inplace:bool=True):
-    r'''Read files, apply file-aware exhash commands, and return per-file results or a combined diff.
+def exhash_file(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
+    r'''Read files and notebook cells, apply file-aware exhash commands, and return per-target results or a combined diff.
 
     Core tuple syntax is the same as ``exhash(text, cmds, sw=sw)``; run
     ``doc(exhash)`` for the full command reference. Use ``path`` as the default
     file context for unqualified addresses. Prefix source address strings, and
-    ``m``/``t`` destination strings, with ``path:`` to target another file::
+    ``m``/``t`` destination strings, with ``path:`` to target another file, or
+    ``path.ipynb:cellid:`` to target one notebook cell's source (``cellid`` may
+    be an exact id or unique prefix)::
 
       ("src/a.py:12|a3f2|", "s", "foo", "bar")
       ("src/a.py:10|aaaa|,20|bbbb|", "m", "src/b.py:$")
       ("src/a.py:10|aaaa|", "t", "new.py:0|0000|")
+      ("nb.ipynb:ab12cd34:6|830e|", "t", "other.ipynb:9f8e7d:0|0000|")
+      ("nb.ipynb:ab12cd34:%", "t", "snippets.py:$")
 
-    A range must stay within one file. The second address may omit the filename
-    and inherit it from the first address. Cross-file ranges are invalid. Escape
-    literal colons in filenames as ``\:`` and literal backslashes as ``\\``.
+    A range must stay within one file or cell. The second address may omit the
+    prefix and inherit it from the first address. Escape literal colons in
+    filenames as ``\:`` and literal backslashes as ``\\``.
 
     For multiline ``a``/``i``/``c`` commands, put all inserted text in the tuple
     payload string. A leading newline in that payload inserts a leading blank
@@ -378,38 +412,52 @@ def exhash_file(path:str, cmds:list[tuple], sw:int=4, inplace:bool=True):
 
     Missing files are treated as empty only when the command is valid against an
     empty buffer, such as ``("0|0000|", "a", text)``/``("0|0000|", "i", text)``
-    or an ``m``/``t`` destination of ``0|0000|``.
+    or an ``m``/``t`` destination of ``0|0000|``. Cells are never created:
+    a cell target must already exist, or the command raises ``KeyError``.
 
     By default (``inplace=True``) write changed files only after every command
     succeeds and return the combined diff string; if any command fails, write
     nothing. Pass ``inplace=False`` to preview instead: nothing is written and a
     ``FileSetEditResult`` is returned with ``files``, ``changed``, ``default_path``,
-    ``res[path]``, and ``res.format_diff(context=1)``.
+    ``res[path]`` (cell targets under ``'path:cellid'``), and ``res.format_diff(context=1)``.
     '''
-    default_path, buffers = _norm_path(path), {}
-    for raw in _normalize_cmds(cmds):
-        parsed = _parse_file_command(raw, default_path)
-        if parsed is not None: _apply_file_command(buffers, parsed, sw)
-    if not buffers: _load_buffer(buffers, default_path)
-    files = {path: FileEditResult(path, buf['original'], buf['lines']) for path, buf in buffers.items()}
-    result = FileSetEditResult(files, default_path)
+    default, st = (_norm_path(path), None), dict(bufs={}, nbs={})
+    for cmd in _normalize_cmds(cmds): _apply_file_command(st, _parse_file_command(cmd, default), sw)
+    if not st['bufs']: _load_buffer(st, default)
+    files = {_target_key(t): FileEditResult(_target_key(t), buf['original'], buf['lines']) for t, buf in st['bufs'].items()}
+    result = FileSetEditResult(files, _norm_path(path))
     if inplace:
-        for path in result.changed: _write_lines(path, result[path].lines)
+        nbs_out = {}
+        for t, buf in st['bufs'].items():
+            if buf['original'] == buf['lines']: continue
+            if buf['cellref'] is None: _write_lines(buf['path'], buf['lines'])
+            else:
+                new = '\n'.join(buf['lines'])
+                if buf['trail_nl'] and new: new += '\n'
+                c = buf['cellref']
+                c['source'] = new.splitlines(keepends=True) if isinstance(c['source'], list) else new
+                nbs_out[buf['path']] = st['nbs'][buf['path']]
+        for pth, nb in nbs_out.items(): Path(pth).expanduser().write_text(json.dumps(nb, sort_keys=True, indent=1, ensure_ascii=False) + '\n')
         return result.format_diff()
     return result
 
 
 
 
-def _load_cell(path, cell_id):
-    'Return ``(nb, cell)`` for the cell whose id is ``cell_id`` (exact match or unique prefix).'
-    nb = json.loads(Path(path).expanduser().read_text())
+def _find_cell(nb, cell_id, path):
+    'The cell in `nb` whose id is ``cell_id`` (exact match or unique prefix).'
     cells = [c for c in nb['cells'] if c.get('id','').startswith(cell_id)]
     exact = [c for c in cells if c.get('id')==cell_id]
     if exact: cells = exact
     if not cells: raise KeyError(f'no cell with id {cell_id!r} in {path}')
     if len(cells)>1: raise KeyError(f'cell id prefix {cell_id!r} is ambiguous in {path}')
-    return nb, cells[0]
+    return cells[0]
+
+
+def _load_cell(path, cell_id):
+    'Return ``(nb, cell)`` for the cell whose id is ``cell_id`` (exact match or unique prefix).'
+    nb = json.loads(Path(path).expanduser().read_text())
+    return nb, _find_cell(nb, cell_id, path)
 
 
 def _cell_text(cell):
@@ -433,7 +481,7 @@ def lnhashview_cells(path:str, *cell_ids:str, start:int=None, end:int=None) -> "
 
 
 @fail_clean(ValueError)
-def exhash_cell(path:str, cell_id:str, cmds:list[tuple], sw:int=4, inplace:bool=True):
+def exhash_cell(path:str, cell_id:str, *cmds:tuple, sw:int=4, inplace:bool=True):
     """Apply exhash commands to the source of notebook cell ``cell_id`` in ipynb file at ``path``.
 
     Command syntax is the same as ``exhash(text, cmds, sw=sw)``; run ``doc(exhash)``

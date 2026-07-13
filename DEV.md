@@ -83,13 +83,13 @@ The `exhash` and `lnhashview` commands are Python console scripts declared in `[
 
 ## Command parsing modes
 
-The Rust core has three parsing functions:
+The Rust core takes commands two ways:
 
-- `parse_commands_from_strs(&[&str])`: Rust/PyO3 bridge for already-normalized raw commands. The Python wrapper accepts tuple command specs and turns them into these strings before calling the Rust parser. For `a/i/c`, text starts immediately after the command character and may contain newlines. Use `cfirst\nsecond` when `first` is the first inserted line; `c\nfirst` inserts a leading blank line before `first`. Do not use `.` terminators or split text into separate command entries; a trailing `.` line is literal text and the Python binding warns about this common mistake.
-- `parse_commands_from_script(&str)`: for script strings; commands are separated by newlines. Single-line `a/i/c` text may be inline; if omitted, following lines up to `.` are used as the text block.
-- `parse_commands_from_args(&[String], &mut BufRead)`: used by the `exhash` CLI via the `exhash_argv` binding; each arg is a command. Single-line `a/i/c` text may be inline; if omitted, text blocks are read from the stdin stream terminated by `.`.
+- Structural (PyO3 `exhash` binding): the Python wrapper validates tuple command specs and passes them through as tuples; `python.rs` builds `Command`/`Subcommand` values directly (`command_from_pyfields`), with no string round-trip. Address strings are parsed by `parse::command_from_parts`; field validation (substitute flags, transliterate counts) is shared with the compact parser via `subst_from_parts`/`translit_from_parts`. Global commands carry their subcommand as a nested tuple; text fields are verbatim, so there is no delimiter choice or escaping anywhere on this path. A trailing `.` line in an `a/i/c` payload is literal text and the binding warns about this common mistake.
+- Compact ex-style strings, where strings are the input medium:
+  - `parse_commands_from_script(&str)`: for script strings; commands are separated by newlines. Single-line `a/i/c` text may be inline; if omitted, following lines up to `.` are used as the text block.
+  - `parse_commands_from_args(&[String], &mut BufRead)`: used by the `exhash` CLI via the `exhash_argv` binding; each arg is a command. Single-line `a/i/c` text may be inline; if omitted, text blocks are read from the stdin stream terminated by `.`.
 
 File-qualified addresses are parsed by the Python `exhash_file` wrapper after tuple normalization; the Rust parser and CLI remain single-buffer.
 
-Normalized commands preserve newlines in text fields. This is used by `a/i/c` payloads and by parsed fields such as `s///` pattern/replacement; replacement newlines split lines during editing. Commands without text fields do not take text. Substitute parsing keeps Rust regex escapes intact (`\d`, `\w`, etc.) while allowing escaped command delimiters (`\/`).
-Transliteration uses `y/src/dst/` and validates equal character counts at parse time.
+Commands preserve newlines in text fields. This is used by `a/i/c` payloads and by `s` pattern/replacement; replacement newlines split lines during editing. Commands without text fields do not take text. In compact strings, substitute parsing keeps Rust regex escapes intact (`\d`, `\w`, etc.) while allowing escaped command delimiters (`\/`); compact transliteration uses `y/src/dst/`. Tuple fields need no escaping at all.

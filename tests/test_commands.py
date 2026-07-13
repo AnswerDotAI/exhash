@@ -7,14 +7,14 @@ from exhash import exhash, lnhash
 def test_global_delete():
     text = "keep\nTODO one\nTODO two\nkeep2\n"
     a1, a4 = lnhash(1, "keep"), lnhash(4, "keep2")
-    res = exhash(text, [(f"{a1},{a4}", "g", "/TODO/d")])
+    res = exhash(text, [(f"{a1},{a4}", "g", "TODO", ("d",))])
     assert res["lines"] == ["keep", "keep2"]
     assert res["deleted"] == [2, 3]
 
 def test_global_inverted_delete_and_v_alias():
     text = "keep\ndrop\nkeep2\n"
     a1, a3 = lnhash(1, "keep"), lnhash(3, "keep2")
-    for cmd in ((f"{a1},{a3}", "g!", "/keep/d"), (f"{a1},{a3}", "v", "/keep/d")):
+    for cmd in ((f"{a1},{a3}", "g!", "keep", ("d",)), (f"{a1},{a3}", "v", "keep", ("d",))):
         res = exhash(text, [cmd])
         assert res["lines"] == ["keep", "keep2"]
         assert res["deleted"] == [2]
@@ -64,7 +64,7 @@ def test_substitute_no_match_fails():
     assert res["lines"] == ["abc"]
     assert res["modified"] == []
     # g// payloads stay lenient: not every selected line need match the sub
-    res = exhash("ab\na\n", [("%", "g", "/a/s/b/X/")])
+    res = exhash("ab\na\n", [("%", "g", "a", ("s", "b", "X"))])
     assert res["lines"] == ["aX", "a"]
 
 def test_substitute_global_case_insensitive():
@@ -113,9 +113,35 @@ def test_clean_traceback(tmp_path):
     from exhash import exhash_file
     p = tmp_path/'t.txt'
     p.write_text('a\n')
-    for fn,args in [(exhash, ('a\n', [('1|dead|', 'c', 'x')])), (exhash_file, (str(p), [('1|dead|', 'c', 'x')]))]:
+    for fn,args in [(exhash, ('a\n', [('1|dead|', 'c', 'x')])), (exhash_file, (str(p), ('1|dead|', 'c', 'x')))]:
         try: fn(*args)
         except ValueError as e:
             assert e.__cause__ is None
             assert len(traceback.extract_tb(e.__traceback__)) <= 2, fn.__name__
         else: assert False
+
+
+def test_global_structural_tuple():
+    "g/g!/v take (pattern, inner-subcommand-tuple); string payloads are a clean-break rejection"
+    text = "keep\nTODO one\nTODO two\nkeep2\n"
+    res = exhash(text, [("%", "g", "TODO", ("d",))])
+    assert res["lines"] == ["keep", "keep2"]
+    res = exhash(text, [("%", "g", "TODO", ("s", "TODO", "DONE"))])
+    assert res["lines"] == ["keep", "DONE one", "DONE two", "keep2"]
+    res = exhash("ab\na\n", [("%", "g", "a", ("s", "b", "X", "g"))])
+    assert res["lines"] == ["aX", "a"]
+    for op in ("g!", "v"):
+        res = exhash("keep\ndrop\nkeep2\n", [("%", op, "keep", ("d",))])
+        assert res["lines"] == ["keep", "keep2"]
+    res = exhash("x\ny\n", [("%", "g", "x", ("a", "after x"))])
+    assert res["lines"] == ["x", "after x", "y"]
+    with pytest.raises((TypeError, ValueError)): exhash(text, [("%", "g", "/TODO/d")])
+    with pytest.raises(ValueError): exhash(text, [("%", "g", "a", ("g", "b", ("d",)))])  # no nesting
+
+
+def test_transliterate_structural_tuple():
+    "y takes (source, dest) fields; the /src/dst/ payload is a clean-break rejection"
+    res = exhash("abc\n", [(lnhash(1, "abc"), "y", "abc", "ABC")])
+    assert res["lines"] == ["ABC"]
+    with pytest.raises(ValueError): exhash("abc\n", [(lnhash(1, "abc"), "y", "abc", "AB")])  # unequal counts
+    with pytest.raises((TypeError, ValueError)): exhash("abc\n", [(lnhash(1, "abc"), "y", "/abc/ABC/")])

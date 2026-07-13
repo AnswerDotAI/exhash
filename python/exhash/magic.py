@@ -13,7 +13,7 @@ def exhash_magic(line, cell):
     *target, addr, cmd = args
     if cmd not in ('a','i','c'): raise ValueError(f'command must be a, i, or c; got {cmd!r}')
     if cell.endswith('\n'): cell = cell[:-1]
-    cmds = [(addr, cmd, cell)]
-    return exhash_cell(*target, cmds) if len(target)==2 else exhash_file(target[0], cmds)
+    command = (addr, cmd, cell)
+    return exhash_cell(*target, command) if len(target)==2 else exhash_file(target[0], command)
 
 def load_ipython_extension(ipython): ipython.register_magic_function(exhash_magic, 'cell', 'exhash')

@@ -99,7 +99,7 @@ def test_exhash_substitute_preserves_pattern_escapes():
 def test_exhash_transliterate_range():
     text = "abc\ncab\n"
     a1, a2 = lnhash(1, "abc"), lnhash(2, "cab")
-    res = exhash(text, [(f"{a1},{a2}", "y", "/abc/ABC/")])
+    res = exhash(text, [(f"{a1},{a2}", "y", "abc", "ABC")])
     assert res["lines"] == ["ABC", "CAB"]
     assert res["modified"] == [1, 2]
 
@@ -283,6 +283,19 @@ def test_exhash_custom_delimiter():
     res = exhash(text, [(addr, "s", "a/b", "c/d")])
     assert res["lines"] == ["c/d"]
 
+
+def test_exhash_substitute_backslash_fields():
+    "No delimiter round-trip: trailing backslashes and delimiter-dense fields pass through verbatim"
+    line = r"end with two \\"
+    res = exhash(line + "\n", [(lnhash(1, line), "s", r"\\\\$", "\\")])
+    assert res["lines"] == [r"end with two \\"[:-1]]                    # two trailing backslashes -> one
+    line2 = "x"
+    delims = "/@#~%=:;,+^!|"
+    res = exhash(line2 + "\n", [(lnhash(1, line2), "s", "x", delims)])  # replacement uses every former delimiter
+    assert res["lines"] == [delims]
+    res = exhash("a\\b\n", [(lnhash(1, "a\\b"), "s", r"\\", "\\/")])
+    assert res["lines"] == ["a\\/b"]                                    # backslash before a slash survives
+
 def test_exhash_literal_newline_in_pattern():
     text = "foo\nbar\nbaz\n"
     a1, a2 = lnhash(1, "foo"), lnhash(2, "bar")
@@ -308,7 +321,7 @@ def test_exhash_file_inplace(tmp_path):
     f = tmp_path / "test.txt"
     f.write_text("foo\nbar\n")
     addr = lnhash(1, "foo")
-    diff = exhash_file(str(f), [(addr, "s", "foo", "baz")], inplace=True)
+    diff = exhash_file(str(f), (addr, "s", "foo", "baz"), inplace=True)
     assert isinstance(diff, str)
     assert repr(diff) == str(diff)
     assert "+{}baz".format(lnhash(1, "baz")) in diff
@@ -317,7 +330,7 @@ def test_exhash_file_inplace(tmp_path):
 def test_exhash_file_inplace_creates_missing_file_from_empty_input(tmp_path):
     from exhash import exhash_file, lnhash
     f = tmp_path / "new.txt"
-    diff = exhash_file(str(f), [("0|0000|", "a", "hello")], inplace=True)
+    diff = exhash_file(str(f), ("0|0000|", "a", "hello"), inplace=True)
     assert f.read_text() == "hello\n"
     assert f"+{lnhash(1, 'hello')}hello" in diff
 
@@ -326,7 +339,7 @@ def test_exhash_file_returns_file_set_result(tmp_path):
     f = tmp_path / "test.txt"
     f.write_text("foo\nbar\n")
     addr = lnhash(1, "foo")
-    res = exhash_file(str(f), [(addr, "s", "foo", "baz")], inplace=False)
+    res = exhash_file(str(f), (addr, "s", "foo", "baz"), inplace=False)
     assert res.default_path == str(f)
     assert res.changed == [str(f)]
     assert res[str(f)]["lines"] == ["baz", "bar"]
@@ -343,18 +356,18 @@ def test_exhash_file_writes_by_default(tmp_path):
     from exhash import exhash_file, lnhash
     f = tmp_path / "test.txt"
     f.write_text("foo\nbar\n")
-    diff = exhash_file(str(f), [(lnhash(1, "foo"), "s", "foo", "baz")])
+    diff = exhash_file(str(f), (lnhash(1, "foo"), "s", "foo", "baz"))
     assert isinstance(diff, str) and f"+{lnhash(1, 'baz')}baz" in diff
     assert f.read_text() == "baz\nbar\n"
 
 
 
-def test_exhash_file_accepts_tuple_commands(tmp_path):
+def test_exhash_file_accepts_variadic_commands(tmp_path):
     from exhash import exhash_file, lnhash
     f = tmp_path / "test.txt"
     f.write_text("foo\nbar\n")
     addr = lnhash(1, "foo")
-    diff = exhash_file(str(f), [(addr, "s", "foo", "baz")], inplace=True)
+    diff = exhash_file(str(f), (addr, "s", "foo", "baz"), inplace=True)
     assert f.read_text() == "baz\nbar\n"
     assert f"+{lnhash(1, 'baz')}baz" in diff
 
@@ -364,7 +377,7 @@ def test_exhash_file_copies_to_file_qualified_destination(tmp_path):
     a.write_text("one\ntwo\n")
     b.write_text("alpha\n")
     cmd = (f"{a}:{lnhash(2, 'two')}", "t", f"{b}:0|0000|")
-    res = exhash_file(str(a), [cmd], inplace=False)
+    res = exhash_file(str(a), cmd, inplace=False)
     assert res.changed == [str(b)]
     assert res[str(b)]["lines"] == ["two", "alpha"]
     assert a.read_text() == "one\ntwo\n"
@@ -376,7 +389,7 @@ def test_exhash_file_moves_to_missing_file(tmp_path):
     a, new = tmp_path / "a.txt", tmp_path / "new.txt"
     a.write_text("one\ntwo\n")
     cmd = (f"{a}:{lnhash(2, 'two')}", "m", f"{new}:0|0000|")
-    diff = exhash_file(str(a), [cmd], inplace=True)
+    diff = exhash_file(str(a), cmd, inplace=True)
     assert a.read_text() == "one\n"
     assert new.read_text() == "two\n"
     assert f"--- {a}" in diff
@@ -390,7 +403,7 @@ def test_exhash_file_writes_nothing_if_later_command_fails(tmp_path):
     b.write_text("bar\n")
     cmd1 = (f"{a}:{lnhash(1, 'foo')}", "s", "foo", "FOO")
     cmd2 = (f"{b}:99|ffff|", "d")
-    with pytest.raises(ValueError): exhash_file(str(a), [cmd1, cmd2], inplace=True)
+    with pytest.raises(ValueError): exhash_file(str(a), cmd1, cmd2, inplace=True)
     assert a.read_text() == "foo\n"
     assert b.read_text() == "bar\n"
 
@@ -398,7 +411,7 @@ def test_exhash_file_writes_nothing_if_later_command_fails(tmp_path):
 def test_exhash_file_rejects_missing_file_without_creation_address(tmp_path):
     from exhash import exhash_file
     missing = tmp_path / "missing.txt"
-    with pytest.raises(FileNotFoundError): exhash_file(str(missing), [("%", "s", "foo", "bar")])
+    with pytest.raises(FileNotFoundError): exhash_file(str(missing), ("%", "s", "foo", "bar"))
     assert not missing.exists()
 
 
@@ -408,7 +421,7 @@ def test_exhash_file_rejects_missing_destination_parent_before_writing_source(tm
     dest = tmp_path / "missing" / "new.txt"
     a.write_text("one\ntwo\n")
     cmd = (f"{a}:{lnhash(2, 'two')}", "m", f"{dest}:0|0000|")
-    with pytest.raises(FileNotFoundError): exhash_file(str(a), [cmd], inplace=True)
+    with pytest.raises(FileNotFoundError): exhash_file(str(a), cmd, inplace=True)
     assert a.read_text() == "one\ntwo\n"
     assert not dest.exists()
 
@@ -421,7 +434,7 @@ def test_exhash_file_accepts_escaped_colon_in_file_prefix(tmp_path):
     target.write_text("foo\n")
     prefix = str(target).replace("\\", "\\\\").replace(":", "\\:")
     cmd = (f"{prefix}:{lnhash(1, 'foo')}", "s", "foo", "bar")
-    res = exhash_file(str(default), [cmd], inplace=False)
+    res = exhash_file(str(default), cmd, inplace=False)
     assert res.changed == [str(target)]
     assert res[str(target)]["lines"] == ["bar"]
 
@@ -432,13 +445,13 @@ def test_exhash_file_rejects_cross_file_source_range(tmp_path):
     a.write_text("a\n")
     b.write_text("b\n")
     cmd = (f"{a}:{lnhash(1, 'a')},{b}:{lnhash(1, 'b')}", "d")
-    with pytest.raises(ValueError, match="cross-file ranges"): exhash_file(str(a), [cmd])
+    with pytest.raises(ValueError, match="one file or cell"): exhash_file(str(a), cmd)
 
 def test_exhash_file_inplace_no_change_on_error(tmp_path):
     from exhash import exhash_file
     f = tmp_path / "test.txt"
     f.write_text("foo\nbar\n")
-    with pytest.raises(ValueError): exhash_file(str(f), [("99|ffff|", "s", "x", "y")], inplace=True)
+    with pytest.raises(ValueError): exhash_file(str(f), ("99|ffff|", "s", "x", "y"), inplace=True)
     assert f.read_text() == "foo\nbar\n"
 
 def test_lnhashview_start_end():
@@ -483,7 +496,7 @@ def test_exhash_file_accepts_padded_range_addresses(tmp_path):
     from exhash import exhash_file
     f = tmp_path / "test.txt"
     f.write_text("a\nb\nc\n")
-    res = exhash_file(str(f), [(f" {lnhash(1, 'a')}, {lnhash(2, 'b')}", "d")], inplace=False)
+    res = exhash_file(str(f), (f" {lnhash(1, 'a')}, {lnhash(2, 'b')}", "d"), inplace=False)
     assert res[str(f)]["lines"] == ["c"]
 
 
@@ -493,12 +506,12 @@ def test_tilde_expansion(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     (tmp_path / "f.txt").write_text("foo\nbar\n")
     assert "foo" in lnhashview_file("~/f.txt")[0]
-    exhash_file("~/f.txt", [(lnhash(1, "foo"), "s", "foo", "baz")])
+    exhash_file("~/f.txt", (lnhash(1, "foo"), "s", "foo", "baz"))
     assert (tmp_path / "f.txt").read_text() == "baz\nbar\n"
-    exhash_file("~/f.txt", [(r"~/g.txt:0|0000|", "a", "hi")])
+    exhash_file("~/f.txt", (r"~/g.txt:0|0000|", "a", "hi"))
     assert (tmp_path / "g.txt").read_text() == "hi\n"
     nb = dict(cells=[dict(id="abc", cell_type="code", source="x=1\n", metadata={})], metadata={}, nbformat=4, nbformat_minor=5)
     (tmp_path / "nb.ipynb").write_text(json.dumps(nb))
     assert "x=1" in lnhashview_cell("~/nb.ipynb", "abc")[0]
-    exhash_cell("~/nb.ipynb", "abc", [(lnhash(1, "x=1"), "s", "x=1", "x=2")])
+    exhash_cell("~/nb.ipynb", "abc", (lnhash(1, "x=1"), "s", "x=1", "x=2"))
     assert json.loads((tmp_path / "nb.ipynb").read_text())["cells"][0]["source"] == "x=2\n"
