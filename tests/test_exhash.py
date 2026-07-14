@@ -515,3 +515,13 @@ def test_tilde_expansion(tmp_path, monkeypatch):
     assert "x=1" in lnhashview_cell("~/nb.ipynb", "abc")[0]
     exhash_cell("~/nb.ipynb", "abc", (lnhash(1, "x=1"), "s", "x=1", "x=2"))
     assert json.loads((tmp_path / "nb.ipynb").read_text())["cells"][0]["source"] == "x=2\n"
+
+
+def test_missing_path_error_messages(tmp_path):
+    from exhash import exhash_file, exhash_cell
+    with pytest.raises(FileNotFoundError, match=r'parent directory .* does not exist'):
+        exhash_file(str(tmp_path/'nodir'/'new.txt'), ("0|0000|", "a", "hi"))
+    with pytest.raises(FileNotFoundError, match=r'0\|0000\|'):
+        exhash_file(str(tmp_path/'absent.txt'), ("%", "s", "foo", "bar"))
+    with pytest.raises(FileNotFoundError, match='notebook'):
+        exhash_cell(str(tmp_path/'absent.ipynb'), 'ab12', ("1|abcd|", "c", "hi"))

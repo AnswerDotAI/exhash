@@ -6,6 +6,8 @@ from pathlib import Path
 from .exhash import line_hash as _line_hash, lnhash as _lnhash, lnhashview as _lnhashview, exhash as _exhash
 from fastcore.basics import fail_clean, PrettyString
 
+stdexcs = (ValueError, OSError, KeyError)
+
 def line_hash(line:str) -> str:
     'Return a 4-char lowercase hex hash for a single line of text.'
     return _line_hash(line)
@@ -27,6 +29,7 @@ def lnhashview(text:str, start:int=None, end:int=None) -> "LnhashView":
     return LnhashView(_lnhashview(text, start, end))
 
 
+@fail_clean(*stdexcs)
 def lnhashview_file(path:str, start:int=None, end:int=None) -> "LnhashView":
     'Return lines formatted as space-padded ``lineno|hash|content`` for file at ``path``. Optional 1-based ``start``/``end`` filter the range; ``end`` past EOF is clamped.'
     return LnhashView(_lnhashview(Path(path).expanduser().read_text(), start, end))
@@ -298,7 +301,10 @@ def _parse_file_command(cmd, default):
 def _load_buffer(st, target, missing_ok=False):
     path, cell = target
     if cell is not None:
-        if path not in st['nbs']: st['nbs'][path] = json.loads(Path(path).expanduser().read_text())
+        if path not in st['nbs']:
+            nbp = Path(path).expanduser()
+            if not nbp.exists(): raise FileNotFoundError(f'notebook not found: {path}')
+            st['nbs'][path] = json.loads(nbp.read_text())
         c = _find_cell(st['nbs'][path], cell, path)
         target = (path, c['id'])
         if target not in st['bufs']:
@@ -309,8 +315,8 @@ def _load_buffer(st, target, missing_ok=False):
     p = Path(path)
     try: lines = p.read_text().splitlines()
     except FileNotFoundError:
-        if not missing_ok: raise
-        if not p.parent.exists(): raise
+        if not missing_ok: raise FileNotFoundError(f'file not found: {path} (a new file can only be created with a 0|0000| a/i command)') from None
+        if not p.parent.exists(): raise FileNotFoundError(f'cannot create {path}: parent directory {p.parent} does not exist') from None
         lines = []
     st['bufs'][target] = dict(path=path, cellref=None, original=list(lines), lines=list(lines))
     return st['bufs'][target]
@@ -384,7 +390,7 @@ def _apply_file_command(st, parsed, sw):
     buf['lines'] = list(res['lines'])
 
 
-@fail_clean(ValueError)
+@fail_clean(*stdexcs)
 def exhash_file(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
     r'''Read files and notebook cells, apply file-aware exhash commands, and return per-target results or a combined diff.
 
@@ -456,7 +462,9 @@ def _find_cell(nb, cell_id, path):
 
 def _load_cell(path, cell_id):
     'Return ``(nb, cell)`` for the cell whose id is ``cell_id`` (exact match or unique prefix).'
-    nb = json.loads(Path(path).expanduser().read_text())
+    nbp = Path(path).expanduser()
+    if not nbp.exists(): raise FileNotFoundError(f'notebook not found: {path}')
+    nb = json.loads(nbp.read_text())
     return nb, _find_cell(nb, cell_id, path)
 
 
@@ -465,11 +473,13 @@ def _cell_text(cell):
     return src if isinstance(src, str) else ''.join(src)
 
 
+@fail_clean(*stdexcs)
 def lnhashview_cell(path:str, cell_id:str, start:int=None, end:int=None) -> "LnhashView":
     'Return lines formatted as ``lineno|hash|content`` for the source of notebook cell ``cell_id`` in ipynb file at ``path``. ``cell_id`` may be an exact id or unique prefix; optional 1-based ``start``/``end`` filter the range.'
     return LnhashView(_lnhashview(_cell_text(_load_cell(path, cell_id)[1]), start, end))
 
 
+@fail_clean(*stdexcs)
 def lnhashview_cells(path:str, *cell_ids:str, start:int=None, end:int=None) -> "LnhashView":
     'Return grouped lnhash views for explicit notebook cell ids. Each group starts with ``# cell <id>``; following lines keep normal ``lineno|hash|content`` format.'
     out = []
@@ -480,7 +490,7 @@ def lnhashview_cells(path:str, *cell_ids:str, start:int=None, end:int=None) -> "
     return LnhashView(out)
 
 
-@fail_clean(ValueError)
+@fail_clean(*stdexcs)
 def exhash_cell(path:str, cell_id:str, *cmds:tuple, sw:int=4, inplace:bool=True):
     """Apply exhash commands to the source of notebook cell ``cell_id`` in ipynb file at ``path``.
 

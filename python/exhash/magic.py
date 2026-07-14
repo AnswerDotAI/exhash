@@ -1,6 +1,9 @@
 "IPython cell magic carrying a/i/c payload text verbatim, so delimiter-hostile payloads need no Python string quoting."
 import shlex
+from fastcore.basics import fail_clean
+from . import stdexcs
 
+@fail_clean(*stdexcs)
 def exhash_magic(line, cell):
     """Apply one exhash a/i/c command with the cell body as its payload.
 
