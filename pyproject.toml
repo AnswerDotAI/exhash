@@ -38,5 +38,8 @@ features = ["extension-module"]
 python-source = "python"
 module-name = "exhash.exhash"
 
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
+
 [tool.fastship]
 branch = "main"
