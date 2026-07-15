@@ -10,7 +10,7 @@ pip install exhash
 
 ## lnhash format
 
-We refer to an *lnhash* as a tag of the form `lineno|hash|`, where `hash` is the lower 16 bits of Rust's `DefaultHasher` over the line content.
+We refer to an *lnhash* as a tag of the form `lineno|hash|`, where `hash` is the lower 16 bits of CRC-32 (IEEE) over the line's UTF-8 content, i.e. Python's `zlib.crc32(line) & 0xffff` formatted as 4 hex chars.
 
 Address forms:
 

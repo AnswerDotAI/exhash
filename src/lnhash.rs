@@ -1,5 +1,3 @@
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 
 use crate::EditError;
 
@@ -12,12 +10,10 @@ pub struct LnHash {
 
 /// Compute the 16-bit lnhash of a line's content.
 ///
-/// The hash is the low 16 bits of `std::collections::hash_map::DefaultHasher` (SipHash-1-3)
-/// over the UTF-8 line content (excluding the line ending).
+/// The hash is the low 16 bits of CRC-32 (IEEE) over the UTF-8 line content
+/// (excluding the line ending), matching Python's `zlib.crc32(line) & 0xffff`.
 pub fn line_hash_u16(line: &str) -> u16 {
-    let mut h = DefaultHasher::new();
-    line.hash(&mut h);
-    (h.finish() & 0xffff) as u16
+    (crc32fast::hash(line.as_bytes()) & 0xffff) as u16
 }
 
 /// Format a line address as `lineno|hash|`.

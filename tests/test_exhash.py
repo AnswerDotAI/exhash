@@ -21,6 +21,11 @@ def test_line_hash_deterministic():
     assert line_hash("foo") == line_hash("foo")
     assert line_hash("foo") != line_hash("bar")
 
+def test_line_hash_matches_stdlib_crc32():
+    import zlib
+    for s in ["", "hello", "    indented", "café ünïcode", "a|b|c", "x"*300]:
+        assert line_hash(s) == f"{zlib.crc32(s.encode()) & 0xffff:04x}"
+
 def test_lnhash_format():
     addr = lnhash(1, "hello")
     assert addr.startswith("1|")
