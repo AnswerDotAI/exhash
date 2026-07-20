@@ -140,7 +140,7 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
     Call ``res.format_diff(context=1)`` for a unified-diff-style summary.
     Non-empty diffs start with ``--- original`` and ``+++ modified`` headers.
     NB: ``exhash_file``/``exhash_cell`` with ``inplace=True`` (their default) do not
-    return an EditResult: they return the formatted diff string directly.
+    return an EditResult: they return the formatted diff string directly (display-truncated via ``truncate_diff``).
 
     Examples::
 
@@ -174,7 +174,7 @@ class FileEditResult:
     def __str__(self): return str(self.format_diff())
 
     def __repr__(self):
-        diff = self.format_diff()
+        diff = truncate_diff(self.format_diff())
         return f'FileEditResult({self.path}: {len(self.lines)} lines{"" if diff else ", no changes"})' + (f'\n{diff}' if diff else '')
 
 
@@ -189,10 +189,12 @@ class FileSetEditResult:
 
     def format_diff(self, context=1): return PrettyString(''.join(str(self.files[path].format_diff(context)) for path in self.changed))
 
+    def _trunc_diff(self): return PrettyString(''.join(truncate_diff(self.files[p].format_diff()) for p in self.changed))
+
     def __str__(self): return str(self.format_diff())
 
     def __repr__(self):
-        diff = self.format_diff()
+        diff = self._trunc_diff()
         return f'FileSetEditResult({len(self.files)} files, {len(self.changed)} changed)' + (f'\n{diff}' if diff else '')
 
 
@@ -229,6 +231,18 @@ def _format_file_diff(path, old_lines, new_lines, context=1):
         out.append(f'{tag}{lnhash(lineno, line)}{line}')
         last = i
     return '\n'.join(out) + '\n'
+
+
+def truncate_diff(
+    s:str, # Formatted diff text
+    max_lines:int=15, # Max lines to keep before eliding the rest
+    maxlen:int=120, # Max chars per line; longer lines are cut and end with an ellipsis (``---``/``+++`` file headers exempt)
+)->str:
+    "Truncate diff text for display: cap line length and count, appending an elided-lines marker."
+    lines = s.splitlines()
+    out = [l if len(l)<=maxlen or l.startswith(('--- ','+++ ')) else l[:maxlen]+'…' for l in lines[:max_lines]]
+    if len(lines)>max_lines: out.append(f'…{len(lines)-max_lines} lines elided…')
+    return '\n'.join(out)+'\n' if out else ''
 
 
 def _unescape_path(path):
@@ -422,7 +436,7 @@ def exhash_file(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
     a cell target must already exist, or the command raises ``KeyError``.
 
     By default (``inplace=True``) write changed files only after every command
-    succeeds and return the combined diff string; if any command fails, write
+    succeeds and return the combined diff string (display-truncated via ``truncate_diff``); if any command fails, write
     nothing. Pass ``inplace=False`` to preview instead: nothing is written and a
     ``FileSetEditResult`` is returned with ``files``, ``changed``, ``default_path``,
     ``res[path]`` (cell targets under ``'path:cellid'``), and ``res.format_diff(context=1)``.
@@ -444,7 +458,7 @@ def exhash_file(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
                 c['source'] = new.splitlines(keepends=True) if isinstance(c['source'], list) else new
                 nbs_out[buf['path']] = st['nbs'][buf['path']]
         for pth, nb in nbs_out.items(): Path(pth).expanduser().write_text(json.dumps(nb, sort_keys=True, indent=1, ensure_ascii=False) + '\n')
-        return result.format_diff()
+        return result._trunc_diff()
     return result
 
 
@@ -500,7 +514,7 @@ def exhash_cell(path:str, cell_id:str, *cmds:tuple, sw:int=4, inplace:bool=True)
 
     By default (``inplace=True``) write the edited source back (preserving the cell's
     original str-or-list-of-lines form; the notebook re-serializes in Jupyter's JSON
-    layout) and return the diff string; if any command fails, write nothing. Pass
+    layout) and return the diff string (display-truncated via ``truncate_diff``); if any command fails, write nothing. Pass
     ``inplace=False`` to preview instead: the EditResult is returned without touching the file.
     """
     nb, cell = _load_cell(path, cell_id)
@@ -511,4 +525,4 @@ def exhash_cell(path:str, cell_id:str, *cmds:tuple, sw:int=4, inplace:bool=True)
     if text.endswith('\n') and new: new += '\n'
     cell['source'] = new.splitlines(keepends=True) if isinstance(cell['source'], list) else new
     Path(path).expanduser().write_text(json.dumps(nb, sort_keys=True, indent=1, ensure_ascii=False) + '\n')
-    return res.format_diff()
+    return PrettyString(truncate_diff(res.format_diff()))

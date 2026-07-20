@@ -530,3 +530,22 @@ def test_missing_path_error_messages(tmp_path):
         exhash_file(str(tmp_path/'absent.txt'), ("%", "s", "foo", "bar"))
     with pytest.raises(FileNotFoundError, match='notebook'):
         exhash_cell(str(tmp_path/'absent.ipynb'), 'ab12', ("1|abcd|", "c", "hi"))
+
+def test_truncate_diff():
+    from exhash import truncate_diff
+    short = "--- a\n+++ a\n+1|abcd|x\n"
+    assert truncate_diff(short) == short
+    long_line = "x" * 200
+    t = truncate_diff(f"+1|abcd|{long_line}\n")
+    assert t.splitlines()[0] == ("+1|abcd|" + long_line)[:120] + "…"
+    many = "\n".join(f"+{i}|abcd|line {i}" for i in range(1, 41)) + "\n"
+    t = truncate_diff(many)
+    lines = t.splitlines()
+    assert len(lines) == 16 and lines[-1] == "…25 lines elided…"
+    assert lines[:15] == many.splitlines()[:15]
+    assert truncate_diff("") == ""
+    assert truncate_diff(many, max_lines=40) == many
+    hdr = "--- /some/" + "long/" * 30 + "path.txt\n+1|abcd|x\n"
+    assert truncate_diff(hdr) == hdr
+    r = exhash("\n".join(f"x{i}" for i in range(40)) + "\n", [("%", "s", "x", "y", "g")])
+    assert "lines elided…" in repr(r) and "lines elided" not in str(r)

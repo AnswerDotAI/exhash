@@ -68,7 +68,7 @@ impl EditResultPy {
     }
 
     fn __repr__(&self) -> String {
-        let diff = self.diff_text(1);
+        let diff = truncate_diff(&self.diff_text(1), 15, 120);
         if diff.is_empty() {
             format!("EditResult({} lines, no changes)", self.lines.len())
         } else {
@@ -91,6 +91,30 @@ impl EditResultPy {
             "origins" => Ok(self.origins.clone().into_pyobject(py)?.into_any().unbind()),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
+    }
+}
+
+fn truncate_diff(s: &str, max_lines: usize, maxlen: usize) -> String {
+    let lines: Vec<&str> = s.lines().collect();
+    let mut out: Vec<String> = lines
+        .iter()
+        .take(max_lines)
+        .map(|l| {
+            if l.chars().count() <= maxlen {
+                (*l).to_string()
+            } else {
+                let cut: String = l.chars().take(maxlen).collect();
+                format!("{cut}…")
+            }
+        })
+        .collect();
+    if lines.len() > max_lines {
+        out.push(format!("…{} lines elided…", lines.len() - max_lines));
+    }
+    if out.is_empty() {
+        String::new()
+    } else {
+        out.join("\n") + "\n"
     }
 }
 
