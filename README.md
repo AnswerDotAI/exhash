@@ -103,7 +103,7 @@ In `--stdin` mode, multiline `a/i/c` text blocks are not available.
 ## Python API
 
 ```py
-from exhash import exhash, exhash_file, lnhash, lnhashview, lnhashview_file, line_hash
+from exhash import exhash, file_exhash, lnhash, lnhashview, lnhashview_file, line_hash
 ```
 
 ### Viewing
@@ -172,43 +172,43 @@ res = exhash("abc\n", [(lnhash(1, "abc"), "y", "abc", "ABC")])
 
 ### File helpers
 
-`lnhashview_file` reads directly from one file path. All file paths, including file-qualified addresses, expand a leading `~` to your home directory. `exhash_file(path, *cmds, sw=4, inplace=True)` uses `path` as the default file context for unqualified addresses. Pass each command as its own tuple argument. Put file-qualified source and `m`/`t` destination addresses in the address/destination tuple fields:
+`lnhashview_file` reads directly from one file path. All file paths, including file-qualified addresses, expand a leading `~` to your home directory. `file_exhash(path, *cmds, sw=4, inplace=True)` uses `path` as the default file context for unqualified addresses. Pass each command as its own tuple argument. Put file-qualified source and `m`/`t` destination addresses in the address/destination tuple fields:
 
 ```py
 view = lnhashview_file("file.py")
 
 # By default, writes changed files after every command succeeds
 # and returns the combined diff string.
-diff = exhash_file("file.py", (addr, "s", "foo", "bar"))
+diff = file_exhash("file.py", (addr, "s", "foo", "bar"))
 
 # With inplace=False, files are unchanged and a FileSetEditResult is returned.
-res = exhash_file("file.py", (addr, "s", "foo", "bar"), inplace=False)
+res = file_exhash("file.py", (addr, "s", "foo", "bar"), inplace=False)
 print(res.changed)          # ["file.py"]
 print(res["file.py"].lines)
 print(res.format_diff())    # includes --- file.py / +++ file.py headers
 
 # Missing files are treated as empty only when the command is valid on empty input.
-diff = exhash_file("new.py", ("0|0000|", "a", "print('hi')"))
+diff = file_exhash("new.py", ("0|0000|", "a", "print('hi')"))
 
 # File-qualified addresses can edit or transfer lines across files.
-diff = exhash_file("src/a.py",
+diff = file_exhash("src/a.py",
     ("src/a.py:24|8f12|,38|c0de|", "m", "src/b.py:$"),
     (r"src/a.py:5|91aa|", "s", r"from \.b import old", r"from \.b import helper"))
 ```
 
 A file prefix is separated from the address with `:`. Escape literal colons in filenames as `\:` and literal backslashes as `\\`.
 
-`exhash_file(..., inplace=False)` returns a `FileSetEditResult`:
+`file_exhash(..., inplace=False)` returns a `FileSetEditResult`:
 
 - `res.files`: dict of path to `FileEditResult`
 - `res.changed`: changed paths, in first-touch order
-- `res.default_path`: the default path passed to `exhash_file`
+- `res.default_path`: the default path passed to `file_exhash`
 - `res[path]`: shorthand for `res.files[path]`
 - `res.format_diff(context=1)`: combined diff with `--- path` / `+++ path` headers
 
 ### Notebook cells
 
-`lnhashview_cell(path, cell_id, ...)` returns a normal lnhash view for one cell. `lnhashview_cells(path, *cell_ids, ...)` returns the requested cells in order, using `# cell <id>` headers before each cell's normal `lineno|hash|content` lines. `exhash_cell(path, cell_id, *cmds, sw=4, inplace=True)` edits one cell; pass each command as its own tuple argument. Like `exhash_file` it writes and returns a diff by default, and `inplace=False` previews the `EditResult` without touching the file.
+`lnhashview_cell(path, cell_id, ...)` returns a normal lnhash view for one cell. `lnhashview_cells(path, *cell_ids, ...)` returns the requested cells in order, using `# cell <id>` headers before each cell's normal `lineno|hash|content` lines. `cell_exhash(path, cell_id, *cmds, sw=4, inplace=True)` edits one cell; pass each command as its own tuple argument. Like `file_exhash` it writes and returns a diff by default, and `inplace=False` previews the `EditResult` without touching the file.
 
 ### The `%%exhash` cell magic
 
@@ -254,7 +254,7 @@ print(res.format_diff())
 #  2|e5f6|bar
 ```
 
-All diff strings returned by `format_diff`, `exhash_file`, and `exhash_cell` are fastcore `PrettyString`s, and the result objects' reprs show the diff too - so in IPython, ending a cell with the bare call displays the diff verbatim, no `print` needed.
+All diff strings returned by `format_diff`, `file_exhash`, and `cell_exhash` are fastcore `PrettyString`s, and the result objects' reprs show the diff too - so in IPython, ending a cell with the bare call displays the diff verbatim, no `print` needed.
 
 ## Tests
 

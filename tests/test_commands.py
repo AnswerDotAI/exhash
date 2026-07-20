@@ -110,10 +110,10 @@ def test_transliterate_requires_equal_char_counts():
 def test_clean_traceback(tmp_path):
     "Errors from bad addresses show the caller's frame, not exhash internals"
     import traceback
-    from exhash import exhash_file
+    from exhash import file_exhash
     p = tmp_path/'t.txt'
     p.write_text('a\n')
-    for fn,args in [(exhash, ('a\n', [('1|dead|', 'c', 'x')])), (exhash_file, (str(p), ('1|dead|', 'c', 'x')))]:
+    for fn,args in [(exhash, ('a\n', [('1|dead|', 'c', 'x')])), (file_exhash, (str(p), ('1|dead|', 'c', 'x')))]:
         try: fn(*args)
         except ValueError as e:
             assert e.__cause__ is None

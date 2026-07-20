@@ -17,7 +17,7 @@ src/
   parse.rs        command parsing (script, strs, and args modes)
   python.rs       PyO3 bindings (incl. exhash_argv used by the CLI)
 python/exhash/
-  __init__.py     Python wrapper functions plus file-aware exhash_file orchestration
+  __init__.py     Python wrapper functions plus file-aware file_exhash orchestration
   _cli.py         exhash/lnhashview console-script entry points
   skill.py        pyskills entry point exposing exhash APIs for LLM tools
 tests/
@@ -50,7 +50,7 @@ All tests are Python (`tests/`); there are no `cargo test` unit tests.
 The `$` (last line) and `%` (whole file) address forms are resolved against the current buffer and do not require hashes.
 `edit_text_with_sw` exposes configurable shift width for `<` and `>`; `edit_text` defaults to `sw=4`.
 In CLI and Python file-helper flows, a missing file is treated as empty input only when the parsed command set is valid against an empty buffer (for example `0|0000|a`); otherwise the original file-not-found error is preserved.
-Python `exhash_file` adds the file-qualified orchestration layer. It parses optional `path:` prefixes, applies each command to the current in-memory buffer for that file, rejects cross-file source ranges, and writes changed files only after every command succeeds.
+Python `file_exhash` adds the file-qualified orchestration layer. It parses optional `path:` prefixes, applies each command to the current in-memory buffer for that file, rejects cross-file source ranges, and writes changed files only after every command succeeds.
 `lnhashview` range requests clamp `end` past EOF to the last available line, while invalid `start` values still error.
 
 ## Release
@@ -90,6 +90,6 @@ The Rust core takes commands two ways:
   - `parse_commands_from_script(&str)`: for script strings; commands are separated by newlines. Single-line `a/i/c` text may be inline; if omitted, following lines up to `.` are used as the text block.
   - `parse_commands_from_args(&[String], &mut BufRead)`: used by the `exhash` CLI via the `exhash_argv` binding; each arg is a command. Single-line `a/i/c` text may be inline; if omitted, text blocks are read from the stdin stream terminated by `.`.
 
-File-qualified addresses are parsed by the Python `exhash_file` wrapper after tuple normalization; the Rust parser and CLI remain single-buffer.
+File-qualified addresses are parsed by the Python `file_exhash` wrapper after tuple normalization; the Rust parser and CLI remain single-buffer.
 
 Commands preserve newlines in text fields. This is used by `a/i/c` payloads and by `s` pattern/replacement; replacement newlines split lines during editing. Commands without text fields do not take text. In compact strings, substitute parsing keeps Rust regex escapes intact (`\d`, `\w`, etc.) while allowing escaped command delimiters (`\/`); compact transliteration uses `y/src/dst/`. Tuple fields need no escaping at all.

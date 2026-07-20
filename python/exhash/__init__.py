@@ -139,7 +139,7 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
 
     Call ``res.format_diff(context=1)`` for a unified-diff-style summary.
     Non-empty diffs start with ``--- original`` and ``+++ modified`` headers.
-    NB: ``exhash_file``/``exhash_cell`` with ``inplace=True`` (their default) do not
+    NB: ``file_exhash``/``cell_exhash`` with ``inplace=True`` (their default) do not
     return an EditResult: they return the formatted diff string directly (display-truncated via ``truncate_diff``).
 
     Examples::
@@ -179,7 +179,7 @@ class FileEditResult:
 
 
 class FileSetEditResult:
-    'Edited state for an exhash_file command set.'
+    'Edited state for an file_exhash command set.'
     def __init__(self, files, default_path):
         self.files = files
         self.default_path = default_path
@@ -405,7 +405,7 @@ def _apply_file_command(st, parsed, sw):
 
 
 @fail_clean(*stdexcs)
-def exhash_file(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
+def file_exhash(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
     r'''Read files and notebook cells, apply file-aware exhash commands, and return per-target results or a combined diff.
 
     Core tuple syntax is the same as ``exhash(text, cmds, sw=sw)``; run
@@ -508,7 +508,7 @@ def lnhashview_cells(path:str, *cell_ids:str, start:int=None, end:int=None) -> "
 
 
 @fail_clean(*stdexcs)
-def exhash_cell(path:str, cell_id:str, *cmds:tuple, sw:int=4, inplace:bool=True):
+def cell_exhash(path:str, cell_id:str, *cmds:tuple, sw:int=4, inplace:bool=True):
     """Apply exhash commands to the source of notebook cell ``cell_id`` in ipynb file at ``path``.
 
     Command syntax is the same as ``exhash(text, cmds, sw=sw)``; run ``doc(exhash)``
