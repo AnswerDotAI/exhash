@@ -421,8 +421,11 @@ def exhash_file(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
       ("nb.ipynb:ab12cd34:6|830e|", "t", "other.ipynb:9f8e7d:0|0000|")
       ("nb.ipynb:ab12cd34:%", "t", "snippets.py:$")
 
-    A range must stay within one file or cell. The second address may omit the
-    prefix and inherit it from the first address. Escape literal colons in
+    A range must stay within one file or cell. An ``m``/``t`` destination that
+    omits the prefix inherits it from the *first address*, never from ``path``:
+    a bare destination like ``$`` targets the source's own file, even when
+    ``path`` names another. So whenever the source is qualified, qualify the
+    destination too. Escape literal colons in
     filenames as ``\:`` and literal backslashes as ``\\``.
 
     For multiline ``a``/``i``/``c`` commands, put all inserted text in the tuple
