@@ -165,37 +165,30 @@ fn build_command(
     has_comma: bool,
     cmd: Subcommand,
 ) -> Result<Command, EditError> {
-    if matches!(addr1, Address::WholeFile) {
-        if has_comma || addr2.is_some() {
-            return Err(EditError::new("% is already a whole-file range"));
-        }
+    if matches!(addr1, Address::WholeFile) && (has_comma || addr2.is_some()) {
+        return Err(EditError::new("% is already a whole-file range"));
     }
     if matches!(addr2, Some(Address::WholeFile)) {
         return Err(EditError::new("% is only allowed as a standalone address"));
     }
 
     // Enforce 0|0000| rules.
-    if let Address::LnHash(a1) = addr1 {
-        if a1.lineno == 0 {
-            if a1.hash != 0 {
-                return Err(EditError::new("0|0000| must have hash 0000"));
-            }
-            if has_comma || addr2.is_some() {
-                return Err(EditError::new("0|0000| is not allowed in ranges"));
-            }
-            match cmd {
-                Subcommand::Append(_) | Subcommand::Insert(_) => {}
-                _ => return Err(EditError::new("0|0000| is only allowed with i or a")),
-            }
+    if let Address::LnHash(a1) = addr1 && a1.lineno == 0 {
+        if a1.hash != 0 {
+            return Err(EditError::new("0|0000| must have hash 0000"));
+        }
+        if has_comma || addr2.is_some() {
+            return Err(EditError::new("0|0000| is not allowed in ranges"));
+        }
+        match cmd {
+            Subcommand::Append(_) | Subcommand::Insert(_) => {}
+            _ => return Err(EditError::new("0|0000| is only allowed with i or a")),
         }
     }
-    if let Some(Address::LnHash(a2)) = addr2 {
-        if a2.lineno == 0 {
-            return Err(EditError::new("0|0000| is not allowed in ranges"));
-        }
-        if matches!(addr1, Address::LnHash(LnHash { lineno: 0, .. })) {
-            return Err(EditError::new("0|0000| is not allowed in ranges"));
-        }
+    if let Some(Address::LnHash(a2)) = addr2
+        && (a2.lineno == 0 || matches!(addr1, Address::LnHash(LnHash { lineno: 0, .. })))
+    {
+        return Err(EditError::new("0|0000| is not allowed in ranges"));
     }
 
     Ok(Command {
@@ -245,14 +238,13 @@ where
     F: FnMut() -> Result<Vec<String>, EditError>,
 {
     let s = input.trim_start();
-    if s.starts_with("sort") {
-        let trailing = &s[4..];
+    if let Some(trailing) = s.strip_prefix("sort") {
         return Ok((Subcommand::Sort, trailing));
     }
 
     // g! must be checked before g
-    if s.starts_with("g!") {
-        return parse_global(&s[2..], true, read_text);
+    if let Some(rest) = s.strip_prefix("g!") {
+        return parse_global(rest, true, read_text);
     }
 
     let mut chars = s.chars();
@@ -451,7 +443,7 @@ pub fn translit_from_parts(source: String, dest: String) -> Result<(String, Stri
 /// Parse a `/.../` delimited string from the start of `input`.
 ///
 /// Returns (decoded, rest_after_closing_delim).
-fn parse_delimited<'a>(input: &'a str, delim: char) -> Result<(String, &'a str), EditError> {
+fn parse_delimited(input: &str, delim: char) -> Result<(String, &str), EditError> {
     let mut chars = input.chars();
     let first = chars
         .next()
@@ -493,7 +485,7 @@ fn parse_delimited<'a>(input: &'a str, delim: char) -> Result<(String, &'a str),
 /// Scan for the next unescaped `delim`, returning (content, rest_after_delim).
 /// Unlike `parse_delimited`, does not expect a leading delimiter.
 /// If no delimiter is found, returns all remaining input as content (allows optional trailing delim).
-fn scan_to_delim<'a>(input: &'a str, delim: char) -> Result<(String, &'a str), EditError> {
+fn scan_to_delim(input: &str, delim: char) -> Result<(String, &str), EditError> {
     let mut out = String::new();
     let mut escaped = false;
     let mut consumed = 0;

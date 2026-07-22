@@ -80,55 +80,14 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
     address strings. Each command's hashes are checked against the current text
     immediately before that command executes.
 
-    Address strings:
-      Single:   ``12|a3f2|``
-      Range:    ``12|a3f2|,15|b1c3|``
-      Last:     ``$`` (last line)
-      Whole:    ``%`` (whole file, same as ``1,$``)
-      Special:  ``0|0000|`` targets before line 1 (only with a or i)
+    Addresses, command tuples, and payload rules: the ``exhash.skill`` module
+    docstring is the full reference. Engine details beyond it:
 
-    Command tuples:
-      (addr, "s", pattern, replacement[, flags])
-                         Substitute using Rust regex syntax. Replacement supports
-                         $1, $0, ${name}. Flags: g=all, i=case-insensitive.
-                         Pattern and replacement are taken verbatim (any
-                         characters, including slashes, backslashes, and
-                         newlines); replacement newlines split lines.
-                         Fails if the pattern matches nothing in the addressed
-                         range (substitutes inside g subcommands stay lenient).
-      (addr, "d")       Delete line(s)
-      (addr, "a", text) Append payload after line
-      (addr, "i", text) Insert payload before line
-      (addr, "c", text) Change/replace with payload
-      (addr, "j")       Join with next line; with range, joins all
-      (addr, "m", dest) Move line(s) after dest address
-      (addr, "t", dest) Copy line(s) after dest address
-      (addr, ">", n)    Indent n levels (default 1, `sw` spaces each)
-      (addr, "<", n)    Dedent n levels (default 1, `sw` spaces each)
-      (addr, "sort")    Sort lines alphabetically
-      (addr, "p")       Print (include in output without changing)
-      (addr, "g", pattern, sub), (addr, "g!", pattern, sub), (addr, "v", pattern, sub)
-                         Global commands: apply `sub` to each addressed line
-                         matching `pattern` (`g!`/`v`: not matching). `sub` is a
-                         nested subcommand tuple without an address, e.g.
-                         ``("d",)`` or ``("s", "foo", "bar", "g")``. Globals
-                         cannot nest.
-      (addr, "y", source, dest)
-                         Transliterate `source` characters to `dest` (equal
-                         character counts required).
-
-    `sw` controls shift width for `<` and `>` and defaults to 4.
-
-    Text fields can contain newlines. This includes
-    multiline a/i/c payloads and s pattern/replacement fields. Commands without
-    text fields, such as d, m, and sort, do not take text.
-
-    For a/i/c, the payload string is inserted literally, including leading spaces
-    and newlines, e.g. ``(addr, "c", "    return x")``. ``"first\nsecond"``
-    starts with ``first``; ``"\nfirst"`` inserts a leading blank line before
-    ``first``. Do not use ``.`` terminators, and do not split the text block
-    into separate ``cmds`` entries. If you include a final ``.`` line, it is
-    inserted literally and exhash emits a warning.
+    - ``s`` fails if the pattern matches nothing in the addressed range
+      (substitutes inside ``g`` subcommands stay lenient).
+    - ``sw`` controls shift width for ``<`` and ``>`` and defaults to 4.
+    - Do not use ``.`` terminators: a final ``.`` line is inserted literally,
+      and exhash emits a warning.
 
     Returns an EditResult with attributes (also accessible as dict keys):
       lines     list of output lines
@@ -408,39 +367,28 @@ def _apply_file_command(st, parsed, sw):
 def file_exhash(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
     r'''Read files and notebook cells, apply file-aware exhash commands, and return per-target results or a combined diff.
 
-    Core tuple syntax is the same as ``exhash(text, cmds, sw=sw)``; run
-    ``doc(exhash)`` for the full command reference. Use ``path`` as the default
-    file context for unqualified addresses. Prefix source address strings, and
-    ``m``/``t`` destination strings, with ``path:`` to target another file, or
-    ``path.ipynb:cellid:`` to target one notebook cell's source (``cellid`` may
-    be an exact id or unique prefix)::
+    Command tuples are the ``exhash.skill`` module docstring's; ``path`` is the
+    default file context for unqualified addresses. Prefix source address
+    strings, and ``m``/``t`` destination strings, with ``path:`` to target
+    another file, or ``path.ipynb:cellid:`` to target one notebook cell's
+    source (``cellid`` may be an exact id or unique prefix)::
 
-      ("src/a.py:12|a3f2|", "s", "foo", "bar")
       ("src/a.py:10|aaaa|,20|bbbb|", "m", "src/b.py:$")
-      ("src/a.py:10|aaaa|", "t", "new.py:0|0000|")
-      ("nb.ipynb:ab12cd34:6|830e|", "t", "other.ipynb:9f8e7d:0|0000|")
-      ("nb.ipynb:ab12cd34:%", "t", "snippets.py:$")
 
     A range must stay within one file or cell. An ``m``/``t`` destination that
     omits the prefix inherits it from the *first address*, never from ``path``:
     a bare destination like ``$`` targets the source's own file, even when
     ``path`` names another. So whenever the source is qualified, qualify the
-    destination too. Escape literal colons in
-    filenames as ``\:`` and literal backslashes as ``\\``.
-
-    For multiline ``a``/``i``/``c`` commands, put all inserted text in the tuple
-    payload string. A leading newline in that payload inserts a leading blank
-    line. Do not use ``.`` terminators, and do not split the text block into
-    separate ``cmds`` entries.
-
-    Missing files are treated as empty only when the command is valid against an
-    empty buffer, such as ``("0|0000|", "a", text)``/``("0|0000|", "i", text)``
-    or an ``m``/``t`` destination of ``0|0000|``. Cells are never created:
-    a cell target must already exist, or the command raises ``KeyError``.
+    destination too. Escape literal colons in filenames as ``\:`` and literal
+    backslashes as ``\\``. Missing files are treated as empty only for commands
+    valid against an empty buffer (``0|0000|`` with ``a``/``i``, or as an
+    ``m``/``t`` destination); cells are never created: a cell target must
+    already exist, or the command raises ``KeyError``.
 
     By default (``inplace=True``) write changed files only after every command
-    succeeds and return the combined diff string (display-truncated via ``truncate_diff``); if any command fails, write
-    nothing. Pass ``inplace=False`` to preview instead: nothing is written and a
+    succeeds and return the combined diff string (display-truncated via
+    ``truncate_diff``); if any command fails, write nothing. Pass
+    ``inplace=False`` to preview instead: nothing is written and a
     ``FileSetEditResult`` is returned with ``files``, ``changed``, ``default_path``,
     ``res[path]`` (cell targets under ``'path:cellid'``), and ``res.format_diff(context=1)``.
     '''
@@ -511,8 +459,8 @@ def lnhashview_cells(path:str, *cell_ids:str, start:int=None, end:int=None) -> "
 def cell_exhash(path:str, cell_id:str, *cmds:tuple, sw:int=4, inplace:bool=True):
     """Apply exhash commands to the source of notebook cell ``cell_id`` in ipynb file at ``path``.
 
-    Command syntax is the same as ``exhash(text, cmds, sw=sw)``; run ``doc(exhash)``
-    for the full reference, and ``lnhashview_cell(path, cell_id)`` for addresses.
+    Command tuples are the ``exhash.skill`` module docstring's; use
+    ``lnhashview_cell(path, cell_id)`` for addresses.
     ``cell_id`` may be an exact id or unique prefix.
 
     By default (``inplace=True``) write the edited source back (preserving the cell's

@@ -68,7 +68,7 @@ impl EditResultPy {
     }
 
     fn __repr__(&self) -> String {
-        let diff = truncate_diff(&self.diff_text(1), 15, 120);
+        let diff = truncate_diff(&self.diff_text(1), 15, 160);
         if diff.is_empty() {
             format!("EditResult({} lines, no changes)", self.lines.len())
         } else {

@@ -1,7 +1,8 @@
 [package]
 name = "exhash"
 version = "0.4.9"
-edition = "2021"
+edition = "2024"
+rust-version = "1.91"
 license = "MIT OR Apache-2.0"
 description = "Verified line-addressed file editor using lnhash addresses"
 repository = "https://github.com/AnswerDotAI/exhash"

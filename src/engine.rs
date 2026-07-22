@@ -98,10 +98,8 @@ impl EditResult {
         let mut out = String::from("--- original\n+++ modified\n");
         let mut last: Option<usize> = None;
         for i in &interesting {
-            if let Some(prev) = last {
-                if *i > prev + 1 {
-                    out.push_str("---\n");
-                }
+            if let Some(prev) = last && *i > prev + 1 {
+                out.push_str("---\n");
             }
             let (tag, ref hash, text) = events[*i];
             out.push(tag);
