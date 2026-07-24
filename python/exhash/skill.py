@@ -30,7 +30,7 @@ Addressing:
   Special:  0|0000| targets before line 1 (only with a or i)
 
 Tuple commands:
-  (addr, "s", pat, repl[, flags]) Substitute (Rust regex syntax: backrefs in repl are $1/$0/${name}; a two-char \1 stays literal). Flags: g=all, i=case-insensitive. pat/repl are verbatim: literal newlines, slashes, and backslashes all work.
+  (addr, "s", pat, repl[, flags]) Substitute (Rust regex syntax: backrefs in repl are $1/$0/${name}; a two-char \1 stays literal; a literal $ is written $$, and $name followed by more text needs ${name}text -- an unknown group reference is an error). Flags: g=all, i=case-insensitive. pat/repl are verbatim: literal newlines, slashes, and backslashes all work. For $-heavy replacement text, prefer a c command: its payload has no template layer at all.
   (addr, "d")       Delete line(s)
   (addr, "a", text) Append payload after line
   (addr, "i", text) Insert payload before line

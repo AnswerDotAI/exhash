@@ -85,6 +85,9 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
 
     - ``s`` fails if the pattern matches nothing in the addressed range
       (substitutes inside ``g`` subcommands stay lenient).
+    - ``s`` also fails if the replacement references a capture group the pattern
+      does not define (unknown references would otherwise silently substitute the
+      empty string); a literal ``$`` is written ``$$``.
     - ``sw`` controls shift width for ``<`` and ``>`` and defaults to 4.
     - Do not use ``.`` terminators: a final ``.`` line is inserted literally,
       and exhash emits a warning.

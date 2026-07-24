@@ -549,3 +549,25 @@ def test_truncate_diff():
     assert truncate_diff(hdr) == hdr
     r = exhash("\n".join(f"x{i}" for i in range(40)) + "\n", [("%", "s", "x", "y", "g")])
     assert "lines elided…" in repr(r) and "lines elided" not in str(r)
+
+def test_exhash_substitute_unknown_group_fails():
+    "Unknown/invalid $refs in a replacement fail loudly instead of silently substituting nothing."
+    text = "abc\n"
+    addr = lnhash(1, "abc")
+    with pytest.raises(ValueError, match="1foo"):     # greedy name parse: probably meant ${1}foo
+        exhash(text, [(addr, "s", "(b)", "x$1foo")])
+    with pytest.raises(ValueError, match=r"\$\$"):    # unknown name, message teaches the escape
+        exhash(text, [(addr, "s", "b", "x$9y")])
+    with pytest.raises(ValueError, match="nope"):
+        exhash(text, [(addr, "s", "(?P<num>b)", "${nope}")])
+    with pytest.raises(ValueError):                   # numeric ref beyond the group count
+        exhash(text, [(addr, "s", "(b)", "$2")])
+
+def test_exhash_substitute_valid_refs_still_work():
+    "The strict check must not reject anything the template grammar makes valid."
+    text = "abc\n"
+    addr = lnhash(1, "abc")
+    assert exhash(text, [(addr, "s", "(b)", "${1}oo")])["lines"] == ["abooc"]
+    assert exhash(text, [(addr, "s", "b", "$$x")])["lines"] == ["a$xc"]      # $$ escape: no group involved
+    assert exhash(text, [(addr, "s", "b", "x$ y")])["lines"] == ["ax$ yc"]   # $ before non-name char is literal
+    assert exhash(text, [(addr, "s", "b", "$0!")])["lines"] == ["ab!c"]      # $0! parses as name "0" + "!"

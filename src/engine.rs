@@ -366,6 +366,7 @@ impl Engine {
     fn substitute_range(&mut self, start: usize, end: usize, s: &Subst) -> Result<bool, EditError> {
         let (s_idx, e_idx) = self.resolve_range(start, end)?;
         let re = build_regex(&s.pattern, s.case_insensitive)?;
+        verify_template(&re, &s.replacement)?;
         let multiline = s.pattern.contains('\n') || s.replacement.contains('\n');
         let mut matched = false;
         if multiline {
@@ -793,6 +794,72 @@ fn build_regex(pattern: &str, case_insensitive: bool) -> Result<Regex, EditError
     } else {
         Regex::new(pattern).map_err(|e| EditError::new(format!("invalid regex: {e}")))
     }
+}
+
+fn is_name_byte(b: u8) -> bool {
+    b == b'_' || b.is_ascii_alphanumeric()
+}
+
+/// Strict template check: every `$` group reference in `repl` must resolve against `re`'s
+/// groups. The expand grammar substitutes unknown references with the EMPTY string -- in an
+/// editor that is silent corruption, so unknown references fail loudly here instead. `$$`
+/// (the literal-`$` escape) and a `$` before a non-name character involve no group and pass.
+fn verify_template(re: &Regex, repl: &str) -> Result<(), EditError> {
+    let names: std::collections::HashSet<&str> = re.capture_names().flatten().collect();
+    let n = re.captures_len(); // includes $0
+    let check = |name: &str| -> Result<(), EditError> {
+        if let Ok(i) = name.parse::<usize>() {
+            if i < n {
+                return Ok(());
+            }
+            return Err(EditError::new(format!(
+                "replacement references group ${i}, but the pattern only defines groups $0-${}",
+                n - 1
+            )));
+        }
+        if names.contains(name) {
+            return Ok(());
+        }
+        Err(EditError::new(format!(
+            "replacement references group '{name}', which the pattern does not define \
+             (a literal `$` is written `$$`; a numbered group followed by text is `${{1}}text`)"
+        )))
+    };
+    let b = repl.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] != b'$' {
+            i += 1;
+            continue;
+        }
+        if i + 1 >= b.len() {
+            break; // trailing $: literal
+        }
+        if b[i + 1] == b'$' {
+            i += 2; // $$ escape
+            continue;
+        }
+        if b[i + 1] == b'{' {
+            match repl[i + 2..].find('}') {
+                Some(end) => {
+                    check(&repl[i + 2..i + 2 + end])?;
+                    i += end + 3;
+                }
+                None => i += 2, // unclosed ${: expand emits it literally, which is visible
+            }
+            continue;
+        }
+        let start = i + 1;
+        let mut j = start;
+        while j < b.len() && is_name_byte(b[j]) {
+            j += 1;
+        }
+        if j > start {
+            check(&repl[start..j])?;
+        }
+        i = j.max(i + 1);
+    }
+    Ok(())
 }
 
 fn join_strings(a: &str, b: &str) -> String {
