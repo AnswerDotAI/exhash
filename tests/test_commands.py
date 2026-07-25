@@ -1,7 +1,7 @@
 "Engine command coverage at the Python surface (ported from src/engine.rs + src/parse.rs unit tests)."
 import pytest
 
-from exhash import exhash, lnhash
+from exhash import exhash, lnhash, lnhashview
 
 
 def test_global_delete():
@@ -26,11 +26,56 @@ def test_sort_range():
     assert res["lines"] == ["a", "b", "c"]
     assert res["modified"] == [1, 2, 3]
 
-def test_print_marks_for_output():
+def test_print_reports_printed_not_modified():
     text = "a\nb\n"
     res = exhash(text, [(lnhash(2, "b"), "p")])
     assert res["lines"] == ["a", "b"]
+    assert res["printed"] == [2]
+    assert res["modified"] == []
+
+def test_print_only_diff_is_a_bare_lnhashview():
+    text = "".join(f"line {i}\n" for i in range(1, 13))
+    lines = text.splitlines()
+    res = exhash(text, [(lnhash(2, lines[1]), "p"), (lnhash(11, lines[10]), "p")])
+    # line numbers pad to the width of the largest printed number, exactly like lnhashview
+    assert res.format_diff() == " 2|8767|line 2\n11|2808|line 11\n"
+
+def test_whole_file_print_equals_lnhashview():
+    text = "".join(f"line {i}\n" for i in range(1, 13))
+    res = exhash(text, [("%", "p")])
+    assert res.format_diff() == "\n".join(lnhashview(text)) + "\n"
+
+def test_printed_lines_are_forced_context_in_a_real_diff():
+    text = "".join(f"line {i}\n" for i in range(1, 13))
+    lines = text.splitlines()
+    res = exhash(text, [(lnhash(11, lines[10]), "p"), (lnhash(2, lines[1]), "s", "line 2", "LINE TWO")])
+    assert res["printed"] == [11]
+    out = res.format_diff().splitlines()
+    assert "-2|8767|line 2" in out
+    assert "+2|3a84|LINE TWO" in out
+    assert out[-1] == " 11|2808|line 11"
+    assert "---" in out[1:]
+
+def test_edited_and_printed_line_shows_once_as_added():
+    text = "a\nb\n"
+    res = exhash(text, [(lnhash(2, "b"), "p"), (lnhash(2, "b"), "s", "b", "B")])
+    assert res["printed"] == [2]
     assert res["modified"] == [2]
+    rows = [l for l in res.format_diff().splitlines() if l.endswith("B")]
+    assert rows == ["+" + lnhash(2, "B") + "B"]
+
+def test_global_print_emits_a_row_per_match():
+    text = "alpha\nTODO one\nbeta\nTODO two\ngamma\n"
+    res = exhash(text, [("%", "g", "TODO", ("p",))])
+    assert res["printed"] == [2, 4]
+    assert res["modified"] == []
+    assert res.format_diff() == f"{lnhash(2, 'TODO one')}TODO one\n{lnhash(4, 'TODO two')}TODO two\n"
+
+def test_printed_marks_travel_with_moved_lines():
+    text = "a\nb\nc\n"
+    res = exhash(text, [(lnhash(1, "a"), "p"), (lnhash(1, "a"), "m", lnhash(3, "c"))])
+    assert res["lines"] == ["b", "c", "a"]
+    assert res["printed"] == [3]
 
 def test_indent_and_dedent():
     text = "a\n    b\n"

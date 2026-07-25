@@ -13,30 +13,63 @@ pub struct EditResult {
     pub lines: Vec<String>,
     /// lnhash for each line in the edited content (e.g. `"42|a3f2|"`).
     pub hashes: Vec<String>,
-    /// New-file 1-based line numbers that are new, changed, reordered, or explicitly printed.
+    /// New-file 1-based line numbers that are new, changed, or reordered.
     pub modified: Vec<usize>,
     /// Old-file 1-based line numbers that were removed.
     pub deleted: Vec<usize>,
     /// For each output line, the 1-based original line number it came from (None if inserted).
     pub origins: Vec<Option<usize>>,
+    /// New-file 1-based line numbers explicitly addressed by `p`.
+    pub printed: Vec<usize>,
 }
 
 impl EditResult {
+    /// Render printed lines as a bare `lnhashview`: no tag, no headers, line numbers
+    /// space-padded to the width of the largest printed line number.
+    fn printed_view(&self, print_set: &BTreeSet<usize>) -> String {
+        let last = match print_set.iter().next_back() {
+            Some(n) => *n,
+            None => return String::new(),
+        };
+        let width = last.to_string().len();
+        let mut out = String::new();
+        for n in print_set {
+            let text = self.lines[*n - 1].as_str();
+            out.push_str(&format!(
+                "{:>width$}|{:04x}|{}\n",
+                n,
+                line_hash_u16(text),
+                text,
+                width = width
+            ));
+        }
+        out
+    }
+
     /// Format a unified-diff-style summary of changes.
     ///
     /// Non-header lines are prefixed with ` ` (context), `+` (added/modified), or `-` (deleted),
     /// followed by the lnhash and content. `context` controls how many unchanged lines
-    /// surround each hunk (default 1).
-    /// Non-empty diffs start with `--- original` and `+++ modified` headers.
+    /// surround each hunk (default 1). Lines addressed by `p` are always included, as context
+    /// rows even where no hunk is near them; a line that is both modified and printed appears
+    /// once, as `+`.
+    /// Non-empty diffs start with `--- original` and `+++ modified` headers, except when nothing
+    /// changed and lines were printed: that renders as a bare `lnhashview` of the printed lines.
     pub fn format_diff(&self, original_lines: &[&str], context: usize) -> String {
         use crate::lnhash::format_lnhash;
 
         let mod_set: BTreeSet<usize> = self.modified.iter().copied().collect();
         let del_set: BTreeSet<usize> = self.deleted.iter().copied().collect();
+        let print_set: BTreeSet<usize> = self.printed.iter().copied().collect();
+
+        if mod_set.is_empty() && del_set.is_empty() {
+            return self.printed_view(&print_set);
+        }
 
         // Build interleaved sequence of (tag, lnhash, text) where tag is ' ', '+', '-'
         // Walk new lines, inserting deleted old lines at the right positions.
         let mut events: Vec<(char, String, &str)> = Vec::new();
+        let mut forced: Vec<usize> = Vec::new();
         let mut next_old = 1usize; // next original line we expect
 
         for (new_idx, line) in self.lines.iter().enumerate() {
@@ -65,6 +98,10 @@ impl EditResult {
                 }
                 events.push(('+', self.hashes[new_idx].clone(), line.as_str()));
             } else {
+                // Printed lines are context rows, force-included below.
+                if print_set.contains(&new_lineno) {
+                    forced.push(events.len());
+                }
                 events.push((' ', self.hashes[new_idx].clone(), line.as_str()));
             }
         }
@@ -80,7 +117,7 @@ impl EditResult {
         }
 
         // Now group into hunks with context
-        let interesting: BTreeSet<usize> = events
+        let mut interesting: BTreeSet<usize> = events
             .iter()
             .enumerate()
             .filter(|(_, (tag, _, _))| *tag != ' ')
@@ -90,6 +127,7 @@ impl EditResult {
                 start..=end
             })
             .collect();
+        interesting.extend(forced);
 
         if interesting.is_empty() {
             return String::new();
@@ -117,6 +155,7 @@ struct Line {
     text: String,
     origin: Option<usize>,
     modified: bool,
+    printed: bool,
     global_mark: bool,
 }
 
@@ -135,6 +174,7 @@ impl Engine {
                 text,
                 origin: Some(i + 1),
                 modified: false,
+                printed: false,
                 global_mark: false,
             })
             .collect();
@@ -397,6 +437,7 @@ impl Engine {
                     text,
                     origin: origins.get(i).copied().flatten(),
                     modified: true,
+                    printed: false,
                     global_mark: false,
                 })
                 .collect();
@@ -470,6 +511,7 @@ impl Engine {
                 text: t.clone(),
                 origin: None,
                 modified: true,
+                printed: false,
                 global_mark: false,
             })
             .collect();
@@ -501,6 +543,7 @@ impl Engine {
                 text: t.clone(),
                 origin: None,
                 modified: true,
+                printed: false,
                 global_mark: false,
             })
             .collect();
@@ -528,6 +571,7 @@ impl Engine {
                 text: t.clone(),
                 origin: None,
                 modified: true,
+                printed: false,
                 global_mark: false,
             })
             .collect();
@@ -632,6 +676,7 @@ impl Engine {
                 text: l.text.clone(),
                 origin: None,
                 modified: true,
+                printed: false,
                 global_mark: false,
             })
             .collect();
@@ -690,7 +735,7 @@ impl Engine {
     fn print_range(&mut self, start: usize, end: usize) -> Result<(), EditError> {
         let (s, e) = self.resolve_range(start, end)?;
         for idx in s..=e {
-            self.lines[idx].modified = true;
+            self.lines[idx].printed = true;
         }
         Ok(())
     }
@@ -773,6 +818,13 @@ pub fn edit_text_with_sw(
         .filter_map(|(i, l)| if l.modified { Some(i + 1) } else { None })
         .collect();
 
+    let printed: Vec<usize> = eng
+        .lines
+        .iter()
+        .enumerate()
+        .filter_map(|(i, l)| if l.printed { Some(i + 1) } else { None })
+        .collect();
+
     let deleted: Vec<usize> = eng.deleted.into_iter().collect();
     let origins: Vec<Option<usize>> = eng.lines.iter().map(|l| l.origin).collect();
 
@@ -782,6 +834,7 @@ pub fn edit_text_with_sw(
         modified,
         deleted,
         origins,
+        printed,
     })
 }
 

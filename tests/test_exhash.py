@@ -571,3 +571,68 @@ def test_exhash_substitute_valid_refs_still_work():
     assert exhash(text, [(addr, "s", "b", "$$x")])["lines"] == ["a$xc"]      # $$ escape: no group involved
     assert exhash(text, [(addr, "s", "b", "x$ y")])["lines"] == ["ax$ yc"]   # $ before non-name char is literal
     assert exhash(text, [(addr, "s", "b", "$0!")])["lines"] == ["ab!c"]      # $0! parses as name "0" + "!"
+
+
+def test_file_exhash_print_only_returns_bare_view_and_writes_nothing(tmp_path):
+    from exhash import file_exhash, lnhash, lnhashview_file
+    f = tmp_path / "test.txt"
+    f.write_text("".join(f"line {i}\n" for i in range(1, 13)))
+    out = file_exhash(str(f), (lnhash(2, "line 2"), "p"), (lnhash(11, "line 11"), "p"))
+    assert str(out) == " 2|8767|line 2\n11|2808|line 11\n"   # padded like lnhashview, no tag, no headers
+    assert f.read_text() == "".join(f"line {i}\n" for i in range(1, 13))
+    whole = file_exhash(str(f), ("%", "p"))
+    assert str(whole) == "\n".join(lnhashview_file(str(f))) + "\n"
+
+
+def test_file_exhash_print_bypasses_truncation(tmp_path):
+    from exhash import file_exhash
+    f = tmp_path / "big.txt"
+    f.write_text("".join(f"row {i}\n" for i in range(1, 41)))
+    assert len(str(file_exhash(str(f), ("%", "p"))).splitlines()) == 40
+
+
+def test_file_exhash_printed_rows_are_forced_context(tmp_path):
+    from exhash import file_exhash, lnhash
+    f = tmp_path / "test.txt"
+    f.write_text("".join(f"line {i}\n" for i in range(1, 13)))
+    out = str(file_exhash(str(f), (lnhash(11, "line 11"), "p"), (lnhash(2, "line 2"), "s", "line 2", "LINE TWO")))
+    assert f"-{lnhash(2, 'line 2')}line 2" in out
+    assert f"+{lnhash(2, 'LINE TWO')}LINE TWO" in out
+    assert out.splitlines()[-1] == f" {lnhash(11, 'line 11')}line 11"
+    assert f.read_text().startswith("line 1\nLINE TWO\n")
+
+
+def test_file_exhash_printed_marks_follow_later_edits(tmp_path):
+    from exhash import file_exhash, lnhash
+    f = tmp_path / "test.txt"
+    f.write_text("a\nb\nc\n")
+    res = file_exhash(str(f), (lnhash(3, "c"), "p"), ("0|0000|", "a", "zero"), inplace=False)
+    assert res[str(f)]["lines"] == ["zero", "a", "b", "c"]
+    assert res[str(f)].printed == [4]   # the printed line moved down with the insert
+    assert res.printed == [str(f)] and res.changed == [str(f)]
+
+
+def test_file_exhash_groups_printed_targets_with_headers(tmp_path):
+    from exhash import file_exhash, lnhash
+    a, b = tmp_path / "a.txt", tmp_path / "b.txt"
+    a.write_text("alpha\nbeta\n")
+    b.write_text("gamma\n")
+    out = str(file_exhash(str(a), (f"{a}:2|{line_hash('beta')}|", "p"), (f"{b}:1|{line_hash('gamma')}|", "p")))
+    assert out == f"# file {a}\n{lnhash(2, 'beta')}beta\n# file {b}\n{lnhash(1, 'gamma')}gamma\n"
+    assert a.read_text() == "alpha\nbeta\n" and b.read_text() == "gamma\n"
+
+
+def test_cell_exhash_print_only_returns_bare_view_and_writes_nothing(tmp_path):
+    import json
+    from exhash import cell_exhash, file_exhash, lnhash, lnhashview_cell
+    nb = dict(cells=[dict(id="abc123", cell_type="code", source="x = 1\ny = 2\nz = 3", metadata={}),
+                     dict(id="def456", cell_type="code", source="a = 10\nb = 20", metadata={})],
+              metadata={}, nbformat=4, nbformat_minor=5)
+    p = tmp_path / "nb.ipynb"
+    p.write_text(json.dumps(nb))
+    before = p.read_text()
+    out = cell_exhash(str(p), "abc123", (lnhash(2, "y = 2"), "p"))
+    assert str(out) == "\n".join(lnhashview_cell(str(p), "abc123", 2, 2)) + "\n"
+    assert p.read_text() == before
+    grouped = str(file_exhash(str(p), (f"{p}:abc123:{lnhash(3, 'z = 3')}", "p"), (f"{p}:def456:{lnhash(1, 'a = 10')}", "p")))
+    assert grouped == f"# cell abc123\n{lnhash(3, 'z = 3')}z = 3\n# cell def456\n{lnhash(1, 'a = 10')}a = 10\n"

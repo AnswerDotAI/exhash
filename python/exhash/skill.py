@@ -16,6 +16,8 @@ Workflow:
 3. Use tuple command specs; pass each command as its own positional argument, e.g. `file_exhash(path, (addr1, "d"), (addr2, "s", pat, repl))`. Use raw triple-quoted Python strings for address, pattern, replacement, and payload text when composing commands.
 4. Use `file_exhash(path, *cmds)` (or `cell_exhash(path, cell_id, *cmds)` for one notebook cell) to apply the edit: both write to disk and return a diff by default. Pass `inplace=False` to preview the result object without touching the file.
 
+Once you hold lnhash addresses, `p` commands are the scattered view: one `(addr, "p")` per address, straight from an `rg` hit or a summary, gives back exactly those lines as verified rows. A `p`-only call writes nothing and returns a bare `lnhashview` of the printed lines (no diff headers, no tag column, no truncation), so its output is an address book that feeds the next edit directly, e.g. `file_exhash(path, ("9|e08c|", "p"), ("18|2f61|", "p"), ("28|3cc8|", "p"))`. `("%", "p")` views a whole file this way, and `(addr, "g", pat, ("p",))` is scoped grep: a verified row per matching line in the range. Where a call also edits, its printed lines appear in the diff as context rows, always shown even when no hunk is near them.
+
 Addressing:
   Address strings use lnhash addresses: lineno|hash| where hash is a 4-char
   hex content hash. Use lnhashview to get addresses:
@@ -41,7 +43,7 @@ Tuple commands:
   (addr, ">", n)    Indent n levels (default 1, 4 spaces each)
   (addr, "<", n)    Dedent n levels (default 1)
   (addr, "sort")    Sort lines alphabetically
-  (addr, "p")       Print (include lines in output without changing them)
+  (addr, "p")       View line(s): emit them as verified `lineno|hash|` rows, changing nothing
   (addr, "g", pat, sub), (addr, "g!", pat, sub), (addr, "v", pat, sub) Global commands: apply `sub` to each addressed line matching `pat` (`g!`/`v`: not matching). `sub` is a subcommand tuple without an address, e.g. ("d",) or ("s", "foo", "bar", "g"); globals cannot nest.
   (addr, "y", source, dest) Transliterate `source` chars to `dest` (equal counts required)
 

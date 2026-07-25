@@ -38,6 +38,8 @@ struct EditResultPy {
     deleted: Vec<usize>,
     #[pyo3(get)]
     origins: Vec<Option<usize>>,
+    #[pyo3(get)]
+    printed: Vec<usize>,
     original_text: String,
 }
 
@@ -50,6 +52,7 @@ impl EditResultPy {
             modified: self.modified.clone(),
             deleted: self.deleted.clone(),
             origins: self.origins.clone(),
+            printed: self.printed.clone(),
         };
         result.format_diff(&original_lines, context)
     }
@@ -68,9 +71,23 @@ impl EditResultPy {
     }
 
     fn __repr__(&self) -> String {
-        let diff = truncate_diff(&self.diff_text(1), 15, 160);
+        // A print-only result is a view, not a diff: never truncate it.
+        let bare = self.modified.is_empty() && self.deleted.is_empty() && !self.printed.is_empty();
+        let full = self.diff_text(1);
+        let diff = if bare {
+            full
+        } else {
+            truncate_diff(&full, 15, 160)
+        };
         if diff.is_empty() {
             format!("EditResult({} lines, no changes)", self.lines.len())
+        } else if bare {
+            format!(
+                "EditResult({} lines, {} printed, no changes)\n{}",
+                self.lines.len(),
+                self.printed.len(),
+                diff
+            )
         } else {
             format!(
                 "EditResult({} lines, {} modified, {} deleted)\n{}",
@@ -89,6 +106,7 @@ impl EditResultPy {
             "modified" => Ok(self.modified.clone().into_pyobject(py)?.into_any().unbind()),
             "deleted" => Ok(self.deleted.clone().into_pyobject(py)?.into_any().unbind()),
             "origins" => Ok(self.origins.clone().into_pyobject(py)?.into_any().unbind()),
+            "printed" => Ok(self.printed.clone().into_pyobject(py)?.into_any().unbind()),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
     }
@@ -245,6 +263,7 @@ fn py_exhash(py: Python<'_>, text: &str, cmds: Vec<Vec<PyField>>, sw: usize) -> 
         modified: res.modified,
         deleted: res.deleted,
         origins: res.origins,
+        printed: res.printed,
         original_text: text.to_string(),
     })
 }
@@ -272,6 +291,7 @@ fn exhash_argv(
         modified: res.modified,
         deleted: res.deleted,
         origins: res.origins,
+        printed: res.printed,
         original_text: text.to_string(),
     })
 }

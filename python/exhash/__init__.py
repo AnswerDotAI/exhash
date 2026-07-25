@@ -98,9 +98,12 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
       modified  1-based line numbers of modified/added lines
       deleted   1-based line numbers of removed lines (in original)
       origins   for each output line, the 1-based original line number (None if inserted)
+      printed   1-based line numbers explicitly addressed by ``p``
 
     Call ``res.format_diff(context=1)`` for a unified-diff-style summary.
-    Non-empty diffs start with ``--- original`` and ``+++ modified`` headers.
+    Non-empty diffs start with ``--- original`` and ``+++ modified`` headers, except a
+    ``p``-only result: that renders as a bare ``lnhashview`` of the printed lines, headerless
+    and untruncated. Printed lines inside a real diff always show, as context rows.
     NB: ``file_exhash``/``cell_exhash`` with ``inplace=True`` (their default) do not
     return an EditResult: they return the formatted diff string directly (display-truncated via ``truncate_diff``).
 
@@ -118,26 +121,35 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
 
 class FileEditResult:
     'Edited state for one file.'
-    def __init__(self, path, original_lines, lines):
+    def __init__(self, path, original_lines, lines, printed=(), cell=None):
         self.path = _norm_path(path)
         self.original_lines = list(original_lines)
         self.lines = list(lines)
+        self.printed = list(printed)
+        self.cell = cell
         self.hashes = [lnhash(i + 1, line) for i, line in enumerate(self.lines)]
 
     @property
     def changed(self): return self.original_lines != self.lines
 
+    @property
+    def header(self): return f'# cell {self.cell}' if self.cell else f'# file {self.path}'
+
     def __getitem__(self, key):
-        if key in {"lines", "hashes", "original_lines"}: return getattr(self, key)
+        if key in {"lines", "hashes", "original_lines", "printed"}: return getattr(self, key)
         raise KeyError(key)
 
-    def format_diff(self, context=1): return PrettyString(_format_file_diff(self.path, self.original_lines, self.lines, context))
+    def format_diff(self, context=1): return PrettyString(_format_file_diff(self.path, self.original_lines, self.lines, context, self.printed))
 
     def __str__(self): return str(self.format_diff())
 
     def __repr__(self):
-        diff = truncate_diff(self.format_diff())
-        return f'FileEditResult({self.path}: {len(self.lines)} lines{"" if diff else ", no changes"})' + (f'\n{diff}' if diff else '')
+        view_only = self.printed and not self.changed
+        diff = self.format_diff() if view_only else truncate_diff(self.format_diff())
+        if self.changed: note = ''
+        elif self.printed: note = f', {len(self.printed)} printed, no changes'
+        else: note = ', no changes'
+        return f'FileEditResult({self.path}: {len(self.lines)} lines{note})' + (f'\n{diff}' if diff else '')
 
 
 class FileSetEditResult:
@@ -146,18 +158,34 @@ class FileSetEditResult:
         self.files = files
         self.default_path = default_path
         self.changed = [path for path, result in files.items() if result.changed]
+        self.printed = [path for path, result in files.items() if result.printed]
 
     def __getitem__(self, path): return self.files[_norm_path(path)]
 
-    def format_diff(self, context=1): return PrettyString(''.join(str(self.files[path].format_diff(context)) for path in self.changed))
+    @property
+    def _shown(self): return [p for p, r in self.files.items() if r.changed or r.printed]
 
-    def _trunc_diff(self): return PrettyString(''.join(truncate_diff(self.files[p].format_diff()) for p in self.changed))
+    def _render(self, context=1, trunc=False):
+        'Diffs for changed targets, then bare views for printed-only ones, headed when several targets show.'
+        shown = self._shown
+        out = []
+        for p in shown:
+            r = self.files[p]
+            d = str(r.format_diff(context))
+            if r.changed: out.append(truncate_diff(d) if trunc else d)
+            else: out.append((f'{r.header}\n' if len(shown) > 1 else '') + d)
+        return ''.join(out)
+
+    def format_diff(self, context=1): return PrettyString(self._render(context))
+
+    def _trunc_diff(self): return PrettyString(self._render(1, trunc=True))
 
     def __str__(self): return str(self.format_diff())
 
     def __repr__(self):
         diff = self._trunc_diff()
-        return f'FileSetEditResult({len(self.files)} files, {len(self.changed)} changed)' + (f'\n{diff}' if diff else '')
+        counts = f'{len(self.changed)} changed' + (f', {len(self.printed)} printed' if self.printed else '')
+        return f'FileSetEditResult({len(self.files)} files, {counts})' + (f'\n{diff}' if diff else '')
 
 
 _ADDR_RE = re.compile(r'(?:\$|%|\d+\|[0-9a-fA-F]{4}\|)')
@@ -173,8 +201,15 @@ def _text_from_lines(lines): return '\n'.join(lines) + ('\n' if lines else '')
 def _write_lines(path, lines): Path(path).write_text(_text_from_lines(lines))
 
 
-def _format_file_diff(path, old_lines, new_lines, context=1):
-    if old_lines == new_lines: return ''
+def _bare_view(lines, printed):
+    'Printed lines as a bare `lnhashview`: no tag, no headers, numbers padded to the widest shown.'
+    w = len(str(max(printed)))
+    return ''.join(f'{n:>{w}}|{line_hash(lines[n - 1])}|{lines[n - 1]}\n' for n in printed)
+
+
+def _format_file_diff(path, old_lines, new_lines, context=1, printed=()):
+    printed = sorted(set(printed))
+    if old_lines == new_lines: return _bare_view(new_lines, printed) if printed else ''
     events = []
     for tag, i1, i2, j1, j2 in SequenceMatcher(a=old_lines, b=new_lines, autojunk=False).get_opcodes():
         if tag == 'equal': events += [(' ', j + 1, new_lines[j]) for j in range(j1, j2)]
@@ -183,9 +218,11 @@ def _format_file_diff(path, old_lines, new_lines, context=1):
         elif tag == 'replace':
             events += [('-', i + 1, old_lines[i]) for i in range(i1, i2)]
             events += [('+', j + 1, new_lines[j]) for j in range(j1, j2)]
+    pr = set(printed)
     interesting = set()
-    for i, (tag, _, _) in enumerate(events):
+    for i, (tag, lineno, _) in enumerate(events):
         if tag != ' ': interesting.update(range(max(0, i - context), min(len(events), i + context + 1)))
+        elif lineno in pr: interesting.add(i)  # printed lines are forced context
     out, last = [f'--- {path}', f'+++ {path}'], None
     for i in sorted(interesting):
         if last is not None and i > last + 1: out.append('---')
@@ -205,6 +242,14 @@ def truncate_diff(
     out = [l if len(l)<=maxlen or l.startswith(('--- ','+++ ')) else l[:maxlen]+'…' for l in lines[:max_lines]]
     if len(lines)>max_lines: out.append(f'…{len(lines)-max_lines} lines elided…')
     return '\n'.join(out)+'\n' if out else ''
+
+
+def _diff_out(res):
+    'Formatted output for an EditResult: a print-only result is a view, so it is never truncated.'
+    diff = res.format_diff()
+    if res['printed'] and not res['modified'] and not res['deleted']: return PrettyString(diff)
+    return PrettyString(truncate_diff(diff))
+
 
 
 def _unescape_path(path):
@@ -285,7 +330,7 @@ def _load_buffer(st, target, missing_ok=False):
         target = (path, c['id'])
         if target not in st['bufs']:
             text = _cell_text(c)
-            st['bufs'][target] = dict(path=path, cellref=c, trail_nl=text.endswith('\n'), original=text.splitlines(), lines=text.splitlines())
+            st['bufs'][target] = dict(path=path, cellref=c, trail_nl=text.endswith('\n'), original=text.splitlines(), lines=text.splitlines(), printed=[False] * len(text.splitlines()))
         return st['bufs'][target]
     if target in st['bufs']: return st['bufs'][target]
     p = Path(path)
@@ -294,7 +339,7 @@ def _load_buffer(st, target, missing_ok=False):
         if not missing_ok: raise FileNotFoundError(f'file not found: {path} (a new file can only be created with a 0|0000| a/i command)') from None
         if not p.parent.exists(): raise FileNotFoundError(f'cannot create {path}: parent directory {p.parent} does not exist') from None
         lines = []
-    st['bufs'][target] = dict(path=path, cellref=None, original=list(lines), lines=list(lines))
+    st['bufs'][target] = dict(path=path, cellref=None, original=list(lines), lines=list(lines), printed=[False] * len(lines))
     return st['bufs'][target]
 
 
@@ -344,17 +389,23 @@ def _apply_transfer(st, parsed):
     s, e = _source_indexes(src['lines'], parsed)
     dest = _dest_index(dst['lines'], parsed['dest_addr'])
     segment = src['lines'][s:e + 1] if s <= e else []
+    seg_printed = src['printed'][s:e + 1] if s <= e else []
     if parsed['op'] == 't':
         dst['lines'][dest:dest] = list(segment)
+        dst['printed'][dest:dest] = [False] * len(segment)
         return
     if src is dst:
         if s <= e and s < dest <= e + 1: raise ValueError('destination is within moved range')
         del src['lines'][s:e + 1]
+        del src['printed'][s:e + 1]
         insert_at = dest if dest <= s else dest - len(segment)
         src['lines'][insert_at:insert_at] = segment
+        src['printed'][insert_at:insert_at] = seg_printed
     else:
         del src['lines'][s:e + 1]
+        del src['printed'][s:e + 1]
         dst['lines'][dest:dest] = segment
+        dst['printed'][dest:dest] = seg_printed
 
 
 def _apply_file_command(st, parsed, sw):
@@ -363,7 +414,11 @@ def _apply_file_command(st, parsed, sw):
         return
     buf = _load_buffer(st, parsed['src'], missing_ok=_can_create_missing(parsed) and parsed['src'][1] is None)
     res = _exhash(_text_from_lines(buf['lines']), parsed['local'], sw=sw)
-    buf['lines'] = list(res['lines'])
+    was = buf['printed']
+    # Printed marks travel with their lines: `origins` maps each new line to the line it came from.
+    printed = [was[o - 1] if o else False for o in res['origins']]
+    for ln in res['printed']: printed[ln - 1] = True
+    buf['lines'], buf['printed'] = list(res['lines']), printed
 
 
 @fail_clean(*stdexcs)
@@ -390,15 +445,20 @@ def file_exhash(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
 
     By default (``inplace=True``) write changed files only after every command
     succeeds and return the combined diff string (display-truncated via
-    ``truncate_diff``); if any command fails, write nothing. Pass
-    ``inplace=False`` to preview instead: nothing is written and a
+    ``truncate_diff``); if any command fails, write nothing. Lines addressed by ``p``
+    are reported too: a ``p``-only call writes nothing and returns those lines as a bare,
+    untruncated ``lnhashview``, and printed rows in a target that also changed ride in its
+    diff as context. With more than one reported target, each printed-only group is headed
+    by ``# file <path>`` or ``# cell <id>``. Pass ``inplace=False`` to preview instead: a
     ``FileSetEditResult`` is returned with ``files``, ``changed``, ``default_path``,
     ``res[path]`` (cell targets under ``'path:cellid'``), and ``res.format_diff(context=1)``.
     '''
     default, st = (_norm_path(path), None), dict(bufs={}, nbs={})
     for cmd in _normalize_cmds(cmds): _apply_file_command(st, _parse_file_command(cmd, default), sw)
     if not st['bufs']: _load_buffer(st, default)
-    files = {_target_key(t): FileEditResult(_target_key(t), buf['original'], buf['lines']) for t, buf in st['bufs'].items()}
+    files = {_target_key(t): FileEditResult(_target_key(t), buf['original'], buf['lines'],
+                                           printed=[i + 1 for i, p in enumerate(buf['printed']) if p], cell=t[1])
+             for t, buf in st['bufs'].items()}
     result = FileSetEditResult(files, _norm_path(path))
     if inplace:
         nbs_out = {}
@@ -466,9 +526,11 @@ def cell_exhash(path:str, cell_id:str, *cmds:tuple, sw:int=4, inplace:bool=True)
     ``lnhashview_cell(path, cell_id)`` for addresses.
     ``cell_id`` may be an exact id or unique prefix.
 
-    By default (``inplace=True``) write the edited source back (preserving the cell's
-    original str-or-list-of-lines form; the notebook re-serializes in Jupyter's JSON
-    layout) and return the diff string (display-truncated via ``truncate_diff``); if any command fails, write nothing. Pass
+    By default (``inplace=True``) write the edited source back when the source actually
+    changed (preserving the cell's original str-or-list-of-lines form; the notebook
+    re-serializes in Jupyter's JSON layout) and return the diff string (display-truncated via
+    ``truncate_diff``); if any command fails, write nothing. A ``p``-only call writes nothing and
+    returns the printed lines as a bare, untruncated ``lnhashview``. Pass
     ``inplace=False`` to preview instead: the EditResult is returned without touching the file.
     """
     nb, cell = _load_cell(path, cell_id)
@@ -477,6 +539,7 @@ def cell_exhash(path:str, cell_id:str, *cmds:tuple, sw:int=4, inplace:bool=True)
     if not inplace: return res
     new = '\n'.join(res['lines'])
     if text.endswith('\n') and new: new += '\n'
-    cell['source'] = new.splitlines(keepends=True) if isinstance(cell['source'], list) else new
-    Path(path).expanduser().write_text(json.dumps(nb, sort_keys=True, indent=1, ensure_ascii=False) + '\n')
-    return PrettyString(truncate_diff(res.format_diff()))
+    if new != text:
+        cell['source'] = new.splitlines(keepends=True) if isinstance(cell['source'], list) else new
+        Path(path).expanduser().write_text(json.dumps(nb, sort_keys=True, indent=1, ensure_ascii=False) + '\n')
+    return _diff_out(res)

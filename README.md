@@ -202,9 +202,10 @@ A file prefix is separated from the address with `:`. Escape literal colons in f
 
 - `res.files`: dict of path to `FileEditResult`
 - `res.changed`: changed paths, in first-touch order
+- `res.printed`: paths with lines addressed by `p` (`res[path].printed` gives the line numbers)
 - `res.default_path`: the default path passed to `file_exhash`
 - `res[path]`: shorthand for `res.files[path]`
-- `res.format_diff(context=1)`: combined diff with `--- path` / `+++ path` headers
+- `res.format_diff(context=1)`: combined diff with `--- path` / `+++ path` headers, plus a bare view of any printed-only target (headed by `# file <path>` / `# cell <id>` when several targets show)
 
 ### Notebook cells
 
@@ -241,6 +242,9 @@ The package registers `exhash.skill` as a pyskill exposing the primary Python AP
 - `modified`: 1-based line numbers of modified/added lines
 - `deleted`: 1-based line numbers of removed lines (in original)
 - `origins`: for each output line, the 1-based original line number (None if inserted)
+- `printed`: 1-based line numbers explicitly addressed by `p`
+
+`res.format_diff(context=1)` always includes printed lines: as context rows inside a diff, or - when nothing changed - as a bare `lnhashview` of just those lines, with no diff headers. `file_exhash`/`cell_exhash` follow the same rule, so a `p`-only call writes nothing and returns that view untruncated; with more than one target reported, printed-only groups are headed by `# file <path>` or `# cell <id>`.
 
 `res.format_diff(context=1)` returns a unified-diff-style summary showing only changed lines with context:
 
