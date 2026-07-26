@@ -1,9 +1,8 @@
 "Hash-verified line-addressed text editing. See `exhash.skill` for the workflow guide: view with `lnhashview_*` first, then edit with addresses taken from that view."
 
 import json, re
-from difflib import SequenceMatcher
 from pathlib import Path
-from .exhash import line_hash as _line_hash, lnhash as _lnhash, lnhashview as _lnhashview, exhash as _exhash
+from .exhash import line_hash as _line_hash, lnhash as _lnhash, lnhashview as _lnhashview, exhash as _exhash, edit_buffers as _edit_buffers
 from fastcore.basics import fail_clean, PrettyString
 
 stdexcs = (ValueError, OSError, KeyError)
@@ -77,8 +76,9 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
     """Verified line-addressed editor. Apply commands to `text`, return an EditResult.
     Python commands are tuple specs; raw command strings are rejected. Use
     ``lnhashview(text)`` or ``lnhash(lineno, line)`` to get hash-verified
-    address strings. Each command's hashes are checked against the current text
-    immediately before that command executes.
+    address strings. Each command's hashes are checked immediately before it runs.
+    A single-line address can match the line's current hash or its call-start hash,
+    allowing commands to stack on one line.
 
     Addresses, command tuples, and payload rules: the ``exhash.skill`` module
     docstring is the full reference. Engine details beyond it:
@@ -89,6 +89,9 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
       does not define (unknown references would otherwise silently substitute the
       empty string); a literal ``$`` is written ``$$``.
     - ``sw`` controls shift width for ``<`` and ``>`` and defaults to 4.
+    - In-place edits record each changed line's call-start hash. Structural edits
+      drop records at and below their topmost affected line; range addresses never
+      use the recorded-hash fallback.
     - Do not use ``.`` terminators: a final ``.`` line is inserted literally,
       and exhash emits a warning.
 
@@ -121,13 +124,14 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
 
 class FileEditResult:
     'Edited state for one file.'
-    def __init__(self, path, original_lines, lines, printed=(), cell=None):
+    def __init__(self, path, original_lines, result, cell=None):
         self.path = _norm_path(path)
         self.original_lines = list(original_lines)
-        self.lines = list(lines)
-        self.printed = list(printed)
+        self.lines = list(result.lines)
+        self.hashes = list(result.hashes)
+        self.printed = list(result.printed)
         self.cell = cell
-        self.hashes = [lnhash(i + 1, line) for i, line in enumerate(self.lines)]
+        self._result = result
 
     @property
     def changed(self): return self.original_lines != self.lines
@@ -139,7 +143,10 @@ class FileEditResult:
         if key in {"lines", "hashes", "original_lines", "printed"}: return getattr(self, key)
         raise KeyError(key)
 
-    def format_diff(self, context=1): return PrettyString(_format_file_diff(self.path, self.original_lines, self.lines, context, self.printed))
+    def format_diff(self, context=1):
+        diff = str(self._result.format_diff(context))
+        if self.changed: diff = diff.replace('--- original\n+++ modified\n', f'--- {self.path}\n+++ {self.path}\n', 1)
+        return PrettyString(diff)
 
     def __str__(self): return str(self.format_diff())
 
@@ -189,7 +196,6 @@ class FileSetEditResult:
 
 
 _ADDR_RE = re.compile(r'(?:\$|%|\d+\|[0-9a-fA-F]{4}\|)')
-_LNHASH_RE = re.compile(r'(\d+)\|([0-9a-fA-F]{4})\|')
 
 
 def _norm_path(path): return str(Path(path).expanduser())
@@ -199,37 +205,6 @@ def _text_from_lines(lines): return '\n'.join(lines) + ('\n' if lines else '')
 
 
 def _write_lines(path, lines): Path(path).write_text(_text_from_lines(lines))
-
-
-def _bare_view(lines, printed):
-    'Printed lines as a bare `lnhashview`: no tag, no headers, numbers padded to the widest shown.'
-    w = len(str(max(printed)))
-    return ''.join(f'{n:>{w}}|{line_hash(lines[n - 1])}|{lines[n - 1]}\n' for n in printed)
-
-
-def _format_file_diff(path, old_lines, new_lines, context=1, printed=()):
-    printed = sorted(set(printed))
-    if old_lines == new_lines: return _bare_view(new_lines, printed) if printed else ''
-    events = []
-    for tag, i1, i2, j1, j2 in SequenceMatcher(a=old_lines, b=new_lines, autojunk=False).get_opcodes():
-        if tag == 'equal': events += [(' ', j + 1, new_lines[j]) for j in range(j1, j2)]
-        elif tag == 'delete': events += [('-', i + 1, old_lines[i]) for i in range(i1, i2)]
-        elif tag == 'insert': events += [('+', j + 1, new_lines[j]) for j in range(j1, j2)]
-        elif tag == 'replace':
-            events += [('-', i + 1, old_lines[i]) for i in range(i1, i2)]
-            events += [('+', j + 1, new_lines[j]) for j in range(j1, j2)]
-    pr = set(printed)
-    interesting = set()
-    for i, (tag, lineno, _) in enumerate(events):
-        if tag != ' ': interesting.update(range(max(0, i - context), min(len(events), i + context + 1)))
-        elif lineno in pr: interesting.add(i)  # printed lines are forced context
-    out, last = [f'--- {path}', f'+++ {path}'], None
-    for i in sorted(interesting):
-        if last is not None and i > last + 1: out.append('---')
-        tag, lineno, line = events[i]
-        out.append(f'{tag}{lnhash(lineno, line)}{line}')
-        last = i
-    return '\n'.join(out) + '\n'
 
 
 def truncate_diff(
@@ -309,13 +284,12 @@ def _parse_file_command(cmd, default):
         if src2 != src: raise ValueError('a range must stay within one file or cell')
     if rest.strip(): raise ValueError(f'unexpected trailing characters in address: {rest!r}')
     parsed = dict(src=src, addr1=addr1, addr2=addr2, has_comma=has_comma, op=op, dest=None, dest_addr=None, local=None)
+    local_addr = addr1 if addr2 is None else f'{addr1},{addr2}'
     if op in ('m', 't'):
         dest, dest_addr, tail = _parse_fileaddr(fields[0], src)
         if tail.strip(): raise ValueError(f'unexpected trailing characters after destination: {tail!r}')
-        parsed.update(dest=dest, dest_addr=dest_addr)
-    else:
-        local_addr = addr1 if addr2 is None else f'{addr1},{addr2}'
-        parsed['local'] = (local_addr, op, *fields)
+        parsed.update(dest=dest, dest_addr=dest_addr, local=(local_addr, op, dest_addr))
+    else: parsed['local'] = (local_addr, op, *fields)
     return parsed
 
 
@@ -330,7 +304,7 @@ def _load_buffer(st, target, missing_ok=False):
         target = (path, c['id'])
         if target not in st['bufs']:
             text = _cell_text(c)
-            st['bufs'][target] = dict(path=path, cellref=c, trail_nl=text.endswith('\n'), original=text.splitlines(), lines=text.splitlines(), printed=[False] * len(text.splitlines()))
+            st['bufs'][target] = dict(target=target, path=path, cellref=c, trail_nl=text.endswith('\n'), original=text.splitlines(), lines=text.splitlines())
         return st['bufs'][target]
     if target in st['bufs']: return st['bufs'][target]
     p = Path(path)
@@ -339,86 +313,19 @@ def _load_buffer(st, target, missing_ok=False):
         if not missing_ok: raise FileNotFoundError(f'file not found: {path} (a new file can only be created with a 0|0000| a/i command)') from None
         if not p.parent.exists(): raise FileNotFoundError(f'cannot create {path}: parent directory {p.parent} does not exist') from None
         lines = []
-    st['bufs'][target] = dict(path=path, cellref=None, original=list(lines), lines=list(lines), printed=[False] * len(lines))
+    st['bufs'][target] = dict(target=target, path=path, cellref=None, original=list(lines), lines=list(lines))
     return st['bufs'][target]
 
 
 def _can_create_missing(parsed): return parsed['addr1'] == '0|0000|' and parsed['op'] in ('a', 'i')
 
 
-def _split_lnhash_addr(addr):
-    m = _LNHASH_RE.fullmatch(addr)
-    if not m: raise ValueError(f'expected lnhash address, got {addr!r}')
-    return int(m.group(1)), m.group(2).lower()
-
-
-def _line_no(lines, addr, allow_zero=False):
-    if addr == '$':
-        if not lines: raise ValueError("address '$' out of range on empty file")
-        return len(lines)
-    if addr == '%': raise ValueError('% is only allowed as a source range')
-    lineno, expected = _split_lnhash_addr(addr)
-    if lineno == 0:
-        if expected != '0000': raise ValueError('0|0000| must have hash 0000')
-        if allow_zero: return 0
-        raise ValueError('address 0 is not allowed here')
-    if lineno > len(lines): raise ValueError(f'address out of range: {lineno} > {len(lines)}')
-    actual = line_hash(lines[lineno - 1])
-    if actual != expected: raise ValueError(f'stale lnhash at line {lineno}: expected {expected}, got {actual}')
-    return lineno
-
-
-def _source_indexes(lines, parsed):
-    if parsed['addr1'] == '%':
-        if parsed['has_comma'] or parsed['addr2'] is not None: raise ValueError('% is already a whole-file range')
-        return (0, len(lines) - 1) if lines else (0, -1)
-    start = _line_no(lines, parsed['addr1'])
-    end = _line_no(lines, parsed['addr2']) if parsed['addr2'] is not None else start
-    if start > end: raise ValueError(f'invalid range: {start}..{end}')
-    return start - 1, end - 1
-
-
-def _dest_index(lines, addr):
-    if addr == '%': raise ValueError('destination % is not allowed')
-    return _line_no(lines, addr, allow_zero=True)
-
-
-def _apply_transfer(st, parsed):
-    src = _load_buffer(st, parsed['src'])
-    dst = _load_buffer(st, parsed['dest'], missing_ok=parsed['dest_addr'] == '0|0000|' and parsed['dest'][1] is None)
-    s, e = _source_indexes(src['lines'], parsed)
-    dest = _dest_index(dst['lines'], parsed['dest_addr'])
-    segment = src['lines'][s:e + 1] if s <= e else []
-    seg_printed = src['printed'][s:e + 1] if s <= e else []
-    if parsed['op'] == 't':
-        dst['lines'][dest:dest] = list(segment)
-        dst['printed'][dest:dest] = [False] * len(segment)
-        return
-    if src is dst:
-        if s <= e and s < dest <= e + 1: raise ValueError('destination is within moved range')
-        del src['lines'][s:e + 1]
-        del src['printed'][s:e + 1]
-        insert_at = dest if dest <= s else dest - len(segment)
-        src['lines'][insert_at:insert_at] = segment
-        src['printed'][insert_at:insert_at] = seg_printed
-    else:
-        del src['lines'][s:e + 1]
-        del src['printed'][s:e + 1]
-        dst['lines'][dest:dest] = segment
-        dst['printed'][dest:dest] = seg_printed
-
-
-def _apply_file_command(st, parsed, sw):
-    if parsed['op'] in ('m', 't'):
-        _apply_transfer(st, parsed)
-        return
-    buf = _load_buffer(st, parsed['src'], missing_ok=_can_create_missing(parsed) and parsed['src'][1] is None)
-    res = _exhash(_text_from_lines(buf['lines']), parsed['local'], sw=sw)
-    was = buf['printed']
-    # Printed marks travel with their lines: `origins` maps each new line to the line it came from.
-    printed = [was[o - 1] if o else False for o in res['origins']]
-    for ln in res['printed']: printed[ln - 1] = True
-    buf['lines'], buf['printed'] = list(res['lines']), printed
+def _prepare_file_command(st, parsed):
+    src = _load_buffer(st, parsed['src'], missing_ok=_can_create_missing(parsed) and parsed['src'][1] is None)
+    dest = None
+    if parsed['dest'] is not None:
+        dest = _load_buffer(st, parsed['dest'], missing_ok=parsed['dest_addr'] == '0|0000|' and parsed['dest'][1] is None)
+    return (_target_key(src['target']), parsed['local'], _target_key(dest['target']) if dest else None)
 
 
 @fail_clean(*stdexcs)
@@ -454,11 +361,13 @@ def file_exhash(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
     ``res[path]`` (cell targets under ``'path:cellid'``), and ``res.format_diff(context=1)``.
     '''
     default, st = (_norm_path(path), None), dict(bufs={}, nbs={})
-    for cmd in _normalize_cmds(cmds): _apply_file_command(st, _parse_file_command(cmd, default), sw)
+    commands = [_prepare_file_command(st, _parse_file_command(cmd, default)) for cmd in _normalize_cmds(cmds)]
     if not st['bufs']: _load_buffer(st, default)
-    files = {_target_key(t): FileEditResult(_target_key(t), buf['original'], buf['lines'],
-                                           printed=[i + 1 for i, p in enumerate(buf['printed']) if p], cell=t[1])
-             for t, buf in st['bufs'].items()}
+    by_key = {_target_key(target): buf for target, buf in st['bufs'].items()}
+    buffers = [(key, _text_from_lines(buf['lines'])) for key, buf in by_key.items()]
+    native = _edit_buffers(buffers, commands, sw=sw)
+    files = {key: FileEditResult(key, by_key[key]['original'], result, cell=by_key[key]['target'][1]) for key, result in native}
+    for key, result in files.items(): by_key[key]['lines'] = result.lines
     result = FileSetEditResult(files, _norm_path(path))
     if inplace:
         nbs_out = {}

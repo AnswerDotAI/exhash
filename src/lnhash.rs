@@ -1,4 +1,3 @@
-
 use crate::EditError;
 
 /// A verified line address: a 1-based line number paired with a short content hash.

@@ -68,14 +68,13 @@ def test_rejects_stale_lnhash(tmp_path):
     assert out.returncode != 0
     assert f.read_text() == "HELLO\nworld\n"
 
-def test_rechecks_hashes_between_commands(tmp_path):
+def test_stacks_call_start_hash_between_commands(tmp_path):
     f = tmp_path / "f.txt"
     f.write_text("a\nb\n")
     a1 = lnhash(1, "a")
     out = run([str(f), f"{a1}s/a/A/", f"{a1}d"])
-    assert out.returncode != 0
-    assert "stale lnhash" in out.stderr
-    assert f.read_text() == "a\nb\n"
+    assert out.returncode == 0
+    assert f.read_text() == "b\n"
 
 def test_percent_join_whole_file(tmp_path):
     f = tmp_path / "f.txt"

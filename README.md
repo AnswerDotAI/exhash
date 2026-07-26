@@ -82,7 +82,7 @@ Substitute uses Rust regex syntax:
 - Transliteration uses `y/src/dst/` and requires source/destination to have equal character counts
 - A substitute whose pattern matches nothing in its addressed range fails (nothing is written), so a typo cannot silently no-op; substitutes running inside `g`/`g!`/`v` payloads stay lenient, since not every selected line need match
 
-When passing multiple commands, each command's lnhashes are verified immediately before that command runs.
+When passing multiple commands, each command's lnhashes are verified immediately before it runs. A single-line address may match either the line's current hash or its call-start hash, so commands can stack on one line. Range addresses remain strict, and structural changes invalidate call-start records at and below their topmost affected line.
 
 For CLI multiline `a/i/c` commands, omit inline text and provide the text block on stdin:
 

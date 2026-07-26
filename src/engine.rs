@@ -2,9 +2,23 @@ use std::collections::{BTreeSet, HashMap};
 
 use regex::{Regex, RegexBuilder};
 
+use crate::EditError;
 use crate::lnhash::line_hash_u16;
 use crate::parse::{Address, Command, Subcommand, Subst};
-use crate::EditError;
+
+impl Subcommand {
+    fn edits_in_place(&self, range_len: usize) -> bool {
+        match self {
+            Self::Substitute(_)
+            | Self::Transliterate { .. }
+            | Self::Indent { .. }
+            | Self::Dedent { .. } => true,
+            Self::Change(text) => text.len() == range_len,
+            Self::Global { cmd, .. } => cmd.edits_in_place(1),
+            _ => false,
+        }
+    }
+}
 
 /// Result of applying an edit script.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,6 +35,18 @@ pub struct EditResult {
     pub origins: Vec<Option<usize>>,
     /// New-file 1-based line numbers explicitly addressed by `p`.
     pub printed: Vec<usize>,
+}
+
+pub struct BufferCommand {
+    pub target: String,
+    pub command: Command,
+    pub destination: Option<String>,
+}
+
+pub struct BufferEditResult {
+    pub target: String,
+    pub original_text: String,
+    pub result: EditResult,
 }
 
 impl EditResult {
@@ -62,6 +88,15 @@ impl EditResult {
         let del_set: BTreeSet<usize> = self.deleted.iter().copied().collect();
         let print_set: BTreeSet<usize> = self.printed.iter().copied().collect();
 
+        if self.lines.len() == original_lines.len()
+            && self
+                .lines
+                .iter()
+                .zip(original_lines)
+                .all(|(new, old)| new == old)
+        {
+            return self.printed_view(&print_set);
+        }
         if mod_set.is_empty() && del_set.is_empty() {
             return self.printed_view(&print_set);
         }
@@ -136,7 +171,9 @@ impl EditResult {
         let mut out = String::from("--- original\n+++ modified\n");
         let mut last: Option<usize> = None;
         for i in &interesting {
-            if let Some(prev) = last && *i > prev + 1 {
+            if let Some(prev) = last
+                && *i > prev + 1
+            {
                 out.push_str("---\n");
             }
             let (tag, ref hash, text) = events[*i];
@@ -154,6 +191,7 @@ impl EditResult {
 struct Line {
     text: String,
     origin: Option<usize>,
+    call_start: Option<(usize, u16)>,
     modified: bool,
     printed: bool,
     global_mark: bool,
@@ -162,6 +200,7 @@ struct Line {
 struct Engine {
     lines: Vec<Line>,
     deleted: BTreeSet<usize>,
+    call_start_hashes: HashMap<usize, u16>,
     sw: usize,
 }
 
@@ -170,17 +209,23 @@ impl Engine {
         let lines = input_lines
             .into_iter()
             .enumerate()
-            .map(|(i, text)| Line {
-                text,
-                origin: Some(i + 1),
-                modified: false,
-                printed: false,
-                global_mark: false,
+            .map(|(i, text)| {
+                let line = i + 1;
+                let hash = line_hash_u16(&text);
+                Line {
+                    text,
+                    origin: Some(line),
+                    call_start: Some((line, hash)),
+                    modified: false,
+                    printed: false,
+                    global_mark: false,
+                }
             })
             .collect();
         Self {
             lines,
             deleted: BTreeSet::new(),
+            call_start_hashes: HashMap::new(),
             sw,
         }
     }
@@ -190,15 +235,24 @@ impl Engine {
         if start > end && start != 0 {
             return Err(EditError::new(format!("invalid range: {start}..{end}")));
         }
-        self.apply_subcommand(start, end, is_range, &cmd.cmd, true)
+        let before = self.lines.clone();
+        self.apply_subcommand(start, end, is_range, &cmd.cmd, true)?;
+        self.track_command_effect(&before, start, end, &cmd.cmd);
+        Ok(())
     }
 
     fn verify_command(&self, cmd: &Command) -> Result<(), EditError> {
-        self.verify_address(cmd.addr1, &cmd.cmd)?;
-        if let Some(a2) = cmd.addr2 {
-            self.verify_address(a2, &cmd.cmd)?;
-        }
+        self.verify_command_addresses(cmd)?;
         self.verify_subcommand_refs(&cmd.cmd)?;
+        Ok(())
+    }
+
+    fn verify_command_addresses(&self, cmd: &Command) -> Result<(), EditError> {
+        let single = !cmd.has_comma && cmd.addr2.is_none();
+        self.verify_address(cmd.addr1, &cmd.cmd, single)?;
+        if let Some(a2) = cmd.addr2 {
+            self.verify_address(a2, &cmd.cmd, false)?;
+        }
         Ok(())
     }
 
@@ -213,9 +267,14 @@ impl Engine {
         }
     }
 
-    fn verify_address(&self, addr: Address, cmd: &Subcommand) -> Result<(), EditError> {
+    fn verify_address(
+        &self,
+        addr: Address,
+        cmd: &Subcommand,
+        allow_call_start: bool,
+    ) -> Result<(), EditError> {
         match addr {
-            Address::LnHash(lh) => self.verify_lnhash(lh, cmd),
+            Address::LnHash(lh) => self.verify_lnhash(lh, cmd, allow_call_start),
             Address::LastLine => self.resolve_last_line().map(|_| ()),
             Address::WholeFile => Ok(()),
         }
@@ -223,13 +282,19 @@ impl Engine {
 
     fn verify_destination(&self, dest: Address) -> Result<(), EditError> {
         match dest {
-            Address::LnHash(lh) => self.verify_lnhash_basic(lh),
+            Address::LnHash(addr) if addr.lineno == 0 && addr.hash == 0 => Ok(()),
+            Address::LnHash(lh) => self.verify_lnhash_basic(lh, true),
             Address::LastLine => self.resolve_last_line().map(|_| ()),
             Address::WholeFile => Err(EditError::new("destination % is not allowed")),
         }
     }
 
-    fn verify_lnhash(&self, addr: crate::LnHash, cmd: &Subcommand) -> Result<(), EditError> {
+    fn verify_lnhash(
+        &self,
+        addr: crate::LnHash,
+        cmd: &Subcommand,
+        allow_call_start: bool,
+    ) -> Result<(), EditError> {
         if addr.lineno == 0 {
             // Only valid for i/a, enforced by parser.
             if addr.hash != 0 {
@@ -240,11 +305,15 @@ impl Engine {
                 _ => Err(EditError::new("0|0000| is only valid with i or a")),
             }
         } else {
-            self.verify_lnhash_basic(addr)
+            self.verify_lnhash_basic(addr, allow_call_start)
         }
     }
 
-    fn verify_lnhash_basic(&self, addr: crate::LnHash) -> Result<(), EditError> {
+    fn verify_lnhash_basic(
+        &self,
+        addr: crate::LnHash,
+        allow_call_start: bool,
+    ) -> Result<(), EditError> {
         if addr.lineno == 0 {
             return Err(EditError::new("address 0 is not allowed here"));
         }
@@ -256,13 +325,131 @@ impl Engine {
             )));
         }
         let actual = line_hash_u16(&self.lines[addr.lineno - 1].text);
-        if actual != addr.hash {
+        if actual == addr.hash {
+            return Ok(());
+        }
+        if allow_call_start && self.call_start_hashes.get(&addr.lineno).copied() == Some(addr.hash)
+        {
+            return Ok(());
+        }
+        if allow_call_start && let Some(start) = self.call_start_hashes.get(&addr.lineno) {
             return Err(EditError::new(format!(
-                "stale lnhash at line {}: expected {:04x}, got {:04x}",
-                addr.lineno, addr.hash, actual
+                "stale lnhash at line {}: line was already edited by an earlier command in this call; expected {:04x}, current {:04x}, call-start {:04x}",
+                addr.lineno, addr.hash, actual, start
             )));
         }
-        Ok(())
+        Err(EditError::new(format!(
+            "stale lnhash at line {}: expected {:04x}, got {:04x} (line changed since your view)",
+            addr.lineno, addr.hash, actual
+        )))
+    }
+
+    fn track_command_effect(
+        &mut self,
+        before: &[Line],
+        start: usize,
+        end: usize,
+        sub: &Subcommand,
+    ) {
+        let changed = before.len() != self.lines.len()
+            || before
+                .iter()
+                .zip(&self.lines)
+                .any(|(old, new)| old.text != new.text);
+        if !changed {
+            return;
+        }
+        if before.len() == self.lines.len() && sub.edits_in_place(end.saturating_sub(start) + 1) {
+            for (idx, (old, new)) in before.iter().zip(&self.lines).enumerate() {
+                if old.text != new.text
+                    && let Some((_, hash)) = new.call_start
+                {
+                    self.call_start_hashes.entry(idx + 1).or_insert(hash);
+                }
+            }
+        } else {
+            let identity = before
+                .iter()
+                .zip(&self.lines)
+                .position(|(old, new)| old.call_start != new.call_start);
+            let text = before
+                .iter()
+                .zip(&self.lines)
+                .position(|(old, new)| old.text != new.text);
+            let first = identity
+                .into_iter()
+                .chain(text)
+                .min()
+                .unwrap_or(before.len().min(self.lines.len()));
+            self.invalidate_from(first + 1);
+        }
+    }
+
+    fn invalidate_from(&mut self, line: usize) {
+        self.call_start_hashes.retain(|current, _| *current < line);
+        for current in self.lines.iter_mut().skip(line.saturating_sub(1)) {
+            current.call_start = None;
+        }
+    }
+
+    fn take_transfer(&mut self, start: usize, end: usize) -> Result<Vec<Line>, EditError> {
+        if start == 0 && end == 0 {
+            return Ok(Vec::new());
+        }
+        let (s, e) = self.resolve_range(start, end)?;
+        let removed: Vec<Line> = self.lines.drain(s..=e).collect();
+        for line in &removed {
+            if let Some(origin) = line.origin {
+                self.deleted.insert(origin);
+            }
+        }
+        self.invalidate_from(start);
+        Ok(removed)
+    }
+
+    fn insert_transfer(&mut self, dest: usize, mut lines: Vec<Line>, copy: bool) {
+        if lines.is_empty() {
+            return;
+        }
+        for line in &mut lines {
+            line.origin = None;
+            line.call_start = None;
+            line.modified = true;
+            if copy {
+                line.printed = false;
+            }
+        }
+        self.lines.splice(dest..dest, lines);
+        self.invalidate_from(dest + 1);
+    }
+
+    fn into_result(self) -> EditResult {
+        let lines: Vec<String> = self.lines.iter().map(|l| l.text.clone()).collect();
+        let hashes = lines
+            .iter()
+            .enumerate()
+            .map(|(i, line)| format!("{}|{:04x}|", i + 1, line_hash_u16(line)))
+            .collect();
+        let modified = self
+            .lines
+            .iter()
+            .enumerate()
+            .filter_map(|(i, line)| line.modified.then_some(i + 1))
+            .collect();
+        let printed = self
+            .lines
+            .iter()
+            .enumerate()
+            .filter_map(|(i, line)| line.printed.then_some(i + 1))
+            .collect();
+        EditResult {
+            lines,
+            hashes,
+            modified,
+            deleted: self.deleted.into_iter().collect(),
+            origins: self.lines.iter().map(|line| line.origin).collect(),
+            printed,
+        }
     }
 
     fn resolve_command_range(&self, cmd: &Command) -> Result<(usize, usize, bool), EditError> {
@@ -395,7 +582,7 @@ impl Engine {
     fn delete_range(&mut self, start: usize, end: usize) -> Result<(), EditError> {
         let (s, e) = self.resolve_range(start, end)?;
         let removed: Vec<Line> = self.lines.drain(s..=e).collect();
-        for l in removed {
+        for l in &removed {
             if let Some(o) = l.origin {
                 self.deleted.insert(o);
             }
@@ -430,12 +617,15 @@ impl Engine {
             let new_lines: Vec<String> = result.split('\n').map(|s| s.to_string()).collect();
             let origins: Vec<Option<usize>> =
                 (s_idx..=e_idx).map(|i| self.lines[i].origin).collect();
+            let call_starts: Vec<Option<(usize, u16)>> =
+                (s_idx..=e_idx).map(|i| self.lines[i].call_start).collect();
             let new_line_objs: Vec<Line> = new_lines
                 .into_iter()
                 .enumerate()
                 .map(|(i, text)| Line {
                     text,
                     origin: origins.get(i).copied().flatten(),
+                    call_start: call_starts.get(i).copied().flatten(),
                     modified: true,
                     printed: false,
                     global_mark: false,
@@ -510,6 +700,7 @@ impl Engine {
             .map(|t| Line {
                 text: t.clone(),
                 origin: None,
+                call_start: None,
                 modified: true,
                 printed: false,
                 global_mark: false,
@@ -542,6 +733,7 @@ impl Engine {
             .map(|t| Line {
                 text: t.clone(),
                 origin: None,
+                call_start: None,
                 modified: true,
                 printed: false,
                 global_mark: false,
@@ -555,7 +747,9 @@ impl Engine {
     fn change_range(&mut self, start: usize, end: usize, text: &[String]) -> Result<(), EditError> {
         let (s, e) = self.resolve_range(start, end)?;
         let removed: Vec<Line> = self.lines.drain(s..=e).collect();
-        for l in removed {
+        let call_starts: Vec<Option<(usize, u16)>> =
+            removed.iter().map(|line| line.call_start).collect();
+        for l in &removed {
             if let Some(o) = l.origin {
                 self.deleted.insert(o);
             }
@@ -567,9 +761,13 @@ impl Engine {
 
         let new_lines: Vec<Line> = text
             .iter()
-            .map(|t| Line {
+            .enumerate()
+            .map(|(i, t)| Line {
                 text: t.clone(),
                 origin: None,
+                call_start: (text.len() == removed.len())
+                    .then(|| call_starts[i])
+                    .flatten(),
                 modified: true,
                 printed: false,
                 global_mark: false,
@@ -628,9 +826,6 @@ impl Engine {
 
     fn move_range(&mut self, start: usize, end: usize, dest: usize) -> Result<(), EditError> {
         let (s, e) = self.resolve_range(start, end)?;
-        if dest == 0 {
-            return Err(EditError::new("destination 0 is not allowed"));
-        }
         if dest > self.lines.len() {
             return Err(EditError::new(format!(
                 "destination out of range: {dest} > {}",
@@ -660,9 +855,6 @@ impl Engine {
 
     fn copy_range(&mut self, start: usize, end: usize, dest: usize) -> Result<(), EditError> {
         let (s, e) = self.resolve_range(start, end)?;
-        if dest == 0 {
-            return Err(EditError::new("destination 0 is not allowed"));
-        }
         if dest > self.lines.len() {
             return Err(EditError::new(format!(
                 "destination out of range: {dest} > {}",
@@ -675,6 +867,7 @@ impl Engine {
             .map(|l| Line {
                 text: l.text.clone(),
                 origin: None,
+                call_start: None,
                 modified: true,
                 printed: false,
                 global_mark: false,
@@ -785,8 +978,9 @@ impl Engine {
 
 /// Apply `commands` to the input text.
 ///
-/// Each command's lnhashes are verified against the current text immediately before that
-/// command is applied.
+/// Each command's lnhashes are verified immediately before it is applied. Single-line
+/// addresses may match the current text or a call-start hash recorded by an earlier
+/// in-place edit.
 pub fn edit_text(input: &str, commands: &[Command]) -> Result<EditResult, EditError> {
     edit_text_with_sw(input, commands, 4)
 }
@@ -803,39 +997,83 @@ pub fn edit_text_with_sw(
         eng.verify_command(c)?;
         eng.apply_command(c)?;
     }
+    Ok(eng.into_result())
+}
 
-    let lines: Vec<String> = eng.lines.iter().map(|l| l.text.clone()).collect();
-    let hashes: Vec<String> = lines
-        .iter()
-        .enumerate()
-        .map(|(i, l)| format!("{}|{:04x}|", i + 1, line_hash_u16(l)))
-        .collect();
+pub fn edit_buffers_with_sw(
+    buffers: Vec<(String, String)>,
+    commands: Vec<BufferCommand>,
+    sw: usize,
+) -> Result<Vec<BufferEditResult>, EditError> {
+    let mut indexes = HashMap::new();
+    let mut states = Vec::with_capacity(buffers.len());
+    for (target, text) in buffers {
+        if indexes.insert(target.clone(), states.len()).is_some() {
+            return Err(EditError::new(format!("duplicate buffer target: {target}")));
+        }
+        let lines = text.lines().map(|line| line.to_string()).collect();
+        states.push((target, text, Engine::new(lines, sw)));
+    }
 
-    let modified: Vec<usize> = eng
-        .lines
-        .iter()
-        .enumerate()
-        .filter_map(|(i, l)| if l.modified { Some(i + 1) } else { None })
-        .collect();
+    for BufferCommand {
+        target,
+        command,
+        destination,
+    } in commands
+    {
+        let source_idx = *indexes
+            .get(&target)
+            .ok_or_else(|| EditError::new(format!("unknown source buffer: {target}")))?;
+        let transfer = match &command.cmd {
+            Subcommand::Move { dest } => Some((*dest, false)),
+            Subcommand::Copy { dest } => Some((*dest, true)),
+            _ => None,
+        };
+        if let Some((dest, copy)) = transfer {
+            let destination = destination.unwrap_or_else(|| target.clone());
+            let dest_idx = *indexes.get(&destination).ok_or_else(|| {
+                EditError::new(format!("unknown destination buffer: {destination}"))
+            })?;
+            if source_idx == dest_idx {
+                states[source_idx].2.verify_command(&command)?;
+                states[source_idx].2.apply_command(&command)?;
+                continue;
+            }
 
-    let printed: Vec<usize> = eng
-        .lines
-        .iter()
-        .enumerate()
-        .filter_map(|(i, l)| if l.printed { Some(i + 1) } else { None })
-        .collect();
+            states[source_idx].2.verify_command_addresses(&command)?;
+            states[dest_idx].2.verify_destination(dest)?;
+            let (start, end, _) = states[source_idx].2.resolve_command_range(&command)?;
+            let dest_line = states[dest_idx].2.resolve_destination_lineno(dest)?;
+            let segment = if copy {
+                if start == 0 && end == 0 {
+                    Vec::new()
+                } else {
+                    let (s, e) = states[source_idx].2.resolve_range(start, end)?;
+                    states[source_idx].2.lines[s..=e].to_vec()
+                }
+            } else {
+                states[source_idx].2.take_transfer(start, end)?
+            };
+            states[dest_idx].2.insert_transfer(dest_line, segment, copy);
+        } else {
+            if destination.is_some() {
+                return Err(EditError::new(
+                    "only m/t commands may name a destination buffer",
+                ));
+            }
+            states[source_idx].2.verify_command(&command)?;
+            states[source_idx].2.apply_command(&command)?;
+        }
+    }
 
-    let deleted: Vec<usize> = eng.deleted.into_iter().collect();
-    let origins: Vec<Option<usize>> = eng.lines.iter().map(|l| l.origin).collect();
-
-    Ok(EditResult {
-        lines,
-        hashes,
-        modified,
-        deleted,
-        origins,
-        printed,
-    })
+    Ok(states
+        .into_iter()
+        .map(|(target, original_text, engine)| BufferEditResult {
+            target,
+            original_text,
+            result: engine.into_result(),
+        })
+        .collect())
 }
 
 fn build_regex(pattern: &str, case_insensitive: bool) -> Result<Regex, EditError> {

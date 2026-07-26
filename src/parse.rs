@@ -1,7 +1,7 @@
 use std::io::BufRead;
 
-use crate::lnhash::{parse_lnhash_prefix, LnHash};
 use crate::EditError;
+use crate::lnhash::{LnHash, parse_lnhash_prefix};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Address {
@@ -173,7 +173,9 @@ fn build_command(
     }
 
     // Enforce 0|0000| rules.
-    if let Address::LnHash(a1) = addr1 && a1.lineno == 0 {
+    if let Address::LnHash(a1) = addr1
+        && a1.lineno == 0
+    {
         if a1.hash != 0 {
             return Err(EditError::new("0|0000| must have hash 0000"));
         }
@@ -212,6 +214,21 @@ fn parse_address_prefix(input: &str) -> Result<(Address, &str), EditError> {
 }
 
 pub fn parse_destination_address(input: &str, op: char) -> Result<Address, EditError> {
+    parse_destination_address_inner(input, op, false)
+}
+
+pub(crate) fn parse_buffer_destination_address(
+    input: &str,
+    op: char,
+) -> Result<Address, EditError> {
+    parse_destination_address_inner(input, op, true)
+}
+
+fn parse_destination_address_inner(
+    input: &str,
+    op: char,
+    allow_zero: bool,
+) -> Result<Address, EditError> {
     let (addr, rest) = parse_address_prefix(input)?;
     if !rest.trim().is_empty() {
         return Err(EditError::new(format!(
@@ -220,7 +237,10 @@ pub fn parse_destination_address(input: &str, op: char) -> Result<Address, EditE
         )));
     }
     match addr {
-        Address::LnHash(LnHash { lineno: 0, .. }) => Err(EditError::new(format!(
+        Address::LnHash(LnHash { lineno: 0, hash }) if hash != 0 => {
+            Err(EditError::new("0|0000| must have hash 0000"))
+        }
+        Address::LnHash(LnHash { lineno: 0, .. }) if !allow_zero => Err(EditError::new(format!(
             "destination 0|0000| is not allowed for {op}"
         ))),
         Address::WholeFile => Err(EditError::new(format!(

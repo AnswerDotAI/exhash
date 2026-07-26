@@ -1,7 +1,7 @@
 "Engine command coverage at the Python surface (ported from src/engine.rs + src/parse.rs unit tests)."
 import pytest
 
-from exhash import exhash, lnhash, lnhashview
+from exhash import exhash, lnhash, lnhashview, file_exhash
 
 
 def test_global_delete():
@@ -84,6 +84,34 @@ def test_indent_and_dedent():
     assert res["lines"] == ["        a", "b"]
     assert res["modified"] == [1, 2]
 
+def test_call_start_hashes_for_stacked_single_line_commands():
+    text, addr = "abc def\nnext\n", lnhash(1, "abc def")
+    res = exhash(text, [(addr, "s", "abc", "ABC"), (addr, "s", "def", "DEF")])
+    assert res["lines"] == ["ABC DEF", "next"]
+    assert exhash(text, [(addr, "s", "abc", "ABC"), (addr, "d")])["lines"] == ["next"]
+    assert exhash(text, [(addr, "c", "changed"), (addr, "s", "changed", "CHANGED")])["lines"] == ["CHANGED", "next"]
+
+    with pytest.raises(ValueError, match="changed since your view"): exhash(text, [(addr, "d"), (addr, "s", "abc", "ABC")])
+    with pytest.raises(ValueError, match="already edited by an earlier command"):
+        exhash(text, [(addr, "s", "abc", "ABC"), ("1|1234|", "d")])
+    end = lnhash(2, "next")
+    with pytest.raises(ValueError, match="stale lnhash"): exhash(text, [(f"{addr},{end}", "s", "a", "A"), (f"{addr},{end}", "s", "b", "B")])
+    edited = exhash(text, [(addr, "s", "abc", "ABC")])
+    with pytest.raises(ValueError, match="changed since your view"): exhash("\n".join(edited["lines"]), [(addr, "d")])
+
+    text, addr = "TODO one\nkeep\nTODO two\n", lnhash(3, "TODO two")
+    res = exhash(text, [("%", "g", "TODO", ("s", "TODO", "DONE")), (addr, "s", "two", "TWO")])
+    assert res["lines"] == ["DONE one", "keep", "DONE TWO"]
+    addr = lnhash(1, "abc")
+    res = exhash("abc\n", [(addr, "s", "a", "A"), (addr, ">"), (addr, "s", "bc", "BC")])
+    assert res["lines"] == ["    ABC"]
+    inserted = lnhash(1, "inserted")
+    with pytest.raises(ValueError, match="changed since your view"):
+        exhash("base\n", [("0|0000|", "a", "inserted"), (inserted, "s", "inserted", "EDITED"), (inserted, "d")])
+    joined = lnhash(1, "left")
+    with pytest.raises(ValueError, match="changed since your view"):
+        exhash("left\nright\n", [(joined, "s", "left", "LEFT"), (joined, "j"), (joined, "d")])
+
 def test_copy_inserts_new_lines():
     text = "a\nb\nc\n"
     a1, a2, a3 = lnhash(1, "a"), lnhash(2, "b"), lnhash(3, "c")
@@ -100,10 +128,8 @@ def test_zero_address_delete_rejected():
     with pytest.raises(ValueError, match="only allowed"): exhash("a\n", [("0|0000|", "d")])
 
 def test_substitute_no_match_fails():
-    with pytest.raises(ValueError, match="no match"):
-        exhash("abc\n", [(lnhash(1, "abc"), "s", "zzz", "yyy")])
-    with pytest.raises(ValueError, match="no match"):
-        exhash("abc\n", [(lnhash(1, "abc"), "s", "zzz", "yyy", "g")])
+    with pytest.raises(ValueError, match="no match"): exhash("abc\n", [(lnhash(1, "abc"), "s", "zzz", "yyy")])
+    with pytest.raises(ValueError, match="no match"): exhash("abc\n", [(lnhash(1, "abc"), "s", "zzz", "yyy", "g")])
     # a match that leaves the text unchanged is not an error
     res = exhash("abc\n", [(lnhash(1, "abc"), "s", "abc", "abc")])
     assert res["lines"] == ["abc"]
@@ -155,7 +181,6 @@ def test_transliterate_requires_equal_char_counts():
 def test_clean_traceback(tmp_path):
     "Errors from bad addresses show the caller's frame, not exhash internals"
     import traceback
-    from exhash import file_exhash
     p = tmp_path/'t.txt'
     p.write_text('a\n')
     for fn,args in [(exhash, ('a\n', [('1|dead|', 'c', 'x')])), (file_exhash, (str(p), ('1|dead|', 'c', 'x')))]:

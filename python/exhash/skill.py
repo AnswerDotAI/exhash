@@ -1,6 +1,6 @@
 r"""Universal hash-verified text editing for local files. Use this when an LLM needs one safe editing interface for reading, previewing, and modifying text files.
 
-Exhash's purpose is to make edits precise and auditable. First view a file as `lineno|hash|text` (line numbers may be space-padded for alignment); then issue ex-style commands against those exact addresses. Every addressed line's hash is checked immediately before the command runs, so stale context or wrong targets fail instead of editing nearby text. Hashes are checked immediately before each command and lines shift as edits apply; for multiple edits in one call always work *backwards* (bottom-to-top).
+Exhash's purpose is to make edits precise and auditable. First view a file as `lineno|hash|text` (line numbers may be space-padded for alignment); then issue ex-style commands against those exact addresses. Every addressed line's hash is checked immediately before the command runs, so stale context or wrong targets fail instead of editing nearby text. Within one call, a single-line address may match the line's current content or its content at call start, so commands can stack on one line; across calls, re-view. Structural edits still shift lines as they apply, so work *backwards* (bottom-to-top).
 
 Prefer exhash over ad hoc patching for text file modifications, and prefer reading with `lnhashview_file` over plain file reads whenever an edit may follow: the view doubles as the address book, so the edit needs no second read.
 
@@ -23,7 +23,7 @@ Addressing:
   hex content hash. Use lnhashview to get addresses:
     lnhashview file.txt          show all lines with addresses
     lnhashview file.txt 10 20    show lines 10-20
-  With multiple commands, hashes are checked immediately before each command runs.
+  With multiple commands, hashes are checked immediately before each command runs; a single-line address may also match that line's call-start hash.
 
   Single:   12|a3f2|
   Range:    12|a3f2|,15|b1c3|

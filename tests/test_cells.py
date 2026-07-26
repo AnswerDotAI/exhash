@@ -1,5 +1,5 @@
 import json, pytest
-from exhash import lnhash, lnhashview_cell, lnhashview_cells, cell_exhash
+from exhash import lnhash, lnhashview_cell, lnhashview_cells, cell_exhash, file_exhash
 
 def mk_nb(path, cells):
     "Write a minimal notebook; `cells` is a list of (id, source) with source str or list"
@@ -69,9 +69,16 @@ def test_cell_exhash_writes_by_default(tmp_path):
     assert json.loads(p.read_text())['cells'][0]['source'] == 'x=9'   # written by default
 
 
+def test_cell_exhash_stacks_call_start_addresses(tmp_path):
+    p = tmp_path/'t.ipynb'
+    mk_nb(p, [('aaaa1111', 'x = one + two')])
+    addr = lnhash(1, 'x = one + two')
+    cell_exhash(p, 'aaaa1111', (addr, 's', 'one', '1'), (addr, 's', 'two', '2'))
+    assert json.loads(p.read_text())['cells'][0]['source'] == 'x = 1 + 2'
+
+
 def test_file_cell_exhash_targets(tmp_path):
     "Cross-target m/t: cell->cell, cell->file, file->cell, whole-cell % source; single write per notebook."
-    from exhash import file_exhash
     nb1, nb2, f = tmp_path/'a.ipynb', tmp_path/'b.ipynb', tmp_path/'x.py'
     mk_nb(nb1, [('aaaa1111', ['k = 42\n', 'print(k)']), ('bbbb2222', 'y=1')])
     mk_nb(nb2, [('cccc3333', 'z=3')])
@@ -90,7 +97,6 @@ def test_file_cell_exhash_targets(tmp_path):
     cells = {c['id']: c['source'] for c in json.loads(nb1.read_text())['cells']}
     assert cells['aaaa1111'] == ['k = 42\n', 'print(k)'] and cells['bbbb2222'] == 'y=1\nstart'
     # a range must stay within one target; missing cells raise; stale hashes raise
-    with pytest.raises(ValueError, match='one file or cell'):
-        file_exhash(str(f), (f'{nb1}:aaaa1111:1|0000|,{nb1}:bbbb2222:1|0000|', 'd'))
+    with pytest.raises(ValueError, match='one file or cell'): file_exhash(str(f), (f'{nb1}:aaaa1111:1|0000|,{nb1}:bbbb2222:1|0000|', 'd'))
     with pytest.raises(KeyError): file_exhash(str(f), (f'{nb1}:zzzz:1|0000|', 'd'))
     with pytest.raises(ValueError, match='stale'): file_exhash(str(f), (f'{nb1}:aaaa1111:1|beef|', 'd'))
