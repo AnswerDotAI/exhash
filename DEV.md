@@ -67,13 +67,13 @@ pytest -q
 
 2. Confirm the release version in `Cargo.toml` (`[package].version`). `pyproject.toml` gets the Python package version from Cargo via `dynamic = ["version"]`.
 
-3. Tag that commit and push the tag:
+3. Release:
 
 ```bash
-ship-rs-release
+ship-release
 ```
 
-4. After pushing the release tag, run `ship-rs-bump`, commit the `Cargo.toml` version bump, and push to `main` (no tag). No need to wait for publish to finish first.
+It tags `v<version>`, pushes branch and tag, then bumps `Cargo.toml`, refreshes the editable install, and pushes the bump to `main` (no tag). No need to wait for publish to finish first.
 
 No local build is required for release; CI runs the release build, creates a GitHub Release, and publishes to PyPI.
 
