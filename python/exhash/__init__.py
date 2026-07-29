@@ -293,12 +293,21 @@ def _parse_file_command(cmd, default):
     return parsed
 
 
+_UNEXPANDED_RE = re.compile(r'\{[A-Za-z_]\w*\}|\$\{?[A-Za-z_]\w*\}?')
+
+
+def _unexpanded(path):
+    "A note naming the IPython interpolation left literal in `path`: in a `%%exhash` line, an undefined `{name}`/`$name` is passed through as text, so the path silently becomes nonsense."
+    m = _UNEXPANDED_RE.search(str(path))
+    return f" -- note: {m.group(0)!r} looks like an unexpanded IPython variable (undefined names in a magic line are passed through literally)" if m else ""
+
+
 def _load_buffer(st, target, missing_ok=False):
     path, cell = target
     if cell is not None:
         if path not in st['nbs']:
             nbp = Path(path).expanduser()
-            if not nbp.exists(): raise FileNotFoundError(f'notebook not found: {path}')
+            if not nbp.exists(): raise FileNotFoundError(f'notebook not found: {path}{_unexpanded(path)}')
             st['nbs'][path] = json.loads(nbp.read_text())
         c = _find_cell(st['nbs'][path], cell, path)
         target = (path, c['id'])
@@ -310,8 +319,8 @@ def _load_buffer(st, target, missing_ok=False):
     p = Path(path)
     try: lines = p.read_text().splitlines()
     except FileNotFoundError:
-        if not missing_ok: raise FileNotFoundError(f'file not found: {path} (a new file can only be created with a 0|0000| a/i command)') from None
-        if not p.parent.exists(): raise FileNotFoundError(f'cannot create {path}: parent directory {p.parent} does not exist') from None
+        if not missing_ok: raise FileNotFoundError(f'file not found: {path}{_unexpanded(path)} (a new file can only be created with a 0|0000| a/i command)') from None
+        if not p.parent.exists(): raise FileNotFoundError(f'cannot create {path}: parent directory {p.parent} does not exist{_unexpanded(path)}') from None
         lines = []
     st['bufs'][target] = dict(target=target, path=path, cellref=None, original=list(lines), lines=list(lines))
     return st['bufs'][target]
@@ -400,7 +409,7 @@ def _find_cell(nb, cell_id, path):
 def _load_cell(path, cell_id):
     'Return ``(nb, cell)`` for the cell whose id is ``cell_id`` (exact match or unique prefix).'
     nbp = Path(path).expanduser()
-    if not nbp.exists(): raise FileNotFoundError(f'notebook not found: {path}')
+    if not nbp.exists(): raise FileNotFoundError(f'notebook not found: {path}{_unexpanded(path)}')
     nb = json.loads(nbp.read_text())
     return nb, _find_cell(nb, cell_id, path)
 
