@@ -34,6 +34,11 @@ def lnhashview_file(path:str, start:int=None, end:int=None) -> "LnhashView":
     return LnhashView(_lnhashview(Path(path).expanduser().read_text(), start, end))
 
 
+@fail_clean(*stdexcs)
+def lnhashview_files(*paths:str, start:int=None, end:int=None) -> "LnhashView":
+    'Return grouped lnhash views for several files. Each group starts with ``# file <path>``; following lines keep normal ``lineno|hash|content`` format.'
+    return LnhashView(x for p in paths for x in (f"# file {p}", *lnhashview_file(p, start, end)))
+
 _NOFIELD = {'d', 'p', 'j', 'sort'}
 
 

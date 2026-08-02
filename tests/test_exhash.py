@@ -1,5 +1,5 @@
 import warnings, pytest
-from exhash import line_hash, lnhash, lnhashview, lnhashview_file, exhash, file_exhash, lnhashview_cell, cell_exhash, truncate_diff
+from exhash import line_hash, lnhash, lnhashview, lnhashview_file, lnhashview_files, exhash, file_exhash, lnhashview_cell, cell_exhash, truncate_diff
 def test_lnhashview_display(tmp_path):
     q = chr(39)
     txt = f'x = "a" + {q}b{q}' + chr(10) + 'y = 1' + chr(10)
@@ -501,6 +501,18 @@ def test_lnhashview_file_clamps_end_past_eof(tmp_path):
     assert len(lines) == 3
     assert lines[0].startswith("1|")
     assert lines[-1].startswith("3|")
+
+
+def test_lnhashview_files(tmp_path):
+    f, g = tmp_path / "a.txt", tmp_path / "b.txt"
+    f.write_text("a\nb\nc\n")
+    g.write_text("x\ny\n")
+    lines = lnhashview_files(str(f), str(g), start=2, end=2)
+    assert lines[0] == f"# file {f}"
+    assert lines[1].startswith(lnhash(2, "b"))
+    assert lines[2] == f"# file {g}"
+    assert lines[3].startswith(lnhash(2, "y"))
+    assert str(lines) == "\n".join(lines)
 
 
 def test_file_exhash_accepts_padded_range_addresses(tmp_path):
