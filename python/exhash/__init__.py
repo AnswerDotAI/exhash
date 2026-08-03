@@ -29,9 +29,9 @@ def lnhashview(text:str, start:int=None, end:int=None) -> "LnhashView":
 
 
 @fail_clean(*stdexcs)
-def lnhashview_file(*paths:str, start:int=None, end:int=None) -> "LnhashView":
+def lnhashview_files(*paths:str, start:int=None, end:int=None) -> "LnhashView":
     'Return lines formatted as space-padded ``lineno|hash|content`` for one or more files, each after a ``# file <path>`` header when several. Optional 1-based ``start``/``end`` filter the range per file; ``end`` past EOF is clamped.'
-    if not paths: raise ValueError("lnhashview_file() requires at least one path")
+    if not paths: raise ValueError("lnhashview_files() requires at least one path")
     views = [_lnhashview(Path(p).expanduser().read_text(), start, end) for p in paths]
     if len(views)==1: return LnhashView(views[0])
     return LnhashView(x for p,v in zip(paths,views) for x in (f"# file {p}", *v))
@@ -422,9 +422,9 @@ def _cell_text(cell):
 
 
 @fail_clean(*stdexcs)
-def lnhashview_cell(path:str, *cell_ids:str, start:int=None, end:int=None) -> "LnhashView":
+def lnhashview_cells(path:str, *cell_ids:str, start:int=None, end:int=None) -> "LnhashView":
     'Return lines formatted as ``lineno|hash|content`` for the source of one or more notebook cells in ipynb file at ``path``, each after a ``# cell <id>`` header when several. Each cell id may be exact or a unique prefix; optional 1-based ``start``/``end`` filter the range per cell.'
-    if not cell_ids: raise ValueError("lnhashview_cell() requires at least one cell id")
+    if not cell_ids: raise ValueError("lnhashview_cells() requires at least one cell id")
     cells = [_load_cell(path, c)[1] for c in cell_ids]
     views = [_lnhashview(_cell_text(c), start, end) for c in cells]
     if len(views)==1: return LnhashView(views[0])
@@ -436,7 +436,7 @@ def cell_exhash(path:str, cell_id:str, *cmds:tuple, sw:int=4, inplace:bool=True)
     """Apply exhash commands to the source of notebook cell ``cell_id`` in ipynb file at ``path``.
 
     Command tuples are the ``exhash.skill`` module docstring's; use
-    ``lnhashview_cell(path, cell_id)`` for addresses.
+    ``lnhashview_cells(path, cell_id)`` for addresses.
     ``cell_id`` may be an exact id or unique prefix.
 
     By default (``inplace=True``) write the edited source back when the source actually

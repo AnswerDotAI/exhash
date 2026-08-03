@@ -1,5 +1,5 @@
 import json, pytest
-from exhash import lnhash, lnhashview_cell, cell_exhash, file_exhash
+from exhash import lnhash, lnhashview_cells, cell_exhash, file_exhash
 
 def mk_nb(path, cells):
     "Write a minimal notebook; `cells` is a list of (id, source) with source str or list"
@@ -8,32 +8,32 @@ def mk_nb(path, cells):
     path.write_text(json.dumps(nb))
     return nb
 
-def test_lnhashview_cell(tmp_path):
+def test_lnhashview_cells(tmp_path):
     p = tmp_path/'t.ipynb'
     mk_nb(p, [('aaaa1111', ['def f():\n', '    return 1']), ('bbbb2222', 'x=1')])
-    lines = lnhashview_cell(p, 'aaaa1111')
+    lines = lnhashview_cells(p, 'aaaa1111')
     assert len(lines) == 2
     assert lines[0].startswith(lnhash(1, 'def f():'))
     assert lines[1].endswith('|    return 1')
     assert str(lines) == chr(10).join(lines)
 
 
-def test_lnhashview_cell_many(tmp_path):
+def test_lnhashview_cells_many(tmp_path):
     p = tmp_path/'t.ipynb'
     mk_nb(p, [('aaaa1111', ['def f():\n', '    return 1']), ('bbbb2222', 'x=1')])
-    lines = lnhashview_cell(p, 'aaaa', 'bbbb')
+    lines = lnhashview_cells(p, 'aaaa', 'bbbb')
     assert lines[0] == '# cell aaaa1111'
     assert lines[1].startswith(lnhash(1, 'def f():'))
     assert lines[3] == '# cell bbbb2222'
     assert lines[4].startswith(lnhash(1, 'x=1'))
     assert str(lines) == chr(10).join(lines)
 
-def test_lnhashview_cell_prefix_and_errors(tmp_path):
+def test_lnhashview_cells_prefix_and_errors(tmp_path):
     p = tmp_path/'t.ipynb'
     mk_nb(p, [('aaaa1111', 'x=1'), ('aabb2222', 'y=2')])
-    assert lnhashview_cell(p, 'aabb')[0].endswith('|y=2')
-    with pytest.raises(KeyError): lnhashview_cell(p, 'aa')      # ambiguous prefix
-    with pytest.raises(KeyError): lnhashview_cell(p, 'zzzz')    # no such cell
+    assert lnhashview_cells(p, 'aabb')[0].endswith('|y=2')
+    with pytest.raises(KeyError): lnhashview_cells(p, 'aa')      # ambiguous prefix
+    with pytest.raises(KeyError): lnhashview_cells(p, 'zzzz')    # no such cell
 
 def test_cell_exhash_inplace_list_source(tmp_path):
     p = tmp_path/'t.ipynb'
