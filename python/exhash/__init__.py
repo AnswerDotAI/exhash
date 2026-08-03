@@ -29,14 +29,9 @@ def lnhashview(text:str, start:int=None, end:int=None) -> "LnhashView":
 
 
 @fail_clean(*stdexcs)
-def lnhashview_file(*args, start:int=None, end:int=None) -> "LnhashView":
-    'Return lines formatted as space-padded ``lineno|hash|content`` for one or more files, each after a ``# file <path>`` header when several. Up to two int args are ``start``/``end``: optional 1-based range filters applied per file; ``end`` past EOF is clamped.'
-    lns = [o for o in args if isinstance(o,int)]
-    paths = [o for o in args if not isinstance(o,int)]
+def lnhashview_file(*paths:str, start:int=None, end:int=None) -> "LnhashView":
+    'Return lines formatted as space-padded ``lineno|hash|content`` for one or more files, each after a ``# file <path>`` header when several. Optional 1-based ``start``/``end`` filter the range per file; ``end`` past EOF is clamped.'
     if not paths: raise ValueError("lnhashview_file() requires at least one path")
-    if len(lns)>2: raise ValueError(f"At most two int args (start, end), got {len(lns)}")
-    if lns: start = lns[0]
-    if len(lns)==2: end = lns[1]
     views = [_lnhashview(Path(p).expanduser().read_text(), start, end) for p in paths]
     if len(views)==1: return LnhashView(views[0])
     return LnhashView(x for p,v in zip(paths,views) for x in (f"# file {p}", *v))

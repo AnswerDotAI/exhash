@@ -507,7 +507,7 @@ def test_lnhashview_file_many(tmp_path):
     f, g = tmp_path / "a.txt", tmp_path / "b.txt"
     f.write_text("a\nb\nc\n")
     g.write_text("x\ny\n")
-    lines = lnhashview_file(str(f), str(g), 2, 2)
+    lines = lnhashview_file(str(f), str(g), start=2, end=2)
     assert lines[0] == f"# file {f}"
     assert lines[1].startswith(lnhash(2, "b"))
     assert lines[2] == f"# file {g}"
