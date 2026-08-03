@@ -1,5 +1,5 @@
 import warnings, pytest
-from exhash import line_hash, lnhash, lnhashview, lnhashview_file, exhash, file_exhash, lnhashview_cell, cell_exhash, truncate_diff
+from exhash import line_hash, lnhash, lnhashview, lnhashview_files, exhash, file_exhash, lnhashview_cells, cell_exhash, truncate_diff
 def test_lnhashview_display(tmp_path):
     q = chr(39)
     txt = f'x = "a" + {q}b{q}' + chr(10) + 'y = 1' + chr(10)
@@ -8,7 +8,7 @@ def test_lnhashview_display(tmp_path):
     assert f'"a" + {q}b{q}' in str(v)
     f = tmp_path/'t.py'
     f.write_text(txt)
-    assert str(lnhashview_file(str(f))) == str(v)
+    assert str(lnhashview_files(str(f))) == str(v)
 
 
 
@@ -316,7 +316,7 @@ def test_exhash_literal_newline_in_replacement():
 def test_file_exhash_read(tmp_path):
     f = tmp_path / "test.txt"
     f.write_text("hello\nworld\n")
-    lines = lnhashview_file(str(f))
+    lines = lnhashview_files(str(f))
     assert len(lines) == 2
     assert "hello" in lines[0]
 
@@ -486,21 +486,33 @@ def test_lnhashview_end_only():
     assert lines[0].startswith("1|")
     assert lines[1].startswith("2|")
 
-def test_lnhashview_file_start_end(tmp_path):
+def test_lnhashview_files_start_end(tmp_path):
     f = tmp_path / "test.txt"
     f.write_text("a\nb\nc\nd\n")
-    lines = lnhashview_file(str(f), start=2, end=3)
+    lines = lnhashview_files(str(f), start=2, end=3)
     assert len(lines) == 2
     assert lines[0].startswith("2|")
     assert lines[1].startswith("3|")
 
-def test_lnhashview_file_clamps_end_past_eof(tmp_path):
+def test_lnhashview_files_clamps_end_past_eof(tmp_path):
     f = tmp_path / "test.txt"
     f.write_text("a\nb\nc\n")
-    lines = lnhashview_file(str(f), start=1, end=260)
+    lines = lnhashview_files(str(f), start=1, end=260)
     assert len(lines) == 3
     assert lines[0].startswith("1|")
     assert lines[-1].startswith("3|")
+
+
+def test_lnhashview_files_many(tmp_path):
+    f, g = tmp_path / "a.txt", tmp_path / "b.txt"
+    f.write_text("a\nb\nc\n")
+    g.write_text("x\ny\n")
+    lines = lnhashview_files(str(f), str(g), start=2, end=2)
+    assert lines[0] == f"# file {f}"
+    assert lines[1].startswith(lnhash(2, "b"))
+    assert lines[2] == f"# file {g}"
+    assert lines[3].startswith(lnhash(2, "y"))
+    assert str(lines) == "\n".join(lines)
 
 
 def test_file_exhash_accepts_padded_range_addresses(tmp_path):
@@ -514,14 +526,14 @@ def test_tilde_expansion(tmp_path, monkeypatch):
     import json
     monkeypatch.setenv("HOME", str(tmp_path))
     (tmp_path / "f.txt").write_text("foo\nbar\n")
-    assert "foo" in lnhashview_file("~/f.txt")[0]
+    assert "foo" in lnhashview_files("~/f.txt")[0]
     file_exhash("~/f.txt", (lnhash(1, "foo"), "s", "foo", "baz"))
     assert (tmp_path / "f.txt").read_text() == "baz\nbar\n"
     file_exhash("~/f.txt", (r"~/g.txt:0|0000|", "a", "hi"))
     assert (tmp_path / "g.txt").read_text() == "hi\n"
     nb = dict(cells=[dict(id="abc", cell_type="code", source="x=1\n", metadata={})], metadata={}, nbformat=4, nbformat_minor=5)
     (tmp_path / "nb.ipynb").write_text(json.dumps(nb))
-    assert "x=1" in lnhashview_cell("~/nb.ipynb", "abc")[0]
+    assert "x=1" in lnhashview_cells("~/nb.ipynb", "abc")[0]
     cell_exhash("~/nb.ipynb", "abc", (lnhash(1, "x=1"), "s", "x=1", "x=2"))
     assert json.loads((tmp_path / "nb.ipynb").read_text())["cells"][0]["source"] == "x=2\n"
 
@@ -590,7 +602,7 @@ def test_file_exhash_print_only_returns_bare_view_and_writes_nothing(tmp_path):
     assert str(out) == " 2|8767|line 2\n11|2808|line 11\n"   # padded like lnhashview, no tag, no headers
     assert f.read_text() == "".join(f"line {i}\n" for i in range(1, 13))
     whole = file_exhash(str(f), ("%", "p"))
-    assert str(whole) == "\n".join(lnhashview_file(str(f))) + "\n"
+    assert str(whole) == "\n".join(lnhashview_files(str(f))) + "\n"
 
 
 def test_file_exhash_print_bypasses_truncation(tmp_path):
@@ -636,7 +648,7 @@ def test_cell_exhash_print_only_returns_bare_view_and_writes_nothing(tmp_path):
     p.write_text(json.dumps(nb))
     before = p.read_text()
     out = cell_exhash(str(p), "abc123", (lnhash(2, "y = 2"), "p"))
-    assert str(out) == "\n".join(lnhashview_cell(str(p), "abc123", 2, 2)) + "\n"
+    assert str(out) == "\n".join(lnhashview_cells(str(p), "abc123", start=2, end=2)) + "\n"
     assert p.read_text() == before
     grouped = str(file_exhash(str(p), (f"{p}:abc123:{lnhash(3, 'z = 3')}", "p"), (f"{p}:def456:{lnhash(1, 'a = 10')}", "p")))
     assert grouped == f"# cell abc123\n{lnhash(3, 'z = 3')}z = 3\n# cell def456\n{lnhash(1, 'a = 10')}a = 10\n"

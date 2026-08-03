@@ -2,16 +2,16 @@ r"""Universal hash-verified text editing for local files. Use this when an LLM n
 
 Exhash's purpose is to make edits precise and auditable. First view a file as `lineno|hash|text` (line numbers may be space-padded for alignment); then issue ex-style commands against those exact addresses. Every addressed line's hash is checked immediately before the command runs, so stale context or wrong targets fail instead of editing nearby text. Within one call, a single-line address may match the line's current content or its content at call start, so commands can stack on one line; across calls, re-view. Structural edits still shift lines as they apply, so work *backwards* (bottom-to-top).
 
-Prefer exhash over ad hoc patching for text file modifications, and prefer reading with `lnhashview_file` over plain file reads whenever an edit may follow: the view doubles as the address book, so the edit needs no second read.
+Prefer exhash over ad hoc patching for text file modifications, and prefer reading with `lnhashview_files` over plain file reads whenever an edit may follow: the view doubles as the address book, so the edit needs no second read.
 
 Core APIs:
-- `lnhashview_file` lists hashed lines.
+- `lnhashview_files` lists hashed lines; several paths in one call get `# file <path>` headers.
 - `exhash` is the in-memory command engine; this docstring is the complete command reference, and `doc(exhash)` adds engine details (strict `s` matching, EditResult fields).
 - `file_exhash` is the file-aware engine; unqualified addresses use `path` and file-qualified addresses can edit or transfer across files.
-- `lnhashview_cell` views one notebook cell's source in an `.ipynb` file; `lnhashview_cells` views several explicit cells with `# cell <id>` headers. `cell_exhash` edits one cell.
+- `lnhashview_cells` views one or more notebook cells' sources in an `.ipynb` file, with `# cell <id>` headers when several. `cell_exhash` edits one cell.
 
 Workflow:
-1. `lnhashview_file(...)`, ending the cell with the bare call: the result displays verbatim, one `lineno|hash|content` line each, so never join, print, or reformat it.
+1. `lnhashview_files(...)`, ending the cell with the bare call: the result displays verbatim, one `lineno|hash|content` line each, so never join, print, or reformat it.
 2. Copy exact displayed `lineno|hash|` addresses.
 3. Use tuple command specs; pass each command as its own positional argument, e.g. `file_exhash(path, (addr1, "d"), (addr2, "s", pat, repl))`. Use raw triple-quoted Python strings for address, pattern, replacement, and payload text when composing commands.
 4. Use `file_exhash(path, *cmds)` (or `cell_exhash(path, cell_id, *cmds)` for one notebook cell) to apply the edit: both write to disk and return a diff by default. Pass `inplace=False` to preview the result object without touching the file.
@@ -49,7 +49,7 @@ Tuple commands:
 
 
 Cut/copy/paste between files and notebook cells:
-Any `m` (cut+paste) or `t` (copy+paste) address can carry a target prefix: `path:` for another file, or `path.ipynb:cellid:` for one cell's source (`cellid` exact or unique prefix). This is THE way to transfer existing lines between locations: the lines never pass through your output, so opaque content (base64 blobs, hashes, long literals) cannot be mistyped. Take source addresses from `lnhashview_file`/`lnhashview_cell` of each target as usual:
+Any `m` (cut+paste) or `t` (copy+paste) address can carry a target prefix: `path:` for another file, or `path.ipynb:cellid:` for one cell's source (`cellid` exact or unique prefix). This is THE way to transfer existing lines between locations: the lines never pass through your output, so opaque content (base64 blobs, hashes, long literals) cannot be mistyped. Take source addresses from `lnhashview_files`/`lnhashview_cells` of each target as usual:
 
   file_exhash(path, ("src/a.py:10|aaaa|,20|bbbb|", "m", "src/b.py:$"))          # cut a.py lines 10-20, paste at end of b.py
   file_exhash(path, ("nb.ipynb:ab12cd34:6|830e|", "t", "other.ipynb:9f8e:$"))   # copy one cell line into another notebook's cell
@@ -59,16 +59,16 @@ A range must stay within one file or cell, and cells are never created by a tran
 
 Reformatting a section like `gq`, plus optional indents: `j` the range onto one line, re-view, then split with ONE g-flagged `s` alternating the tokens (picked by eye) that should start each new line, captured and restored with the break and indent in the replacement: `(addr, "s", r", ('foo'|'bar'|'baz')", ",\n    $1", "g")`
 Important:
-Do not pass raw commands to Python APIs. Do not create addresses by text search or remembered line numbers, and never construct them by computing hashes (e.g. via `line_hash`): addresses come only from a fresh view immediately before the edit. On stale hash, re-view and rebuild. Where rgapi is installed, hits from `rg(pattern, lnhashs=True)` count as fresh views too: their addresses drop straight into commands (and `nbrg` finds the cell ids that `lnhashview_cell` takes). If reaching an address seems to need arithmetic, scraping, or a guessed hash, a step on that route was skipped. Tuple text fields can contain newlines wherever the command accepts text. For example, `(addr, "s", "foo", "bar\nbaz")` replaces one line with two. Text fields are taken verbatim: a two-character `\n` sequence stays literal; use an actual newline when you want a line break. For `a`/`i`/`c`, put all text in one tuple payload: `"first\nsecond"` starts with `first`, while `"\nfirst"` inserts a leading blank line before `first`. For moving/copying between files or cells, use the qualified `m`/`t` addresses shown above. Missing files can only be created through `(r"0|0000|", "a", text)` or `(r"0|0000|", "i", text)` creation semantics.
+Do not pass raw commands to Python APIs. Do not create addresses by text search or remembered line numbers, and never construct them by computing hashes (e.g. via `line_hash`): addresses come only from a fresh view immediately before the edit. On stale hash, re-view and rebuild. Where rgapi is installed, hits from `rg(pattern, lnhashs=True)` count as fresh views too: their addresses drop straight into commands (and `nbrg` finds the cell ids that `lnhashview_cells` takes). If reaching an address seems to need arithmetic, scraping, or a guessed hash, a step on that route was skipped. Tuple text fields can contain newlines wherever the command accepts text. For example, `(addr, "s", "foo", "bar\nbaz")` replaces one line with two. Text fields are taken verbatim: a two-character `\n` sequence stays literal; use an actual newline when you want a line break. For `a`/`i`/`c`, put all text in one tuple payload: `"first\nsecond"` starts with `first`, while `"\nfirst"` inserts a leading blank line before `first`. For moving/copying between files or cells, use the qualified `m`/`t` addresses shown above. Missing files can only be created through `(r"0|0000|", "a", text)` or `(r"0|0000|", "i", text)` creation semantics.
 
 The `%%exhash` cell magic:
 In IPython sessions, importing this module registers the `%%exhash` cell magic: `%%exhash <path> [<cell_id>] <address> <a|i|c>` applies one command whose payload is everything below the magic line, taken verbatim (one trailing newline stripped). Passing `<cell_id>` targets that cell in an .ipynb file instead of a plain file (`cell_exhash`); the magic dispatches on token count, so no separate cell magic exists. Because the payload is never parsed as Python, no quoting or escaping applies. Use it for EVERY `a`/`i`/`c` command, however innocent the payload looks: create a file with `%%exhash path 0|0000| a`; replace a whole cell or file with `%%exhash <path> [<cell_id>] % c` (`%` needs no hashes: a full replace has no neighboring lines to mis-hit); replace a region within one with a range address and `c` (`%%exhash <path> 12|a3f2|,15|b1c3| c`), both addresses straight from the one pre-edit view. Tuple `a`/`i`/`c` payloads are only for contexts without magics (scripts, tests): interactively they add a Python quoting layer whose failure modes are not reliably foreseeable, so do not use them.
 IPython expands `{expr}` and `$var` in the magic line from the user namespace (its standard `var_expand` for all magics), so a path or cell id held in a variable needs no retyping: `%%exhash {path} {cid} % c`. Only the line expands; the payload stays verbatim.
 """
 
-from . import exhash, cell_exhash, file_exhash, line_hash, lnhash, lnhashview, lnhashview_cell, lnhashview_cells, lnhashview_file, magic
+from . import exhash, cell_exhash, file_exhash, line_hash, lnhash, lnhashview, lnhashview_cells, lnhashview_files, magic
 
-__all__ = ["line_hash", "lnhash", "lnhashview", "lnhashview_file", "lnhashview_cell", "lnhashview_cells", "exhash", "file_exhash", "cell_exhash"]
+__all__ = ["line_hash", "lnhash", "lnhashview", "lnhashview_files", "lnhashview_cells", "exhash", "file_exhash", "cell_exhash"]
 
 import sys
 if 'IPython' in sys.modules:

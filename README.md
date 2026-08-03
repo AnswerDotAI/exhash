@@ -103,7 +103,7 @@ In `--stdin` mode, multiline `a/i/c` text blocks are not available.
 ## Python API
 
 ```py
-from exhash import exhash, file_exhash, lnhash, lnhashview, lnhashview_file, line_hash
+from exhash import exhash, file_exhash, lnhash, lnhashview, lnhashview_files, line_hash
 ```
 
 ### Viewing
@@ -111,10 +111,10 @@ from exhash import exhash, file_exhash, lnhash, lnhashview, lnhashview_file, lin
 ```py
 text = "foo\nbar\n"
 view = lnhashview(text)                        # ["1|a1b2|foo", "2|c3d4|bar"]
-view = lnhashview_file("f.py", start=1, end=260) # end past EOF is clamped
+view = lnhashview_files("f.py", start=1, end=260) # end past EOF is clamped
 ```
 
-`lnhashview`/`lnhashview_file` return a `list` subclass whose repr shows the rows verbatim, one per line, so a bare call in IPython displays a ready-to-copy view.
+`lnhashview`/`lnhashview_files` return a `list` subclass whose repr shows the rows verbatim, one per line, so a bare call in IPython displays a ready-to-copy view.
 
 ### Editing
 
@@ -172,10 +172,10 @@ res = exhash("abc\n", [(lnhash(1, "abc"), "y", "abc", "ABC")])
 
 ### File helpers
 
-`lnhashview_file` reads directly from one file path. All file paths, including file-qualified addresses, expand a leading `~` to your home directory. `file_exhash(path, *cmds, sw=4, inplace=True)` uses `path` as the default file context for unqualified addresses. Pass each command as its own tuple argument. Put file-qualified source and `m`/`t` destination addresses in the address/destination tuple fields:
+`lnhashview_files` reads directly from file paths. All file paths, including file-qualified addresses, expand a leading `~` to your home directory. `file_exhash(path, *cmds, sw=4, inplace=True)` uses `path` as the default file context for unqualified addresses. Pass each command as its own tuple argument. Put file-qualified source and `m`/`t` destination addresses in the address/destination tuple fields:
 
 ```py
-view = lnhashview_file("file.py")
+view = lnhashview_files("file.py")
 
 # By default, writes changed files after every command succeeds
 # and returns the combined diff string.
@@ -209,7 +209,7 @@ A file prefix is separated from the address with `:`. Escape literal colons in f
 
 ### Notebook cells
 
-`lnhashview_cell(path, cell_id, ...)` returns a normal lnhash view for one cell. `lnhashview_cells(path, *cell_ids, ...)` returns the requested cells in order, using `# cell <id>` headers before each cell's normal `lineno|hash|content` lines. `cell_exhash(path, cell_id, *cmds, sw=4, inplace=True)` edits one cell; pass each command as its own tuple argument. Like `file_exhash` it writes and returns a diff by default, and `inplace=False` previews the `EditResult` without touching the file.
+`lnhashview_cells(path, *cell_ids, ...)` returns a normal lnhash view for one cell, or several cells in order, using `# cell <id>` headers before each cell's normal `lineno|hash|content` lines. `cell_exhash(path, cell_id, *cmds, sw=4, inplace=True)` edits one cell; pass each command as its own tuple argument. Like `file_exhash` it writes and returns a diff by default, and `inplace=False` previews the `EditResult` without touching the file.
 
 ### The `%%exhash` cell magic
 
@@ -223,7 +223,7 @@ new line 2
 
 - `%%exhash new.py 0|0000| a` creates a missing file.
 - `%%exhash f.py % c` replaces the whole file (`%` needs no hashes). With a cell id, `%%exhash nb.ipynb ab12 % c` replaces that notebook cell's source.
-- `%%exhash f.py 12|a3f2|,15|b1c3| c` replaces just that range, both addresses from one `lnhashview_file` view.
+- `%%exhash f.py 12|a3f2|,15|b1c3| c` replaces just that range, both addresses from one `lnhashview_files` view.
 - One trailing newline (the cell terminator) is stripped; to end the payload with a blank line, leave one extra blank line at the bottom.
 - Each magic cell applies one command and returns the diff.
 
