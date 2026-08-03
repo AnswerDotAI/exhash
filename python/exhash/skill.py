@@ -8,7 +8,7 @@ Core APIs:
 - `lnhashview_file` lists hashed lines; several paths in one call get `# file <path>` headers.
 - `exhash` is the in-memory command engine; this docstring is the complete command reference, and `doc(exhash)` adds engine details (strict `s` matching, EditResult fields).
 - `file_exhash` is the file-aware engine; unqualified addresses use `path` and file-qualified addresses can edit or transfer across files.
-- `lnhashview_cell` views one notebook cell's source in an `.ipynb` file; `lnhashview_cells` views several explicit cells with `# cell <id>` headers. `cell_exhash` edits one cell.
+- `lnhashview_cell` views one or more notebook cells' sources in an `.ipynb` file, with `# cell <id>` headers when several. `cell_exhash` edits one cell.
 
 Workflow:
 1. `lnhashview_file(...)`, ending the cell with the bare call: the result displays verbatim, one `lineno|hash|content` line each, so never join, print, or reformat it.
@@ -66,9 +66,9 @@ In IPython sessions, importing this module registers the `%%exhash` cell magic: 
 IPython expands `{expr}` and `$var` in the magic line from the user namespace (its standard `var_expand` for all magics), so a path or cell id held in a variable needs no retyping: `%%exhash {path} {cid} % c`. Only the line expands; the payload stays verbatim.
 """
 
-from . import exhash, cell_exhash, file_exhash, line_hash, lnhash, lnhashview, lnhashview_cell, lnhashview_cells, lnhashview_file, magic
+from . import exhash, cell_exhash, file_exhash, line_hash, lnhash, lnhashview, lnhashview_cell, lnhashview_file, magic
 
-__all__ = ["line_hash", "lnhash", "lnhashview", "lnhashview_file", "lnhashview_cell", "lnhashview_cells", "exhash", "file_exhash", "cell_exhash"]
+__all__ = ["line_hash", "lnhash", "lnhashview", "lnhashview_file", "lnhashview_cell", "exhash", "file_exhash", "cell_exhash"]
 
 import sys
 if 'IPython' in sys.modules:

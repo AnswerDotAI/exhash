@@ -422,20 +422,13 @@ def _cell_text(cell):
 
 
 @fail_clean(*stdexcs)
-def lnhashview_cell(path:str, cell_id:str, start:int=None, end:int=None) -> "LnhashView":
-    'Return lines formatted as ``lineno|hash|content`` for the source of notebook cell ``cell_id`` in ipynb file at ``path``. ``cell_id`` may be an exact id or unique prefix; optional 1-based ``start``/``end`` filter the range.'
-    return LnhashView(_lnhashview(_cell_text(_load_cell(path, cell_id)[1]), start, end))
-
-
-@fail_clean(*stdexcs)
-def lnhashview_cells(path:str, *cell_ids:str, start:int=None, end:int=None) -> "LnhashView":
-    'Return grouped lnhash views for explicit notebook cell ids. Each group starts with ``# cell <id>``; following lines keep normal ``lineno|hash|content`` format.'
-    out = []
-    for cell_id in cell_ids:
-        _, cell = _load_cell(path, cell_id)
-        out.append(f"# cell {cell.get('id', cell_id)}")
-        out += _lnhashview(_cell_text(cell), start, end)
-    return LnhashView(out)
+def lnhashview_cell(path:str, *cell_ids:str, start:int=None, end:int=None) -> "LnhashView":
+    'Return lines formatted as ``lineno|hash|content`` for the source of one or more notebook cells in ipynb file at ``path``, each after a ``# cell <id>`` header when several. Each cell id may be exact or a unique prefix; optional 1-based ``start``/``end`` filter the range per cell.'
+    if not cell_ids: raise ValueError("lnhashview_cell() requires at least one cell id")
+    cells = [_load_cell(path, c)[1] for c in cell_ids]
+    views = [_lnhashview(_cell_text(c), start, end) for c in cells]
+    if len(views)==1: return LnhashView(views[0])
+    return LnhashView(x for i,c,v in zip(cell_ids,cells,views) for x in (f"# cell {c.get('id', i)}", *v))
 
 
 @fail_clean(*stdexcs)

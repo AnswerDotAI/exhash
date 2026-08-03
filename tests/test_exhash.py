@@ -648,7 +648,7 @@ def test_cell_exhash_print_only_returns_bare_view_and_writes_nothing(tmp_path):
     p.write_text(json.dumps(nb))
     before = p.read_text()
     out = cell_exhash(str(p), "abc123", (lnhash(2, "y = 2"), "p"))
-    assert str(out) == "\n".join(lnhashview_cell(str(p), "abc123", 2, 2)) + "\n"
+    assert str(out) == "\n".join(lnhashview_cell(str(p), "abc123", start=2, end=2)) + "\n"
     assert p.read_text() == before
     grouped = str(file_exhash(str(p), (f"{p}:abc123:{lnhash(3, 'z = 3')}", "p"), (f"{p}:def456:{lnhash(1, 'a = 10')}", "p")))
     assert grouped == f"# cell abc123\n{lnhash(3, 'z = 3')}z = 3\n# cell def456\n{lnhash(1, 'a = 10')}a = 10\n"

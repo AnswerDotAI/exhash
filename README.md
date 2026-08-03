@@ -209,7 +209,7 @@ A file prefix is separated from the address with `:`. Escape literal colons in f
 
 ### Notebook cells
 
-`lnhashview_cell(path, cell_id, ...)` returns a normal lnhash view for one cell. `lnhashview_cells(path, *cell_ids, ...)` returns the requested cells in order, using `# cell <id>` headers before each cell's normal `lineno|hash|content` lines. `cell_exhash(path, cell_id, *cmds, sw=4, inplace=True)` edits one cell; pass each command as its own tuple argument. Like `file_exhash` it writes and returns a diff by default, and `inplace=False` previews the `EditResult` without touching the file.
+`lnhashview_cell(path, *cell_ids, ...)` returns a normal lnhash view for one cell, or several cells in order, using `# cell <id>` headers before each cell's normal `lineno|hash|content` lines. `cell_exhash(path, cell_id, *cmds, sw=4, inplace=True)` edits one cell; pass each command as its own tuple argument. Like `file_exhash` it writes and returns a diff by default, and `inplace=False` previews the `EditResult` without touching the file.
 
 ### The `%%exhash` cell magic
 

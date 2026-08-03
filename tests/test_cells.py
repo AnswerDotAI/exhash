@@ -1,5 +1,5 @@
 import json, pytest
-from exhash import lnhash, lnhashview_cell, lnhashview_cells, cell_exhash, file_exhash
+from exhash import lnhash, lnhashview_cell, cell_exhash, file_exhash
 
 def mk_nb(path, cells):
     "Write a minimal notebook; `cells` is a list of (id, source) with source str or list"
@@ -18,10 +18,10 @@ def test_lnhashview_cell(tmp_path):
     assert str(lines) == chr(10).join(lines)
 
 
-def test_lnhashview_cells(tmp_path):
+def test_lnhashview_cell_many(tmp_path):
     p = tmp_path/'t.ipynb'
     mk_nb(p, [('aaaa1111', ['def f():\n', '    return 1']), ('bbbb2222', 'x=1')])
-    lines = lnhashview_cells(p, 'aaaa', 'bbbb')
+    lines = lnhashview_cell(p, 'aaaa', 'bbbb')
     assert lines[0] == '# cell aaaa1111'
     assert lines[1].startswith(lnhash(1, 'def f():'))
     assert lines[3] == '# cell bbbb2222'
