@@ -30,7 +30,7 @@ def lnhashview(text:str, start:int=None, end:int=None) -> "LnhashView":
 
 @fail_clean(*stdexcs)
 def lnhashview_file(path:str, start:int=None, end:int=None) -> "LnhashView":
-    'Return lines formatted as space-padded ``lineno|hash|content`` for file at ``path``. Optional 1-based ``start``/``end`` filter the range; ``end`` past EOF is clamped.'
+    'Return lines formatted as space-padded ``lineno|hash|content`` for file at ``path`` (expands ``~``). Optional 1-based ``start``/``end`` filter the range; ``end`` past EOF is clamped.'
     return LnhashView(_lnhashview(Path(path).expanduser().read_text(), start, end))
 
 
@@ -341,7 +341,7 @@ def _prepare_file_command(st, parsed):
 def file_exhash(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
     r'''Read files and notebook cells, apply file-aware exhash commands, and return per-target results or a combined diff.
 
-    Command tuples are the ``exhash.skill`` module docstring's; ``path`` is the
+    Command tuples are the ``exhash.skill`` module docstring's; ``path`` (expands ``~``, as do qualified addresses) is the
     default file context for unqualified addresses. Prefix source address
     strings, and ``m``/``t`` destination strings, with ``path:`` to target
     another file, or ``path.ipynb:cellid:`` to target one notebook cell's
@@ -421,13 +421,13 @@ def _cell_text(cell):
 
 @fail_clean(*stdexcs)
 def lnhashview_cell(path:str, cell_id:str, start:int=None, end:int=None) -> "LnhashView":
-    'Return lines formatted as ``lineno|hash|content`` for the source of notebook cell ``cell_id`` in ipynb file at ``path``. ``cell_id`` may be an exact id or unique prefix; optional 1-based ``start``/``end`` filter the range.'
+    'Return lines formatted as ``lineno|hash|content`` for the source of notebook cell ``cell_id`` in ipynb file at ``path`` (expands ``~``). ``cell_id`` may be an exact id or unique prefix; optional 1-based ``start``/``end`` filter the range.'
     return LnhashView(_lnhashview(_cell_text(_load_cell(path, cell_id)[1]), start, end))
 
 
 @fail_clean(*stdexcs)
 def lnhashview_cells(path:str, *cell_ids:str, start:int=None, end:int=None) -> "LnhashView":
-    'Return grouped lnhash views for explicit notebook cell ids. Each group starts with ``# cell <id>``; following lines keep normal ``lineno|hash|content`` format.'
+    'Return grouped lnhash views for explicit notebook cell ids in the ipynb file at ``path`` (expands ``~``). Each group starts with ``# cell <id>``; following lines keep normal ``lineno|hash|content`` format.'
     out = []
     for cell_id in cell_ids:
         _, cell = _load_cell(path, cell_id)
@@ -438,7 +438,7 @@ def lnhashview_cells(path:str, *cell_ids:str, start:int=None, end:int=None) -> "
 
 @fail_clean(*stdexcs)
 def cell_exhash(path:str, cell_id:str, *cmds:tuple, sw:int=4, inplace:bool=True):
-    """Apply exhash commands to the source of notebook cell ``cell_id`` in ipynb file at ``path``.
+    """Apply exhash commands to the source of notebook cell ``cell_id`` in ipynb file at ``path`` (expands ``~``).
 
     Command tuples are the ``exhash.skill`` module docstring's; use
     ``lnhashview_cell(path, cell_id)`` for addresses.
