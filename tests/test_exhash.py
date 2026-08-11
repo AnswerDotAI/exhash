@@ -1,5 +1,5 @@
 import warnings, pytest
-from exhash import line_hash, lnhash, lnhashview, lnhashview_file, exhash, file_exhash, lnhashview_cell, cell_exhash, truncate_diff
+from exhash import MAXLEN, line_hash, lnhash, lnhashview, lnhashview_file, exhash, file_exhash, lnhashview_cell, cell_exhash, truncate_diff
 def test_lnhashview_display(tmp_path):
     q = chr(39)
     txt = f'x = "a" + {q}b{q}' + chr(10) + 'y = 1' + chr(10)
@@ -548,7 +548,7 @@ def test_truncate_diff():
     assert truncate_diff(short) == short
     long_line = "x" * 200
     t = truncate_diff(f"+1|abcd|{long_line}\n")
-    assert t.splitlines()[0] == ("+1|abcd|" + long_line)[:120] + "…"
+    assert t.splitlines()[0] == ("+1|abcd|" + long_line)[:MAXLEN] + "…"
     many = "\n".join(f"+{i}|abcd|line {i}" for i in range(1, 41)) + "\n"
     t = truncate_diff(many)
     lines = t.splitlines()

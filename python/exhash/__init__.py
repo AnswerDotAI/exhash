@@ -5,6 +5,8 @@ from pathlib import Path
 from .exhash import line_hash as _line_hash, lnhash as _lnhash, lnhashview as _lnhashview, exhash as _exhash, edit_buffers as _edit_buffers
 from fastcore.basics import fail_clean, PrettyString
 
+MAXLEN = 180 # Most characters shown per displayed line
+
 stdexcs = (ValueError, OSError, KeyError)
 
 def line_hash(line:str) -> str:
@@ -210,7 +212,7 @@ def _write_lines(path, lines): Path(path).write_text(_text_from_lines(lines))
 def truncate_diff(
     s:str, # Formatted diff text
     max_lines:int=15, # Max lines to keep before eliding the rest
-    maxlen:int=120, # Max chars per line; longer lines are cut and end with an ellipsis (``---``/``+++`` file headers exempt)
+    maxlen:int=MAXLEN, # Max chars per line; longer lines are cut and end with an ellipsis (``---``/``+++`` file headers exempt)
 )->str:
     "Truncate diff text for display: cap line length and count, appending an elided-lines marker."
     lines = s.splitlines()
