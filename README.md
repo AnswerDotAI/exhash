@@ -262,7 +262,7 @@ All diff strings returned by `format_diff`, `file_exhash`, and `cell_exhash` are
 
 ## Document outlines
 
-`open_doc(src)` opens a URL (fetched), a file path (recorded for `refresh()` and edits), or text, and returns a `Section` tree: Markdown sections from headings, code sections (py, js, ts, tsx, rs, zig, swift) from tree-sitter definitions, and `.ipynb` sections from md-heading cells over cells. The bare repr is a fixed-width outline, one row per section:
+`open_doc` opens a file (`fname=`, or a `Path` as `src`; recorded for `refresh()` and edits), a URL (an `https?://` str, fetched), or any other str as text, and returns a `Section` tree: Markdown sections from headings, code sections (py, js, ts, tsx, rs, zig, swift) from tree-sitter definitions, and `.ipynb` sections from md-heading cells over cells. The bare repr is a fixed-width outline, one row per section:
 
 ```
 1.6.|56|e96a|,78|eef8| Release [725] Publishing is handled by GitHub Actions in `.github/workflows/ci.yml`…

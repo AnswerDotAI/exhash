@@ -132,6 +132,7 @@ def test_file_backed(tmp_path):
     (tmp_path/'install.md').write_text('# Install\n\nRun the thing.\n')
     d = open_doc(p)
     assert d.path == p
+    assert open_doc(fname=str(p)).path == p
     sec = d.find('Reference')
     v = sec.view(lnhashs=True).splitlines()
     assert v[0] == lnhash(sec.start_line, '## Reference') + '## Reference'

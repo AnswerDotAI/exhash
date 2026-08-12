@@ -297,10 +297,15 @@ def _parse_nb(path):
     return root
 
 
-def open_doc(src, rm_fenced=True):
-    "Open a document as a `Section` tree: a URL (fetched), a file path (recorded for `refresh` and edits), or text"
-    if isinstance(src, Path) or (isinstance(src, str) and '\n' not in src and Path(src).expanduser().exists()):
-        path = Path(src).expanduser()
+def open_doc(
+    src:str|Path=None, # `Path`: a file to read (expands `~`); `https?://` str: a URL to fetch; any other str: the text itself
+    rm_fenced=True, # Ignore headings inside fenced code blocks?
+    fname:str=None, # File name to open (expands `~`), as an alternative to passing a `Path` as `src`
+):
+    "Open a document as a `Section` tree: a file (`fname`, or a `Path` in `src`; recorded for `refresh` and edits), a URL (fetched), or text"
+    if fname: src = Path(fname)
+    if isinstance(src, Path):
+        path = src.expanduser()
         if path.suffix == '.ipynb': return _parse_nb(path)
         lang = _LANGS.get(path.suffix.lstrip('.'))
         text = path.read_text()
