@@ -169,6 +169,42 @@ fn lnhashview(text: &str, start: Option<usize>, end: Option<usize>) -> PyResult<
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
+/// Scan Markdown into `(headings, links)` tuples for the Python outline layer.
+/// Headings are `(level, title, start_line, end_line)`; links are
+/// `(n, txt, url, tail, line)`. Lines are 1-based.
+#[pyfunction]
+#[pyo3(signature = (text, rm_fenced=true))]
+fn md_scan(
+    text: &str,
+    rm_fenced: bool,
+) -> PyResult<(
+    Vec<(usize, String, usize, usize)>,
+    Vec<(usize, String, String, String, usize)>,
+)> {
+    let (headings, links) = guard("scanning markdown", || crate::scan_md(text, rm_fenced))?;
+    Ok((
+        headings
+            .into_iter()
+            .map(|h| (h.level, h.title, h.start_line, h.end_line))
+            .collect(),
+        links
+            .into_iter()
+            .map(|l| (l.n, l.txt, l.url, l.tail, l.line))
+            .collect(),
+    ))
+}
+
+/// Scan source code into preorder `(level, title, start_line, end_line)` rows
+/// via tree-sitter; `level` is section nesting depth. Lines are 1-based.
+#[pyfunction]
+fn code_scan(text: &str, lang: &str) -> PyResult<Vec<(usize, String, usize, usize)>> {
+    let rows =
+        guard("scanning code", || crate::scan_code(text, lang))?.map_err(PyValueError::new_err)?;
+    Ok(rows
+        .into_iter()
+        .map(|h| (h.level, h.title, h.start_line, h.end_line))
+        .collect())
+}
 /// A tuple-command field: a string, or a nested tuple (a global's subcommand).
 #[derive(FromPyObject)]
 enum PyField {
@@ -365,6 +401,8 @@ fn exhash(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_exhash, m)?)?;
     m.add_function(wrap_pyfunction!(edit_buffers, m)?)?;
     m.add_function(wrap_pyfunction!(exhash_argv, m)?)?;
+    m.add_function(wrap_pyfunction!(md_scan, m)?)?;
+    m.add_function(wrap_pyfunction!(code_scan, m)?)?;
     Ok(())
 }
 

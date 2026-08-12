@@ -463,3 +463,5 @@ def cell_exhash(path:str, cell_id:str, *cmds:tuple, sw:int=4, inplace:bool=True)
         cell['source'] = new.splitlines(keepends=True) if isinstance(cell['source'], list) else new
         Path(path).expanduser().write_text(json.dumps(nb, sort_keys=True, indent=1, ensure_ascii=False) + '\n')
     return _diff_out(res)
+
+from .outline import *

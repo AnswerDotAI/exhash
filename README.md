@@ -260,6 +260,16 @@ print(res.format_diff())
 
 All diff strings returned by `format_diff`, `file_exhash`, and `cell_exhash` are fastcore `PrettyString`s, and the result objects' reprs show the diff too - so in IPython, ending a cell with the bare call displays the diff verbatim, no `print` needed.
 
+## Document outlines
+
+`open_doc(src)` opens a URL (fetched), a file path (recorded for `refresh()` and edits), or text, and returns a `Section` tree: Markdown sections from headings, code sections (py, js, ts, tsx, rs, zig, swift) from tree-sitter definitions, and `.ipynb` sections from md-heading cells over cells. The bare repr is a fixed-width outline, one row per section:
+
+```
+1.6.|56|e96a|,78|eef8| Release [725] Publishing is handled by GitHub Actions in `.github/workflows/ci.yml`…
+```
+
+The leading token is a verified address: the dotted addr (trailing dot; the root's is `.`) fused with the section's `start,end` lnhash boundary pair. `at(token)` navigates with the first hash verified, so a stale copy fails loudly; the boundary pair drops straight into a `file_exhash` range command, so a listing is also an edit address book. `find(title)`, `search(pat)`, `paths(depth)`, and numeric indexing (`d[1][6]`) traverse the live tree; `links(pat)` lists inline links numbered document-wide, and `open(n)` opens link `n` as a new tree (fetched or read relative to `base`). Previews join lines with `¶` and render links as `[text][n]`, so no URL is ever displayed. Notebook section tokens carry the heading cell id, and `view(lnhashs=True)` emits `cellid:lineno|hash|` rows ready for `cell_exhash`.
+
 ## Tests
 
 ```bash

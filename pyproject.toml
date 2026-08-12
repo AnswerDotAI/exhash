@@ -14,7 +14,7 @@ classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
 ]
-dependencies = ["fastcore>=1.14.6"]
+dependencies = ["fastcore>=1.14.6", "httpx>=0.28.1"]
 
 [project.optional-dependencies]
 dev = ["fastship>=0.0.11", "maturin>=1.0,<2.0", "pytest"]
@@ -40,6 +40,10 @@ module-name = "exhash.exhash"
 
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = ".git/fastws-cargo-key" }]
+
+[tool.pytest.ini_options]
+markers = ["slow: live-network tests, run explicitly with -m slow"]
+addopts = "-m 'not slow'"
 
 [tool.fastship]
 branch = "main"

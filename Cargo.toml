@@ -17,6 +17,13 @@ crate-type = ["cdylib", "rlib"]
 crc32fast = "1"
 regex = "1.7.1"
 pyo3 = ">=0.28"
+tree-sitter = "0.26.12"
+tree-sitter-python = "0.25.0"
+tree-sitter-javascript = "0.25.0"
+tree-sitter-typescript = "0.23.2"
+tree-sitter-rust = "0.24.2"
+tree-sitter-zig = "1.1.2"
+tree-sitter-swift = "0.7.3"
 
 [features]
 extension-module = ["pyo3/extension-module"]
