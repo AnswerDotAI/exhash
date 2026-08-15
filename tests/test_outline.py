@@ -121,7 +121,24 @@ def test_links():
     assert '[install][1]' in d.search('five minutes').previews[0]
     assert '![logo](logo.png)' in d.text               # images untouched
     assert '[fenced](ignored.md)' in d.text            # fenced content untouched
-    assert d.view() == d.src                           # view: source exactly as stored
+    assert d.view() == d.text and '[install][1]' in d.view()   # plain view: reading mode, links numbered
+    assert repr(d.view()) == str(d.view())              # displays unescaped, ready to read bare
+    assert d.view(lnhashs=True).splitlines()[2].endswith('Start with the [install](install.md): five minutes.')  # address modes: stored lines
+
+
+def test_view_tokens():
+    d = open_doc(LINKS_MD)
+    ref = d.find('Reference')
+    vs = d.view(d.token, ref.token)
+    assert vs[0] is d and vs[1] is ref                  # elements are the live verified sections
+    r = repr(vs)
+    assert f'# {d.token}' in r and f'# {ref.token}' in r  # >1 tokens: each body under its `# token` header
+    assert '[API][2]' in r                              # plain mode renders links
+    one = repr(d.view(ref.token))
+    assert f'# {ref.token}' not in one and one.startswith('## Reference')  # single token: bare body, no header
+    lv = repr(d.view(ref.token, lnhashs=True))
+    assert lnhash(ref.start_line, '## Reference') + '## Reference' in lv   # address mode applies per section
+    with pytest.raises(ValueError): d.view(ref.token, '2.')   # bare dotted addr: at()'s grammar, at()'s error
     assert [l.n for l in d.links('api')] == [2]
     assert not hasattr(d, 'follow')                    # follow is gone: open(n).src replaces it
 

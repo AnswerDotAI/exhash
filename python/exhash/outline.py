@@ -2,7 +2,7 @@
 
 import json, re
 from pathlib import Path
-from fastcore.basics import store_attr, humanize
+from fastcore.basics import store_attr, humanize, PrettyString
 from .exhash import md_scan as _md_scan, code_scan as _code_scan
 from .exhash import lnhash as _lnhash, line_hash as _line_hash
 from . import MAXLEN
@@ -181,15 +181,20 @@ class Section(dict):
         "Fresh tree re-read from `path` (file-backed roots only)"
         return open_doc(self.root.path)
 
-    def view(self,
-        nums=False, # Prefix lines with document-absolute line numbers, `lineno: `
-        lnhashs=False # Prefix `lineno|hash|` exhash addresses instead; wins over `nums`
+    def view(self, *tokens, # Section address tokens copied from a listing (see `at`); none: this section
+        nums=False, # Prefix stored lines with document-absolute line numbers, `lineno: ` (`cellid:lineno: ` in notebooks)
+        lnhashs=False # Prefix `lineno|hash|` exhash addresses instead (`cellid:lineno|hash|` in notebooks); wins over `nums`
     ):
-        "Source exactly as stored, links unnumbered, so an editor can address the source file directly"
+        "Rendered text, links as `[text][n]`; `nums`/`lnhashs` instead show stored lines with edit-ready addresses; `tokens` views those sections, each under a `# token` header when more than one"
+        if tokens: return SectionViews([self.at(t) for t in tokens], tokens, nums, lnhashs)
+        if nums or lnhashs: return PrettyString(self._addressed(nums, lnhashs))
+        return PrettyString(self.text)
+
+    def _addressed(self, nums, lnhashs):
+        "Stored lines prefixed with `lineno: ` addresses, or `lineno|hash|` when `lnhashs`"
         lines = self.src.splitlines()
         if lnhashs: return '\n'.join(_lnhash(self.start_line+i, l)+l for i,l in enumerate(lines))
-        if nums: return '\n'.join(f'{self.start_line+i}: {l}' for i,l in enumerate(lines))
-        return self.src
+        return '\n'.join(f'{self.start_line+i}: {l}' for i,l in enumerate(lines))
 
     def __repr__(self):
         "Own row, then up to two heading levels below, as an orientation view"
@@ -199,6 +204,17 @@ class Section(dict):
         return repr(Sections([self, *rows]))
     def _repr_pretty_(self, p, cycle): p.text('...' if cycle else repr(self))
 
+
+class SectionViews(list):
+    "Live sections from `view(*tokens)`, displayed as each section's view, under `# token` headers when more than one"
+    def __init__(self, secs, tokens, nums=False, lnhashs=False):
+        super().__init__(secs)
+        self.tokens,self.nums,self.lnhashs = tokens,nums,lnhashs
+    def __repr__(self):
+        bodies = [s.view(nums=self.nums, lnhashs=self.lnhashs) for s in self]
+        if len(self) == 1: return bodies[0]
+        return '\n\n'.join(f'# {t}\n{b}' for t,b in zip(self.tokens, bodies))
+    def _repr_pretty_(self, p, cycle): p.text('...' if cycle else repr(self))
 
 _LINK_RE = re.compile(r'(?<!\!)\[([^\]]*)\]\(([^)\s]+)\)')
 
@@ -253,12 +269,8 @@ class NbSection(Section):
         if m[1] != self.cell_id or m[2] != _line_hash(head):
             raise ValueError(f'Stale address for section {addr}: expected {self.cell_id}|{_line_hash(head)}| - re-view and copy a fresh token')
 
-    def view(self,
-        nums=False, # Prefix each line with `cellid:lineno: `
-        lnhashs=False # Prefix `cellid:lineno|hash|` addresses instead, ready for `cell_exhash`; wins over `nums`
-    ):
-        "This section's cells' sources, cell-qualified so an editor can address the notebook directly"
-        if not (nums or lnhashs): return self.src
+    def _addressed(self, nums, lnhashs):
+        "Stored cell sources as `cellid:lineno: ` rows, or `cellid:lineno|hash|` when `lnhashs`, ready for `cell_exhash`"
         res = []
         for cid,_,src in self.cells:
             for i,l in enumerate(src.splitlines()): res.append(f'{cid}:{_lnhash(i+1, l)}{l}' if lnhashs else f'{cid}:{i+1}: {l}')
