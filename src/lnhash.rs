@@ -24,11 +24,7 @@ pub fn format_lnhash(lineno: usize, line: &str) -> String {
 /// `start` and `end` are 1-based inclusive. Pass `None` for defaults (1 and len).
 /// `end` past EOF is clamped to the last line.
 /// Returns an error if start is 0, end < start, or start is beyond EOF.
-pub fn lnhashview(
-    lines: &[&str],
-    start: Option<usize>,
-    end: Option<usize>,
-) -> Result<Vec<String>, EditError> {
+pub fn lnhashview(lines: &[&str], start: Option<usize>, end: Option<usize>) -> Result<Vec<String>, EditError> {
     if lines.is_empty() {
         return Ok(vec![]);
     }
@@ -41,11 +37,7 @@ pub fn lnhashview(
         return Err(EditError::new("end_line must be >= start_line"));
     }
     if s > lines.len() {
-        return Err(EditError::new(format!(
-            "start_line {} is beyond EOF (file has {} line(s))",
-            s,
-            lines.len()
-        )));
+        return Err(EditError::new(format!("start_line {} is beyond EOF (file has {} line(s))", s, lines.len())));
     }
     let e = requested_e.min(lines.len());
     let width = e.to_string().len();
@@ -54,15 +46,7 @@ pub fn lnhashview(
         .enumerate()
         .skip(s - 1)
         .take(e - s + 1)
-        .map(|(i, l)| {
-            format!(
-                "{:>width$}|{:04x}|{}",
-                i + 1,
-                line_hash_u16(l),
-                l,
-                width = width
-            )
-        })
+        .map(|(i, l)| format!("{:>width$}|{:04x}|{}", i + 1, line_hash_u16(l), l, width = width))
         .collect())
 }
 
@@ -70,10 +54,7 @@ pub fn lnhashview(
 pub fn parse_lnhash(s: &str) -> Result<LnHash, EditError> {
     let (lh, rest) = parse_lnhash_prefix(s)?;
     if !rest.is_empty() {
-        return Err(EditError::new(format!(
-            "invalid lnhash: trailing characters after address: {:?}",
-            rest
-        )));
+        return Err(EditError::new(format!("invalid lnhash: trailing characters after address: {:?}", rest)));
     }
     Ok(lh)
 }
@@ -81,37 +62,24 @@ pub fn parse_lnhash(s: &str) -> Result<LnHash, EditError> {
 /// Parse a `lineno|hash|` from the start of `input`, returning the address and the remaining suffix.
 pub fn parse_lnhash_prefix(input: &str) -> Result<(LnHash, &str), EditError> {
     let mut it = input.splitn(2, '|');
-    let lineno_str = it
-        .next()
-        .ok_or_else(|| EditError::new("invalid lnhash: missing line number"))?;
-    let rest = it
-        .next()
-        .ok_or_else(|| EditError::new("invalid lnhash: missing '|' after line number"))?;
+    let lineno_str = it.next().ok_or_else(|| EditError::new("invalid lnhash: missing line number"))?;
+    let rest = it.next().ok_or_else(|| EditError::new("invalid lnhash: missing '|' after line number"))?;
 
     if lineno_str.is_empty() {
         return Err(EditError::new("invalid lnhash: empty line number"));
     }
-    let lineno: usize = lineno_str
-        .parse()
-        .map_err(|_| EditError::new(format!("invalid lnhash: bad line number: {lineno_str:?}")))?;
+    let lineno: usize = lineno_str.parse().map_err(|_| EditError::new(format!("invalid lnhash: bad line number: {lineno_str:?}")))?;
 
     // Now parse hash|suffix
     let mut it2 = rest.splitn(2, '|');
-    let hash_str = it2
-        .next()
-        .ok_or_else(|| EditError::new("invalid lnhash: missing hash"))?;
-    let suffix = it2
-        .next()
-        .ok_or_else(|| EditError::new("invalid lnhash: missing trailing '|' after hash"))?;
+    let hash_str = it2.next().ok_or_else(|| EditError::new("invalid lnhash: missing hash"))?;
+    let suffix = it2.next().ok_or_else(|| EditError::new("invalid lnhash: missing trailing '|' after hash"))?;
 
     if hash_str.len() != 4 {
-        return Err(EditError::new(format!(
-            "invalid lnhash: hash must be 4 hex chars, got {hash_str:?}"
-        )));
+        return Err(EditError::new(format!("invalid lnhash: hash must be 4 hex chars, got {hash_str:?}")));
     }
 
-    let hash = u16::from_str_radix(hash_str, 16)
-        .map_err(|_| EditError::new(format!("invalid lnhash: bad hash: {hash_str:?}")))?;
+    let hash = u16::from_str_radix(hash_str, 16).map_err(|_| EditError::new(format!("invalid lnhash: bad hash: {hash_str:?}")))?;
 
     Ok((LnHash { lineno, hash }, suffix))
 }

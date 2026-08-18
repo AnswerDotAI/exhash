@@ -4,11 +4,9 @@
 use regex::Regex;
 use std::sync::LazyLock;
 
-static HEADING_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(#{1,6})\s+(.+?)\s*#*\s*$").unwrap());
+static HEADING_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(#{1,6})\s+(.+?)\s*#*\s*$").unwrap());
 static FENCE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(`{3,}|~{3,})").unwrap());
-static LINK_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\[([^\]]*)\]\(([^)\s]+)\)").unwrap());
+static LINK_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[([^\]]*)\]\(([^)\s]+)\)").unwrap());
 
 /// One ATX heading: level, title, and the span of its section.
 /// Lines are 1-based; `end_line` is the last non-blank line before the next
@@ -68,10 +66,7 @@ pub fn scan_md(text: &str, rm_fenced: bool) -> (Vec<HeadingRow>, Vec<LinkRow>) {
             .collect();
         for (j, m) in ms.iter().enumerate() {
             let end = m.get(0).unwrap().end();
-            let tail_end = ms
-                .get(j + 1)
-                .map(|nm| nm.get(0).unwrap().start())
-                .unwrap_or(line.len());
+            let tail_end = ms.get(j + 1).map(|nm| nm.get(0).unwrap().start()).unwrap_or(line.len());
             links.push(LinkRow {
                 n: links.len() + 1,
                 txt: m[1].to_string(),
@@ -85,21 +80,12 @@ pub fn scan_md(text: &str, rm_fenced: bool) -> (Vec<HeadingRow>, Vec<LinkRow>) {
         .iter()
         .enumerate()
         .map(|(i, (level, title, start))| {
-            let end_excl = headings[i + 1..]
-                .iter()
-                .find(|(l, _, _)| l <= level)
-                .map(|(_, _, s)| *s)
-                .unwrap_or(lines.len());
+            let end_excl = headings[i + 1..].iter().find(|(l, _, _)| l <= level).map(|(_, _, s)| *s).unwrap_or(lines.len());
             let mut end = end_excl;
             while end > *start + 1 && lines[end - 1].trim().is_empty() {
                 end -= 1;
             }
-            HeadingRow {
-                level: *level,
-                title: title.clone(),
-                start_line: start + 1,
-                end_line: end,
-            }
+            HeadingRow { level: *level, title: title.clone(), start_line: start + 1, end_line: end }
         })
         .collect();
     (rows, links)
@@ -133,23 +119,11 @@ fn section_kinds(lang: &str) -> &'static [&'static str] {
             "type_alias_declaration",
             "enum_declaration",
         ],
-        "rust" => &[
-            "function_item",
-            "struct_item",
-            "enum_item",
-            "trait_item",
-            "impl_item",
-            "mod_item",
-            "union_item",
-        ],
+        "rust" => &["function_item", "struct_item", "enum_item", "trait_item", "impl_item", "mod_item", "union_item"],
         "zig" => &["function_declaration", "test_declaration"],
-        "swift" => &[
-            "function_declaration",
-            "class_declaration",
-            "protocol_declaration",
-            "protocol_function_declaration",
-            "init_declaration",
-        ],
+        "swift" => {
+            &["function_declaration", "class_declaration", "protocol_declaration", "protocol_function_declaration", "init_declaration"]
+        }
         _ => &[],
     }
 }
@@ -168,9 +142,7 @@ fn section_of(node: Node, src: &[u8], lang: &str) -> Option<(String, usize, usiz
             return None;
         }
         let name = node_text(node.child_by_field_name("name")?, src);
-        let stmt = node
-            .parent()
-            .filter(|p| matches!(p.kind(), "lexical_declaration" | "variable_declaration"));
+        let stmt = node.parent().filter(|p| matches!(p.kind(), "lexical_declaration" | "variable_declaration"));
         let start = stmt.map(|p| p.start_position().row + 1).unwrap_or(start);
         return Some((name, start, end));
     }
@@ -206,12 +178,7 @@ fn walk_code(node: Node, src: &[u8], lang: &str, depth: usize, rows: &mut Vec<He
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
         if let Some((title, start_line, end_line)) = section_of(child, src, lang) {
-            rows.push(HeadingRow {
-                level: depth,
-                title,
-                start_line,
-                end_line,
-            });
+            rows.push(HeadingRow { level: depth, title, start_line, end_line });
             walk_code(child, src, lang, depth + 1, rows);
         } else {
             walk_code(child, src, lang, depth, rows);
@@ -224,12 +191,8 @@ fn walk_code(node: Node, src: &[u8], lang: &str, depth: usize, rows: &mut Vec<He
 pub fn scan_code(text: &str, lang: &str) -> Result<Vec<HeadingRow>, String> {
     let language = lang_of(lang).ok_or_else(|| format!("unsupported language: {lang}"))?;
     let mut parser = Parser::new();
-    parser
-        .set_language(&language)
-        .map_err(|e| format!("loading {lang} grammar: {e}"))?;
-    let tree = parser
-        .parse(text, None)
-        .ok_or_else(|| format!("parsing {lang} source failed"))?;
+    parser.set_language(&language).map_err(|e| format!("loading {lang} grammar: {e}"))?;
+    let tree = parser.parse(text, None).ok_or_else(|| format!("parsing {lang} source failed"))?;
     let mut rows = Vec::new();
     walk_code(tree.root_node(), text.as_bytes(), lang, 1, &mut rows);
     Ok(rows)
