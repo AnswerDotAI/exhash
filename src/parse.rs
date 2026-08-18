@@ -204,9 +204,7 @@ fn parse_destination_address_inner(input: &str, op: char, allow_zero: bool) -> R
     }
     match addr {
         Address::LnHash(LnHash { lineno: 0, hash }) if hash != 0 => Err(EditError::new("0|0000| must have hash 0000")),
-        Address::LnHash(LnHash { lineno: 0, .. }) if !allow_zero => {
-            Err(EditError::new(format!("destination 0|0000| is not allowed for {op}")))
-        }
+        Address::LnHash(LnHash { lineno: 0, .. }) if !allow_zero => Err(EditError::new(format!("destination 0|0000| is not allowed for {op}"))),
         Address::WholeFile => Err(EditError::new(format!("destination % is not allowed for {op}"))),
         _ => Ok(addr),
     }

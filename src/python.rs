@@ -4,8 +4,8 @@ use pyo3::exceptions::{PyRuntimeError, PyUserWarning, PyValueError};
 use pyo3::prelude::*;
 
 use crate::parse::{
-    command_from_parts, parse_buffer_destination_address, parse_destination_address, parse_optional_usize, split_text_payload,
-    subst_from_parts, translit_from_parts,
+    command_from_parts, parse_buffer_destination_address, parse_destination_address, parse_optional_usize, split_text_payload, subst_from_parts,
+    translit_from_parts,
 };
 use crate::{BufferCommand, Command, EditError, Subcommand};
 
@@ -13,8 +13,7 @@ use crate::{BufferCommand, Command, EditError, Subcommand};
 /// `RuntimeError` instead of surfacing pyo3's `BaseException`-derived
 /// `PanicException`.
 fn guard<T>(what: &str, f: impl FnOnce() -> T) -> PyResult<T> {
-    catch_unwind(AssertUnwindSafe(f))
-        .map_err(|_| PyRuntimeError::new_err(format!("internal error in exhash while {what} (this is a bug, please report it)")))
+    catch_unwind(AssertUnwindSafe(f)).map_err(|_| PyRuntimeError::new_err(format!("internal error in exhash while {what} (this is a bug, please report it)")))
 }
 
 /// Wrap `s` in fastcore's `PrettyString` so bare display shows it verbatim.
@@ -212,11 +211,7 @@ fn subcommand_from_pyfields(op: &str, fields: &[PyField]) -> Result<Subcommand, 
         if matches!(iop.as_str(), "g" | "g!" | "v") {
             return Err(EditError::new("global commands cannot nest"));
         }
-        return Ok(Subcommand::Global {
-            invert: op != "g",
-            pattern: pattern.clone(),
-            cmd: Box::new(subcommand_from_pyfields(iop, irest)?),
-        });
+        return Ok(Subcommand::Global { invert: op != "g", pattern: pattern.clone(), cmd: Box::new(subcommand_from_pyfields(iop, irest)?) });
     }
     let f = str_fields(op, fields)?;
     match (op, f.as_slice()) {
@@ -254,7 +249,10 @@ fn py_exhash(py: Python<'_>, text: &str, cmds: Vec<Vec<PyField>>, sw: usize) -> 
 #[pyfunction]
 #[pyo3(signature = (buffers, commands, sw=4))]
 fn edit_buffers(
-    py: Python<'_>, buffers: Vec<(String, String)>, commands: Vec<(String, Vec<PyField>, Option<String>)>, sw: usize,
+    py: Python<'_>,
+    buffers: Vec<(String, String)>,
+    commands: Vec<(String, Vec<PyField>, Option<String>)>,
+    sw: usize,
 ) -> PyResult<Vec<(String, EditResultPy)>> {
     let parsed = guard("parsing buffer commands", || {
         commands
@@ -264,8 +262,7 @@ fn edit_buffers(
     })?
     .map_err(|e| PyValueError::new_err(e.to_string()))?;
     warn_on_ex_style_dot_terminators(py, parsed.iter().map(|command| &command.command))?;
-    let results = guard("applying buffer edits", || crate::edit_buffers_with_sw(buffers, parsed, sw))?
-        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let results = guard("applying buffer edits", || crate::edit_buffers_with_sw(buffers, parsed, sw))?.map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(results.into_iter().map(|result| (result.target, edit_result_py(result.original_text, result.result))).collect())
 }
 
@@ -273,8 +270,7 @@ fn edit_buffers(
 #[pyo3(signature = (text, cmds, text_block="", sw=4))]
 fn exhash_argv(text: &str, cmds: Vec<String>, text_block: &str, sw: usize) -> PyResult<EditResultPy> {
     let mut stream = std::io::Cursor::new(text_block.as_bytes());
-    let parsed = guard("parsing commands", || crate::parse_commands_from_args(&cmds, &mut stream))?
-        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let parsed = guard("parsing commands", || crate::parse_commands_from_args(&cmds, &mut stream))?.map_err(|e| PyValueError::new_err(e.to_string()))?;
     let res = guard("applying edits", || crate::edit_text_with_sw(text, &parsed, sw))?.map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(edit_result_py(text.to_string(), res))
 }

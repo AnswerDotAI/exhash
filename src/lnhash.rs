@@ -41,13 +41,7 @@ pub fn lnhashview(lines: &[&str], start: Option<usize>, end: Option<usize>) -> R
     }
     let e = requested_e.min(lines.len());
     let width = e.to_string().len();
-    Ok(lines
-        .iter()
-        .enumerate()
-        .skip(s - 1)
-        .take(e - s + 1)
-        .map(|(i, l)| format!("{:>width$}|{:04x}|{}", i + 1, line_hash_u16(l), l, width = width))
-        .collect())
+    Ok(lines.iter().enumerate().skip(s - 1).take(e - s + 1).map(|(i, l)| format!("{:>width$}|{:04x}|{}", i + 1, line_hash_u16(l), l, width = width)).collect())
 }
 
 /// Parse a `lineno|hash|` address.

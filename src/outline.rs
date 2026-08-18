@@ -67,13 +67,7 @@ pub fn scan_md(text: &str, rm_fenced: bool) -> (Vec<HeadingRow>, Vec<LinkRow>) {
         for (j, m) in ms.iter().enumerate() {
             let end = m.get(0).unwrap().end();
             let tail_end = ms.get(j + 1).map(|nm| nm.get(0).unwrap().start()).unwrap_or(line.len());
-            links.push(LinkRow {
-                n: links.len() + 1,
-                txt: m[1].to_string(),
-                url: m[2].to_string(),
-                tail: clean_tail(&line[end..tail_end]),
-                line: i + 1,
-            });
+            links.push(LinkRow { n: links.len() + 1, txt: m[1].to_string(), url: m[2].to_string(), tail: clean_tail(&line[end..tail_end]), line: i + 1 });
         }
     }
     let rows = headings
@@ -121,9 +115,7 @@ fn section_kinds(lang: &str) -> &'static [&'static str] {
         ],
         "rust" => &["function_item", "struct_item", "enum_item", "trait_item", "impl_item", "mod_item", "union_item"],
         "zig" => &["function_declaration", "test_declaration"],
-        "swift" => {
-            &["function_declaration", "class_declaration", "protocol_declaration", "protocol_function_declaration", "init_declaration"]
-        }
+        "swift" => &["function_declaration", "class_declaration", "protocol_declaration", "protocol_function_declaration", "init_declaration"],
         _ => &[],
     }
 }

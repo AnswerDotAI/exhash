@@ -292,10 +292,7 @@ impl Engine {
                 addr.lineno, addr.hash, actual, start
             )));
         }
-        Err(EditError::new(format!(
-            "stale lnhash at line {}: expected {:04x}, got {:04x} (line changed since your view)",
-            addr.lineno, addr.hash, actual
-        )))
+        Err(EditError::new(format!("stale lnhash at line {}: expected {:04x}, got {:04x} (line changed since your view)", addr.lineno, addr.hash, actual)))
     }
 
     fn track_command_effect(&mut self, before: &[Line], start: usize, end: usize, sub: &Subcommand) {
@@ -490,11 +487,8 @@ impl Engine {
                 return Ok(false);
             }
             matched = true;
-            let result = if s.global {
-                re.replace_all(&joined, s.replacement.as_str()).to_string()
-            } else {
-                re.replace(&joined, s.replacement.as_str()).to_string()
-            };
+            let result =
+                if s.global { re.replace_all(&joined, s.replacement.as_str()).to_string() } else { re.replace(&joined, s.replacement.as_str()).to_string() };
             if result == joined {
                 return Ok(true);
             }
@@ -521,11 +515,8 @@ impl Engine {
                     continue;
                 }
                 matched = true;
-                let new = if s.global {
-                    re.replace_all(&old, s.replacement.as_str()).to_string()
-                } else {
-                    re.replace(&old, s.replacement.as_str()).to_string()
-                };
+                let new =
+                    if s.global { re.replace_all(&old, s.replacement.as_str()).to_string() } else { re.replace(&old, s.replacement.as_str()).to_string() };
                 if new != old {
                     self.lines[idx].text = new;
                     self.lines[idx].modified = true;
@@ -565,10 +556,8 @@ impl Engine {
             return Ok(());
         }
 
-        let new_lines: Vec<Line> = text
-            .iter()
-            .map(|t| Line { text: t.clone(), origin: None, call_start: None, modified: true, printed: false, global_mark: false })
-            .collect();
+        let new_lines: Vec<Line> =
+            text.iter().map(|t| Line { text: t.clone(), origin: None, call_start: None, modified: true, printed: false, global_mark: false }).collect();
 
         self.lines.splice(insert_at..insert_at, new_lines);
         Ok(())
@@ -588,10 +577,8 @@ impl Engine {
             return Ok(());
         }
 
-        let new_lines: Vec<Line> = text
-            .iter()
-            .map(|t| Line { text: t.clone(), origin: None, call_start: None, modified: true, printed: false, global_mark: false })
-            .collect();
+        let new_lines: Vec<Line> =
+            text.iter().map(|t| Line { text: t.clone(), origin: None, call_start: None, modified: true, printed: false, global_mark: false }).collect();
 
         self.lines.splice(insert_at..insert_at, new_lines);
         Ok(())
@@ -826,9 +813,7 @@ pub fn edit_text_with_sw(input: &str, commands: &[Command], sw: usize) -> Result
     Ok(eng.into_result())
 }
 
-pub fn edit_buffers_with_sw(
-    buffers: Vec<(String, String)>, commands: Vec<BufferCommand>, sw: usize,
-) -> Result<Vec<BufferEditResult>, EditError> {
+pub fn edit_buffers_with_sw(buffers: Vec<(String, String)>, commands: Vec<BufferCommand>, sw: usize) -> Result<Vec<BufferEditResult>, EditError> {
     let mut indexes = HashMap::new();
     let mut states = Vec::with_capacity(buffers.len());
     for (target, text) in buffers {
@@ -848,8 +833,7 @@ pub fn edit_buffers_with_sw(
         };
         if let Some((dest, copy)) = transfer {
             let destination = destination.unwrap_or_else(|| target.clone());
-            let dest_idx =
-                *indexes.get(&destination).ok_or_else(|| EditError::new(format!("unknown destination buffer: {destination}")))?;
+            let dest_idx = *indexes.get(&destination).ok_or_else(|| EditError::new(format!("unknown destination buffer: {destination}")))?;
             if source_idx == dest_idx {
                 states[source_idx].2.verify_command(&command)?;
                 states[source_idx].2.apply_command(&command)?;
@@ -880,10 +864,7 @@ pub fn edit_buffers_with_sw(
         }
     }
 
-    Ok(states
-        .into_iter()
-        .map(|(target, original_text, engine)| BufferEditResult { target, original_text, result: engine.into_result() })
-        .collect())
+    Ok(states.into_iter().map(|(target, original_text, engine)| BufferEditResult { target, original_text, result: engine.into_result() }).collect())
 }
 
 fn build_regex(pattern: &str, case_insensitive: bool) -> Result<Regex, EditError> {
