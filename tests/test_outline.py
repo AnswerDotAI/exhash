@@ -225,6 +225,11 @@ def test_code_outlines(tmp_path):
     assert d.find('method').view(lnhashs=True).splitlines()[0].endswith('    def method(self):')
     assert d.at(d.find('inner').token).title == 'inner'
     with pytest.raises(ValueError, match='listing'): d.at('2.1.1')
+    assert d.find('top').preview().startswith('def top(a, b):')   # code previews keep the signature line
+    assert d.find('tail').preview() == 'def tail(): pass'         # a one-line body is its own preview
+    row = repr(d.paths()).splitlines()[-1]
+    assert 'def tail(): pass' in row and ' tail ' not in row      # listing rows show the def line, not a bare title
+    assert ' top ' in repr(d.search('"doc"'))                     # search rows keep the title: their preview is the match
 
     (tmp_path/'lib.rs').write_text(RS_SRC)
     r = open_doc(tmp_path/'lib.rs')

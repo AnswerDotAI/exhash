@@ -34,7 +34,7 @@ class Links(list):
 
 
 class Sections(list):
-    "Sections listed as fixed-width `token title (count) [size] preview` rows; each row is the live node"
+    "Sections listed as fixed-width `token title (count) [size] preview` rows; each row is the live node. Code rows have no title: the def line opens the preview"
     def __init__(self, items=None, counts=None, previews=None, width=MAXLEN):
         super().__init__(items or [])
         self.counts,self.previews,self.width = counts,previews,width
@@ -44,7 +44,7 @@ class Sections(list):
             return Sections(list.__getitem__(self, k), sub(self.counts), sub(self.previews), self.width)
         return list.__getitem__(self, k)
     def _row(self, n, c, p):
-        parts = [n.token, n.title, None if c is None else f'({c})', f'[{humanize(len(n.src))}]']
+        parts = [n.token, n.title if n.show_title or p is not None else '', None if c is None else f'({c})', f'[{humanize(len(n.src))}]']
         pre = ' '.join(x for x in parts if x)
         budget = self.width - len(pre) - 1
         if budget < 2: return pre
@@ -60,7 +60,7 @@ class Sections(list):
 
 class Section(dict):
     "One document section: numbered child sections, source span, and a verified address"
-    title,addr = '',''
+    title,addr,show_title = '','',True
     def __init__(self, src='', start_line=1):
         super().__init__()
         self.src,self.start_line = src,start_line
@@ -89,8 +89,8 @@ class Section(dict):
         return '\n'.join(res)
 
     def preview(self, maxlen=MAXLEN):
-        "This section's own body (text under the heading, before any subsection), one ¶-joined truncated line"
-        head = 1 if self.title else 0
+        "This section's own body before any subsection, one ¶-joined truncated line; the heading line is omitted where the listing row already shows the title"
+        head = 1 if self.title and self.show_title else 0
         end = min((c.start_line for c in self.values()), default=self.end_line+1) - self.start_line
         return _preview('\n'.join(self.text.splitlines()[head:end]), maxlen)
 
@@ -203,6 +203,11 @@ class Section(dict):
         rows = [n for n in self._walk() if 1 <= seg(n.addr)-base <= 2]
         return repr(Sections([self, *rows]))
     def _repr_pretty_(self, p, cycle): p.text('...' if cycle else repr(self))
+
+
+class CodeSection(Section):
+    "A code definition: its first line is the signature, so previews keep it and listing rows show it in place of a title"
+    show_title = False
 
 
 class SectionViews(list):
@@ -321,7 +326,7 @@ def open_doc(
         if path.suffix == '.ipynb': return _parse_nb(path)
         lang = _LANGS.get(path.suffix.lstrip('.'))
         text = path.read_text()
-        res = _build(text, _code_scan(text, lang)) if lang else _parse_md(text, rm_fenced, base=path)
+        res = _build(text, _code_scan(text, lang), cls=CodeSection) if lang else _parse_md(text, rm_fenced, base=path)
         res.path = path
         return res
     if isinstance(src, str) and re.match(r'https?://', src):
