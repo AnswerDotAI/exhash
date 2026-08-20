@@ -300,7 +300,7 @@ def _parse_nb(path):
         heads += [(lv, title, o+s) for lv,title,s,_ in hs]
         links += [(len(links)+1+i, txt, url, tail, o+line) for i,(_,txt,url,tail,line) in enumerate(ls)]
     vtext = '\n'.join('\n'.join(t.splitlines() or ['']) for _,_,t in cells)
-    vlines = vtext.splitlines()
+    vlines = vtext.split('\n') if cells else []
     rows = []
     for i,(lv,title,start) in enumerate(heads):
         end = next((s for l,_,s in heads[i+1:] if l <= lv), total + 1) - 1
