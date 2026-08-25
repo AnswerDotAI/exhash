@@ -5,11 +5,13 @@ from . import stdexcs
 
 @fail_clean(*stdexcs)
 def exhash_magic(line, cell):
-    """Apply one exhash a/i/c command with the cell body as its payload.
+    r"""Apply one exhash a/i/c command with the cell body as its payload.
 
     Usage: %%exhash <path> [<cell_id>] <address> <a|i|c>
-    The payload is the rest of the cell, taken verbatim except that one trailing
-    newline is stripped. With <cell_id>, edits that notebook cell via cell_exhash."""
+    The line is shlex-split: quote a path containing spaces ("My File.md") or
+    escape them (My\ File.md). The payload is the rest of the cell, taken verbatim
+    except that one trailing newline is stripped. With <cell_id>, edits that
+    notebook cell via cell_exhash."""
     from . import file_exhash, cell_exhash
     args = shlex.split(line)
     if len(args) not in (3,4): raise ValueError('usage: %%exhash <path> [<cell_id>] <address> <a|i|c>')
