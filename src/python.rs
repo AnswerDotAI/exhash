@@ -17,9 +17,7 @@ fn guard<T>(what: &str, f: impl FnOnce() -> T) -> PyResult<T> {
 }
 
 /// Wrap `s` in fastcore's `PrettyString` so bare display shows it verbatim.
-fn pretty_string(py: Python<'_>, s: String) -> PyResult<Py<PyAny>> {
-    Ok(py.import("fastcore.basics")?.getattr("PrettyString")?.call1((s,))?.unbind())
-}
+fn pretty_string(py: Python<'_>, s: String) -> PyResult<Py<PyAny>> { Ok(py.import("fastcore.basics")?.getattr("PrettyString")?.call1((s,))?.unbind()) }
 
 #[pyclass(skip_from_py_object)]
 #[derive(Clone)]
@@ -69,26 +67,16 @@ fn edit_result_py(original_text: String, result: crate::EditResult) -> EditResul
 #[pymethods]
 impl EditResultPy {
     #[pyo3(signature = (context=1))]
-    fn format_diff(&self, py: Python<'_>, context: usize) -> PyResult<Py<PyAny>> {
-        pretty_string(py, self.diff_text(context))
-    }
+    fn format_diff(&self, py: Python<'_>, context: usize) -> PyResult<Py<PyAny>> { pretty_string(py, self.diff_text(context)) }
 
-    fn __str__(&self) -> String {
-        self.diff_text(1)
-    }
+    fn __str__(&self) -> String { self.diff_text(1) }
 
     fn __repr__(&self) -> String {
         // A print-only result is a view, not a diff: never truncate it.
         let bare = self.modified.is_empty() && self.deleted.is_empty() && !self.printed.is_empty();
         let full = self.diff_text(1);
         let diff = if bare { full } else { truncate_diff(&full, 15, 160) };
-        if diff.is_empty() {
-            format!("EditResult({} lines, no changes)", self.lines.len())
-        } else if bare {
-            format!("EditResult({} lines, {} printed, no changes)\n{}", self.lines.len(), self.printed.len(), diff)
-        } else {
-            format!("EditResult({} lines, {} modified, {} deleted)\n{}", self.lines.len(), self.modified.len(), self.deleted.len(), diff)
-        }
+        if diff.is_empty() { format!("EditResult({} lines, no changes)", self.lines.len()) } else if bare { format!("EditResult({} lines, {} printed, no changes)\n{}", self.lines.len(), self.printed.len(), diff) } else { format!("EditResult({} lines, {} modified, {} deleted)\n{}", self.lines.len(), self.modified.len(), self.deleted.len(), diff) }
     }
 
     fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<Py<PyAny>> {
@@ -110,29 +98,21 @@ fn truncate_diff(s: &str, max_lines: usize, maxlen: usize) -> String {
         .iter()
         .take(max_lines)
         .map(|l| {
-            if l.chars().count() <= maxlen {
-                (*l).to_string()
-            } else {
+            if l.chars().count() <= maxlen { (*l).to_string() } else {
                 let cut: String = l.chars().take(maxlen).collect();
                 format!("{cut}…")
             }
         })
         .collect();
-    if lines.len() > max_lines {
-        out.push(format!("…{} lines elided…", lines.len() - max_lines));
-    }
+    if lines.len() > max_lines { out.push(format!("…{} lines elided…", lines.len() - max_lines)); }
     if out.is_empty() { String::new() } else { out.join("\n") + "\n" }
 }
 
 #[pyfunction]
-fn line_hash(line: &str) -> String {
-    format!("{:04x}", crate::line_hash_u16(line))
-}
+fn line_hash(line: &str) -> String { format!("{:04x}", crate::line_hash_u16(line)) }
 
 #[pyfunction]
-fn lnhash(lineno: usize, line: &str) -> String {
-    crate::format_lnhash(lineno, line)
-}
+fn lnhash(lineno: usize, line: &str) -> String { crate::format_lnhash(lineno, line) }
 
 #[pyfunction]
 #[pyo3(signature = (text, start=None, end=None))]
@@ -171,19 +151,13 @@ enum PyField {
 }
 
 fn command_from_pyfields(fields: &[PyField]) -> Result<Command, EditError> {
-    let [PyField::Str(addr), PyField::Str(op), rest @ ..] = fields else {
-        return Err(EditError::new("command must start with (address, op) strings"));
-    };
+    let [PyField::Str(addr), PyField::Str(op), rest @ ..] = fields else { return Err(EditError::new("command must start with (address, op) strings")); };
     command_from_parts(addr, subcommand_from_pyfields(op, rest)?)
 }
 
 fn buffer_command_from_pyfields(fields: &[PyField]) -> Result<Command, EditError> {
-    let [PyField::Str(addr), PyField::Str(op), PyField::Str(dest)] = fields else {
-        return command_from_pyfields(fields);
-    };
-    if !matches!(op.as_str(), "m" | "t") {
-        return command_from_pyfields(fields);
-    }
+    let [PyField::Str(addr), PyField::Str(op), PyField::Str(dest)] = fields else { return command_from_pyfields(fields); };
+    if !matches!(op.as_str(), "m" | "t") { return command_from_pyfields(fields); }
     let op_char = if op == "m" { 'm' } else { 't' };
     let dest = parse_buffer_destination_address(dest, op_char)?;
     let sub = if op == "m" { Subcommand::Move { dest } } else { Subcommand::Copy { dest } };
@@ -193,24 +167,15 @@ fn buffer_command_from_pyfields(fields: &[PyField]) -> Result<Command, EditError
 fn str_fields<'a>(op: &str, fields: &'a [PyField]) -> Result<Vec<&'a str>, EditError> {
     fields
         .iter()
-        .map(|f| match f {
-            PyField::Str(s) => Ok(s.as_str()),
-            PyField::Seq(_) => Err(EditError::new(format!("{op} fields must be strings"))),
-        })
+        .map(|f| match f { PyField::Str(s) => Ok(s.as_str()), PyField::Seq(_) => Err(EditError::new(format!("{op} fields must be strings"))) })
         .collect()
 }
 
 fn subcommand_from_pyfields(op: &str, fields: &[PyField]) -> Result<Subcommand, EditError> {
     if let "g" | "g!" | "v" = op {
-        let [PyField::Str(pattern), PyField::Seq(inner)] = fields else {
-            return Err(EditError::new(format!("{op} takes (pattern, (subcommand, ...))")));
-        };
-        let [PyField::Str(iop), irest @ ..] = inner.as_slice() else {
-            return Err(EditError::new("global subcommand must start with an op string"));
-        };
-        if matches!(iop.as_str(), "g" | "g!" | "v") {
-            return Err(EditError::new("global commands cannot nest"));
-        }
+        let [PyField::Str(pattern), PyField::Seq(inner)] = fields else { return Err(EditError::new(format!("{op} takes (pattern, (subcommand, ...))"))); };
+        let [PyField::Str(iop), irest @ ..] = inner.as_slice() else { return Err(EditError::new("global subcommand must start with an op string")); };
+        if matches!(iop.as_str(), "g" | "g!" | "v") { return Err(EditError::new("global commands cannot nest")); }
         return Ok(Subcommand::Global { invert: op != "g", pattern: pattern.clone(), cmd: Box::new(subcommand_from_pyfields(iop, irest)?) });
     }
     let f = str_fields(op, fields)?;
@@ -291,13 +256,9 @@ fn exhash(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
 fn warn_on_ex_style_dot_terminators<'a>(py: Python<'_>, parsed: impl IntoIterator<Item = &'a Command>) -> PyResult<()> {
     for (i, cmd) in parsed.into_iter().enumerate() {
-        let Some(text) = command_text_block(cmd) else {
-            continue;
-        };
+        let Some(text) = command_text_block(cmd) else { continue; };
         let mut lines: Vec<&str> = text.iter().map(|s| s.as_str()).collect();
-        while matches!(lines.last(), Some(&"")) {
-            lines.pop();
-        }
+        while matches!(lines.last(), Some(&"")) { lines.pop(); }
         if lines.len() >= 2 && matches!(lines.last(), Some(&".")) {
             let msg = format!(
                 "cmds[{i}] ends with a '.' line. In exhash(text, cmds), a/i/c text blocks do not use ex-style '.' terminators; that final '.' line will be inserted literally."
@@ -312,10 +273,7 @@ fn warn_on_ex_style_dot_terminators<'a>(py: Python<'_>, parsed: impl IntoIterato
 fn command_text_block(cmd: &Command) -> Option<&[String]> {
     match &cmd.cmd {
         Subcommand::Append(t) | Subcommand::Insert(t) | Subcommand::Change(t) => Some(t),
-        Subcommand::Global { cmd, .. } => match cmd.as_ref() {
-            Subcommand::Append(t) | Subcommand::Insert(t) | Subcommand::Change(t) => Some(t),
-            _ => None,
-        },
+        Subcommand::Global { cmd, .. } => match cmd.as_ref() { Subcommand::Append(t) | Subcommand::Insert(t) | Subcommand::Change(t) => Some(t), _ => None },
         _ => None,
     }
 }

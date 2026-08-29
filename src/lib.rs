@@ -16,24 +16,14 @@ pub use outline::{HeadingRow, LinkRow, scan_code, scan_md};
 pub use parse::{Address, Command, Subcommand, parse_commands_from_args, parse_commands_from_script};
 
 #[derive(Debug, Clone)]
-pub struct EditError {
-    msg: String,
-}
+pub struct EditError { msg: String }
 
 impl EditError {
-    pub(crate) fn new(msg: impl Into<String>) -> Self {
-        Self { msg: msg.into() }
-    }
+    pub(crate) fn new(msg: impl Into<String>) -> Self { Self { msg: msg.into() } }
 
-    pub fn message(&self) -> &str {
-        &self.msg
-    }
+    pub fn message(&self) -> &str { &self.msg }
 }
 
-impl std::fmt::Display for EditError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.msg)
-    }
-}
+impl std::fmt::Display for EditError { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{}", self.msg) } }
 
 impl std::error::Error for EditError {}

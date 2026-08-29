@@ -28,9 +28,7 @@ pub struct LinkRow {
     pub line: usize,
 }
 
-fn clean_tail(tail: &str) -> String {
-    tail.trim().trim_start_matches(':').trim().to_string()
-}
+fn clean_tail(tail: &str) -> String { tail.trim().trim_start_matches(':').trim().to_string() }
 
 /// Scan Markdown into heading and link tables. With `rm_fenced`, backtick and
 /// tilde fenced blocks (and the fence lines themselves) are invisible to both.
@@ -42,21 +40,11 @@ pub fn scan_md(text: &str, rm_fenced: bool) -> (Vec<HeadingRow>, Vec<LinkRow>) {
     for (i, line) in lines.iter().enumerate() {
         if let Some(m) = FENCE_RE.captures(line) {
             let marker = m[1].chars().next().unwrap();
-            match fence {
-                Some(f) if f == marker => fence = None,
-                None => fence = Some(marker),
-                _ => {}
-            }
-            if rm_fenced {
-                continue;
-            }
+            match fence { Some(f) if f == marker => fence = None, None => fence = Some(marker), _ => {} }
+            if rm_fenced { continue; }
         }
-        if fence.is_some() && rm_fenced {
-            continue;
-        }
-        if let Some(m) = HEADING_RE.captures(line) {
-            headings.push((m[1].len(), m[2].to_string(), i));
-        }
+        if fence.is_some() && rm_fenced { continue; }
+        if let Some(m) = HEADING_RE.captures(line) { headings.push((m[1].len(), m[2].to_string(), i)); }
         let ms: Vec<regex::Captures> = LINK_RE
             .captures_iter(line)
             .filter(|c| {
@@ -76,9 +64,7 @@ pub fn scan_md(text: &str, rm_fenced: bool) -> (Vec<HeadingRow>, Vec<LinkRow>) {
         .map(|(i, (level, title, start))| {
             let end_excl = headings[i + 1..].iter().find(|(l, _, _)| l <= level).map(|(_, _, s)| *s).unwrap_or(lines.len());
             let mut end = end_excl;
-            while end > *start + 1 && lines[end - 1].trim().is_empty() {
-                end -= 1;
-            }
+            while end > *start + 1 && lines[end - 1].trim().is_empty() { end -= 1; }
             HeadingRow { level: *level, title: title.clone(), start_line: start + 1, end_line: end }
         })
         .collect();
@@ -120,9 +106,7 @@ fn section_kinds(lang: &str) -> &'static [&'static str] {
     }
 }
 
-fn node_text(node: Node, src: &[u8]) -> String {
-    node.utf8_text(src).unwrap_or_default().to_string()
-}
+fn node_text(node: Node, src: &[u8]) -> String { node.utf8_text(src).unwrap_or_default().to_string() }
 
 /// A code section's `(title, start_line, end_line)`, if `node` starts one.
 fn section_of(node: Node, src: &[u8], lang: &str) -> Option<(String, usize, usize)> {
@@ -130,17 +114,13 @@ fn section_of(node: Node, src: &[u8], lang: &str) -> Option<(String, usize, usiz
     let (start, end) = (node.start_position().row + 1, node.end_position().row + 1);
     if matches!(lang, "javascript" | "typescript" | "tsx") && kind == "variable_declarator" {
         let value = node.child_by_field_name("value")?;
-        if !matches!(value.kind(), "arrow_function" | "function_expression") {
-            return None;
-        }
+        if !matches!(value.kind(), "arrow_function" | "function_expression") { return None; }
         let name = node_text(node.child_by_field_name("name")?, src);
         let stmt = node.parent().filter(|p| matches!(p.kind(), "lexical_declaration" | "variable_declaration"));
         let start = stmt.map(|p| p.start_position().row + 1).unwrap_or(start);
         return Some((name, start, end));
     }
-    if !section_kinds(lang).contains(&kind) {
-        return None;
-    }
+    if !section_kinds(lang).contains(&kind) { return None; }
     if lang == "zig" && kind == "test_declaration" {
         let mut cursor = node.walk();
         let title = node
@@ -152,17 +132,11 @@ fn section_of(node: Node, src: &[u8], lang: &str) -> Option<(String, usize, usiz
     }
     if lang == "rust" && kind == "impl_item" {
         let ty = node_text(node.child_by_field_name("type")?, src);
-        let title = match node.child_by_field_name("trait") {
-            Some(t) => format!("impl {} for {ty}", node_text(t, src)),
-            None => format!("impl {ty}"),
-        };
+        let title = match node.child_by_field_name("trait") { Some(t) => format!("impl {} for {ty}", node_text(t, src)), None => format!("impl {ty}") };
         return Some((title, start, end));
     }
     let name = node_text(node.child_by_field_name("name")?, src);
-    let start = match node.parent() {
-        Some(p) if p.kind() == "decorated_definition" => p.start_position().row + 1,
-        _ => start,
-    };
+    let start = match node.parent() { Some(p) if p.kind() == "decorated_definition" => p.start_position().row + 1, _ => start };
     Some((name, start, end))
 }
 
@@ -172,9 +146,7 @@ fn walk_code(node: Node, src: &[u8], lang: &str, depth: usize, rows: &mut Vec<He
         if let Some((title, start_line, end_line)) = section_of(child, src, lang) {
             rows.push(HeadingRow { level: depth, title, start_line, end_line });
             walk_code(child, src, lang, depth + 1, rows);
-        } else {
-            walk_code(child, src, lang, depth, rows);
-        }
+        } else { walk_code(child, src, lang, depth, rows); }
     }
 }
 

@@ -34,26 +34,15 @@ pub struct EditResult {
     pub printed: Vec<usize>,
 }
 
-pub struct BufferCommand {
-    pub target: String,
-    pub command: Command,
-    pub destination: Option<String>,
-}
+pub struct BufferCommand { pub target: String, pub command: Command, pub destination: Option<String> }
 
-pub struct BufferEditResult {
-    pub target: String,
-    pub original_text: String,
-    pub result: EditResult,
-}
+pub struct BufferEditResult { pub target: String, pub original_text: String, pub result: EditResult }
 
 impl EditResult {
     /// Render printed lines as a bare `lnhashview`: no tag, no headers, line numbers
     /// space-padded to the width of the largest printed line number.
     fn printed_view(&self, print_set: &BTreeSet<usize>) -> String {
-        let last = match print_set.iter().next_back() {
-            Some(n) => *n,
-            None => return String::new(),
-        };
+        let last = match print_set.iter().next_back() { Some(n) => *n, None => return String::new() };
         let width = last.to_string().len();
         let mut out = String::new();
         for n in print_set {
@@ -82,9 +71,7 @@ impl EditResult {
         if self.lines.len() == original_lines.len() && self.lines.iter().zip(original_lines).all(|(new, old)| new == old) {
             return self.printed_view(&print_set);
         }
-        if mod_set.is_empty() && del_set.is_empty() {
-            return self.printed_view(&print_set);
-        }
+        if mod_set.is_empty() && del_set.is_empty() { return self.printed_view(&print_set); }
 
         // Build interleaved sequence of (tag, lnhash, text) where tag is ' ', '+', '-'
         // Walk new lines, inserting deleted old lines at the right positions.
@@ -112,16 +99,12 @@ impl EditResult {
                 // Show the old line as deleted if this was a modification (not insertion)
                 if let Some(orig) = origin {
                     let old_line = original_lines[orig - 1];
-                    if old_line != line.as_str() {
-                        events.push(('-', format_lnhash(orig, old_line), old_line));
-                    }
+                    if old_line != line.as_str() { events.push(('-', format_lnhash(orig, old_line), old_line)); }
                 }
                 events.push(('+', self.hashes[new_idx].clone(), line.as_str()));
             } else {
                 // Printed lines are context rows, force-included below.
-                if print_set.contains(&new_lineno) {
-                    forced.push(events.len());
-                }
+                if print_set.contains(&new_lineno) { forced.push(events.len()); }
                 events.push((' ', self.hashes[new_idx].clone(), line.as_str()));
             }
         }
@@ -149,18 +132,14 @@ impl EditResult {
             .collect();
         interesting.extend(forced);
 
-        if interesting.is_empty() {
-            return String::new();
-        }
+        if interesting.is_empty() { return String::new(); }
 
         let mut out = String::from("--- original\n+++ modified\n");
         let mut last: Option<usize> = None;
         for i in &interesting {
             if let Some(prev) = last
                 && *i > prev + 1
-            {
-                out.push_str("---\n");
-            }
+            { out.push_str("---\n"); }
             let (tag, ref hash, text) = events[*i];
             out.push(tag);
             out.push_str(hash);
@@ -205,9 +184,7 @@ impl Engine {
 
     fn apply_command(&mut self, cmd: &Command) -> Result<(), EditError> {
         let (start, end, is_range) = self.resolve_command_range(cmd)?;
-        if start > end && start != 0 {
-            return Err(EditError::new(format!("invalid range: {start}..{end}")));
-        }
+        if start > end && start != 0 { return Err(EditError::new(format!("invalid range: {start}..{end}"))); }
         let before = self.lines.clone();
         self.apply_subcommand(start, end, is_range, &cmd.cmd, true)?;
         self.track_command_effect(&before, start, end, &cmd.cmd);
@@ -223,9 +200,7 @@ impl Engine {
     fn verify_command_addresses(&self, cmd: &Command) -> Result<(), EditError> {
         let single = !cmd.has_comma && cmd.addr2.is_none();
         self.verify_address(cmd.addr1, &cmd.cmd, single)?;
-        if let Some(a2) = cmd.addr2 {
-            self.verify_address(a2, &cmd.cmd, false)?;
-        }
+        if let Some(a2) = cmd.addr2 { self.verify_address(a2, &cmd.cmd, false)?; }
         Ok(())
     }
 
@@ -260,32 +235,17 @@ impl Engine {
     fn verify_lnhash(&self, addr: crate::LnHash, cmd: &Subcommand, allow_call_start: bool) -> Result<(), EditError> {
         if addr.lineno == 0 {
             // Only valid for i/a, enforced by parser.
-            if addr.hash != 0 {
-                return Err(EditError::new("0|0000| must have hash 0000"));
-            }
-            match cmd {
-                Subcommand::Append(_) | Subcommand::Insert(_) => Ok(()),
-                _ => Err(EditError::new("0|0000| is only valid with i or a")),
-            }
-        } else {
-            self.verify_lnhash_basic(addr, allow_call_start)
-        }
+            if addr.hash != 0 { return Err(EditError::new("0|0000| must have hash 0000")); }
+            match cmd { Subcommand::Append(_) | Subcommand::Insert(_) => Ok(()), _ => Err(EditError::new("0|0000| is only valid with i or a")) }
+        } else { self.verify_lnhash_basic(addr, allow_call_start) }
     }
 
     fn verify_lnhash_basic(&self, addr: crate::LnHash, allow_call_start: bool) -> Result<(), EditError> {
-        if addr.lineno == 0 {
-            return Err(EditError::new("address 0 is not allowed here"));
-        }
-        if addr.lineno > self.lines.len() {
-            return Err(EditError::new(format!("address out of range: {} > {}", addr.lineno, self.lines.len())));
-        }
+        if addr.lineno == 0 { return Err(EditError::new("address 0 is not allowed here")); }
+        if addr.lineno > self.lines.len() { return Err(EditError::new(format!("address out of range: {} > {}", addr.lineno, self.lines.len()))); }
         let actual = line_hash_u16(&self.lines[addr.lineno - 1].text);
-        if actual == addr.hash {
-            return Ok(());
-        }
-        if allow_call_start && self.call_start_hashes.get(&addr.lineno).copied() == Some(addr.hash) {
-            return Ok(());
-        }
+        if actual == addr.hash { return Ok(()); }
+        if allow_call_start && self.call_start_hashes.get(&addr.lineno).copied() == Some(addr.hash) { return Ok(()); }
         if allow_call_start && let Some(start) = self.call_start_hashes.get(&addr.lineno) {
             return Err(EditError::new(format!(
                 "stale lnhash at line {}: line was already edited by an earlier command in this call; expected {:04x}, current {:04x}, call-start {:04x}",
@@ -297,16 +257,12 @@ impl Engine {
 
     fn track_command_effect(&mut self, before: &[Line], start: usize, end: usize, sub: &Subcommand) {
         let changed = before.len() != self.lines.len() || before.iter().zip(&self.lines).any(|(old, new)| old.text != new.text);
-        if !changed {
-            return;
-        }
+        if !changed { return; }
         if before.len() == self.lines.len() && sub.edits_in_place(end.saturating_sub(start) + 1) {
             for (idx, (old, new)) in before.iter().zip(&self.lines).enumerate() {
                 if old.text != new.text
                     && let Some((_, hash)) = new.call_start
-                {
-                    self.call_start_hashes.entry(idx + 1).or_insert(hash);
-                }
+                { self.call_start_hashes.entry(idx + 1).or_insert(hash); }
             }
         } else {
             let identity = before.iter().zip(&self.lines).position(|(old, new)| old.call_start != new.call_start);
@@ -318,37 +274,25 @@ impl Engine {
 
     fn invalidate_from(&mut self, line: usize) {
         self.call_start_hashes.retain(|current, _| *current < line);
-        for current in self.lines.iter_mut().skip(line.saturating_sub(1)) {
-            current.call_start = None;
-        }
+        for current in self.lines.iter_mut().skip(line.saturating_sub(1)) { current.call_start = None; }
     }
 
     fn take_transfer(&mut self, start: usize, end: usize) -> Result<Vec<Line>, EditError> {
-        if start == 0 && end == 0 {
-            return Ok(Vec::new());
-        }
+        if start == 0 && end == 0 { return Ok(Vec::new()); }
         let (s, e) = self.resolve_range(start, end)?;
         let removed: Vec<Line> = self.lines.drain(s..=e).collect();
-        for line in &removed {
-            if let Some(origin) = line.origin {
-                self.deleted.insert(origin);
-            }
-        }
+        for line in &removed { if let Some(origin) = line.origin { self.deleted.insert(origin); } }
         self.invalidate_from(start);
         Ok(removed)
     }
 
     fn insert_transfer(&mut self, dest: usize, mut lines: Vec<Line>, copy: bool) {
-        if lines.is_empty() {
-            return;
-        }
+        if lines.is_empty() { return; }
         for line in &mut lines {
             line.origin = None;
             line.call_start = None;
             line.modified = true;
-            if copy {
-                line.printed = false;
-            }
+            if copy { line.printed = false; }
         }
         self.lines.splice(dest..dest, lines);
         self.invalidate_from(dest + 1);
@@ -371,17 +315,12 @@ impl Engine {
 
     fn resolve_command_range(&self, cmd: &Command) -> Result<(usize, usize, bool), EditError> {
         if matches!(cmd.addr1, Address::WholeFile) {
-            if cmd.has_comma || cmd.addr2.is_some() {
-                return Err(EditError::new("% is already a whole-file range"));
-            }
+            if cmd.has_comma || cmd.addr2.is_some() { return Err(EditError::new("% is already a whole-file range")); }
             return Ok(self.resolve_whole_file_range());
         }
 
         let start = self.resolve_address_lineno(cmd.addr1)?;
-        let end = match cmd.addr2 {
-            Some(a) => self.resolve_address_lineno(a)?,
-            None => start,
-        };
+        let end = match cmd.addr2 { Some(a) => self.resolve_address_lineno(a)?, None => start };
         Ok((start, end, cmd.has_comma))
     }
 
@@ -405,21 +344,15 @@ impl Engine {
         if self.lines.is_empty() { Err(EditError::new("address '$' out of range on empty file")) } else { Ok(self.lines.len()) }
     }
 
-    fn resolve_whole_file_range(&self) -> (usize, usize, bool) {
-        if self.lines.is_empty() { (0, 0, true) } else { (1, self.lines.len(), true) }
-    }
+    fn resolve_whole_file_range(&self) -> (usize, usize, bool) { if self.lines.is_empty() { (0, 0, true) } else { (1, self.lines.len(), true) } }
 
     fn apply_subcommand(&mut self, start: usize, end: usize, has_comma: bool, sub: &Subcommand, strict: bool) -> Result<(), EditError> {
-        if has_comma && start == 0 && end == 0 {
-            return self.apply_empty_range(sub);
-        }
+        if has_comma && start == 0 && end == 0 { return self.apply_empty_range(sub); }
         match sub {
             Subcommand::Delete => self.delete_range(start, end),
             Subcommand::Substitute(s) => {
                 let matched = self.substitute_range(start, end, s)?;
-                if strict && !matched {
-                    return Err(EditError::new(format!("s: no match for pattern `{}` in {start},{end}", s.pattern)));
-                }
+                if strict && !matched { return Err(EditError::new(format!("s: no match for pattern `{}` in {start},{end}", s.pattern))); }
                 Ok(())
             }
             Subcommand::Transliterate { source, dest } => self.transliterate_range(start, end, source, dest),
@@ -427,11 +360,7 @@ impl Engine {
             Subcommand::Insert(text) => self.insert_before(start, text),
             Subcommand::Change(text) => self.change_range(start, end, text),
             Subcommand::Join => {
-                if has_comma {
-                    self.join_range(start, end)
-                } else {
-                    self.join_with_next(start)
-                }
+                if has_comma { self.join_range(start, end) } else { self.join_with_next(start) }
             }
             Subcommand::Move { dest } => self.move_range(start, end, self.resolve_destination_lineno(*dest)?),
             Subcommand::Copy { dest } => self.copy_range(start, end, self.resolve_destination_lineno(*dest)?),
@@ -444,33 +373,20 @@ impl Engine {
     }
 
     fn apply_empty_range(&mut self, sub: &Subcommand) -> Result<(), EditError> {
-        match sub {
-            Subcommand::Append(text) | Subcommand::Insert(text) | Subcommand::Change(text) => self.insert_before(0, text),
-            _ => Ok(()),
-        }
+        match sub { Subcommand::Append(text) | Subcommand::Insert(text) | Subcommand::Change(text) => self.insert_before(0, text), _ => Ok(()) }
     }
 
     fn resolve_range(&self, start: usize, end: usize) -> Result<(usize, usize), EditError> {
-        if start == 0 || end == 0 {
-            return Err(EditError::new("address 0 is not valid for this command"));
-        }
-        if start > end {
-            return Err(EditError::new(format!("invalid range: {start}..{end}")));
-        }
-        if end > self.lines.len() {
-            return Err(EditError::new(format!("address out of range: {end} > {}", self.lines.len())));
-        }
+        if start == 0 || end == 0 { return Err(EditError::new("address 0 is not valid for this command")); }
+        if start > end { return Err(EditError::new(format!("invalid range: {start}..{end}"))); }
+        if end > self.lines.len() { return Err(EditError::new(format!("address out of range: {end} > {}", self.lines.len()))); }
         Ok((start - 1, end - 1))
     }
 
     fn delete_range(&mut self, start: usize, end: usize) -> Result<(), EditError> {
         let (s, e) = self.resolve_range(start, end)?;
         let removed: Vec<Line> = self.lines.drain(s..=e).collect();
-        for l in &removed {
-            if let Some(o) = l.origin {
-                self.deleted.insert(o);
-            }
-        }
+        for l in &removed { if let Some(o) = l.origin { self.deleted.insert(o); } }
         Ok(())
     }
 
@@ -483,15 +399,11 @@ impl Engine {
         if multiline {
             // Join range into single string, apply substitute, split back
             let joined: String = (s_idx..=e_idx).map(|i| self.lines[i].text.as_str()).collect::<Vec<_>>().join("\n");
-            if !re.is_match(&joined) {
-                return Ok(false);
-            }
+            if !re.is_match(&joined) { return Ok(false); }
             matched = true;
             let result =
                 if s.global { re.replace_all(&joined, s.replacement.as_str()).to_string() } else { re.replace(&joined, s.replacement.as_str()).to_string() };
-            if result == joined {
-                return Ok(true);
-            }
+            if result == joined { return Ok(true); }
             let new_lines: Vec<String> = result.split('\n').map(|s| s.to_string()).collect();
             let origins: Vec<Option<usize>> = (s_idx..=e_idx).map(|i| self.lines[i].origin).collect();
             let call_starts: Vec<Option<(usize, u16)>> = (s_idx..=e_idx).map(|i| self.lines[i].call_start).collect();
@@ -508,12 +420,11 @@ impl Engine {
                 })
                 .collect();
             self.lines.splice(s_idx..=e_idx, new_line_objs);
-        } else {
+        }
+        else {
             for idx in s_idx..=e_idx {
                 let old = self.lines[idx].text.clone();
-                if !re.is_match(&old) {
-                    continue;
-                }
+                if !re.is_match(&old) { continue; }
                 matched = true;
                 let new =
                     if s.global { re.replace_all(&old, s.replacement.as_str()).to_string() } else { re.replace(&old, s.replacement.as_str()).to_string() };
@@ -543,18 +454,12 @@ impl Engine {
     fn append_after(&mut self, start: usize, end: usize, text: &[String]) -> Result<(), EditError> {
         // Append uses the end of the range if provided.
         let after = if start == 0 { 0 } else { end };
-        let insert_at = if after == 0 {
-            0
-        } else {
-            if after > self.lines.len() {
-                return Err(EditError::new(format!("address out of range: {after} > {}", self.lines.len())));
-            }
+        let insert_at = if after == 0 { 0 } else {
+            if after > self.lines.len() { return Err(EditError::new(format!("address out of range: {after} > {}", self.lines.len()))); }
             after
         };
 
-        if text.is_empty() {
-            return Ok(());
-        }
+        if text.is_empty() { return Ok(()); }
 
         let new_lines: Vec<Line> =
             text.iter().map(|t| Line { text: t.clone(), origin: None, call_start: None, modified: true, printed: false, global_mark: false }).collect();
@@ -564,18 +469,12 @@ impl Engine {
     }
 
     fn insert_before(&mut self, before: usize, text: &[String]) -> Result<(), EditError> {
-        let insert_at = if before == 0 {
-            0
-        } else {
-            if before > self.lines.len() {
-                return Err(EditError::new(format!("address out of range: {before} > {}", self.lines.len())));
-            }
+        let insert_at = if before == 0 { 0 } else {
+            if before > self.lines.len() { return Err(EditError::new(format!("address out of range: {before} > {}", self.lines.len()))); }
             before - 1
         };
 
-        if text.is_empty() {
-            return Ok(());
-        }
+        if text.is_empty() { return Ok(()); }
 
         let new_lines: Vec<Line> =
             text.iter().map(|t| Line { text: t.clone(), origin: None, call_start: None, modified: true, printed: false, global_mark: false }).collect();
@@ -588,15 +487,9 @@ impl Engine {
         let (s, e) = self.resolve_range(start, end)?;
         let removed: Vec<Line> = self.lines.drain(s..=e).collect();
         let call_starts: Vec<Option<(usize, u16)>> = removed.iter().map(|line| line.call_start).collect();
-        for l in &removed {
-            if let Some(o) = l.origin {
-                self.deleted.insert(o);
-            }
-        }
+        for l in &removed { if let Some(o) = l.origin { self.deleted.insert(o); } }
 
-        if text.is_empty() {
-            return Ok(());
-        }
+        if text.is_empty() { return Ok(()); }
 
         let new_lines: Vec<Line> = text
             .iter()
@@ -616,15 +509,9 @@ impl Engine {
     }
 
     fn join_with_next(&mut self, line: usize) -> Result<(), EditError> {
-        if line == 0 {
-            return Err(EditError::new("address 0 is not valid for join"));
-        }
-        if self.lines.len() < 2 {
-            return Err(EditError::new("cannot join: file has fewer than 2 lines"));
-        }
-        if line >= self.lines.len() {
-            return Err(EditError::new("cannot join: no next line"));
-        }
+        if line == 0 { return Err(EditError::new("address 0 is not valid for join")); }
+        if self.lines.len() < 2 { return Err(EditError::new("cannot join: file has fewer than 2 lines")); }
+        if line >= self.lines.len() { return Err(EditError::new("cannot join: no next line")); }
         let idx = line - 1;
         let joined = join_strings(&self.lines[idx].text, &self.lines[idx + 1].text);
         if joined != self.lines[idx].text {
@@ -632,53 +519,35 @@ impl Engine {
             self.lines[idx].modified = true;
         }
         let removed = self.lines.remove(idx + 1);
-        if let Some(o) = removed.origin {
-            self.deleted.insert(o);
-        }
+        if let Some(o) = removed.origin { self.deleted.insert(o); }
         Ok(())
     }
 
     fn join_range(&mut self, start: usize, end: usize) -> Result<(), EditError> {
         let (s, e) = self.resolve_range(start, end)?;
-        if s == e {
-            return Ok(());
-        }
+        if s == e { return Ok(()); }
         let mut joined = self.lines[s].text.clone();
-        for i in (s + 1)..=e {
-            joined = join_strings(&joined, &self.lines[i].text);
-        }
+        for i in (s + 1)..=e { joined = join_strings(&joined, &self.lines[i].text); }
         if joined != self.lines[s].text {
             self.lines[s].text = joined;
             self.lines[s].modified = true;
         }
         // Remove the rest.
         let removed: Vec<Line> = self.lines.drain((s + 1)..=e).collect();
-        for l in removed {
-            if let Some(o) = l.origin {
-                self.deleted.insert(o);
-            }
-        }
+        for l in removed { if let Some(o) = l.origin { self.deleted.insert(o); } }
         Ok(())
     }
 
     fn move_range(&mut self, start: usize, end: usize, dest: usize) -> Result<(), EditError> {
         let (s, e) = self.resolve_range(start, end)?;
-        if dest > self.lines.len() {
-            return Err(EditError::new(format!("destination out of range: {dest} > {}", self.lines.len())));
-        }
-        if dest >= start && dest <= end {
-            return Err(EditError::new("destination is within moved range"));
-        }
+        if dest > self.lines.len() { return Err(EditError::new(format!("destination out of range: {dest} > {}", self.lines.len()))); }
+        if dest >= start && dest <= end { return Err(EditError::new("destination is within moved range")); }
 
         let seg_len = e - s + 1;
         let mut seg: Vec<Line> = self.lines.drain(s..=e).collect();
-        for l in &mut seg {
-            l.modified = true;
-        }
+        for l in &mut seg { l.modified = true; }
 
-        let insert_at = if dest < start {
-            dest
-        } else {
+        let insert_at = if dest < start { dest } else {
             // dest > end
             dest - seg_len
         };
@@ -689,9 +558,7 @@ impl Engine {
 
     fn copy_range(&mut self, start: usize, end: usize, dest: usize) -> Result<(), EditError> {
         let (s, e) = self.resolve_range(start, end)?;
-        if dest > self.lines.len() {
-            return Err(EditError::new(format!("destination out of range: {dest} > {}", self.lines.len())));
-        }
+        if dest > self.lines.len() { return Err(EditError::new(format!("destination out of range: {dest} > {}", self.lines.len()))); }
 
         let mut seg: Vec<Line> = self.lines[s..=e]
             .iter()
@@ -705,9 +572,7 @@ impl Engine {
 
     fn indent_range(&mut self, start: usize, end: usize, levels: usize) -> Result<(), EditError> {
         let (s, e) = self.resolve_range(start, end)?;
-        if levels == 0 || self.sw == 0 {
-            return Ok(());
-        }
+        if levels == 0 || self.sw == 0 { return Ok(()); }
         let prefix = " ".repeat(self.sw * levels);
         for idx in s..=e {
             let new = format!("{}{}", prefix, self.lines[idx].text);
@@ -719,9 +584,7 @@ impl Engine {
 
     fn dedent_range(&mut self, start: usize, end: usize, levels: usize) -> Result<(), EditError> {
         let (s, e) = self.resolve_range(start, end)?;
-        if levels == 0 || self.sw == 0 {
-            return Ok(());
-        }
+        if levels == 0 || self.sw == 0 { return Ok(()); }
         for idx in s..=e {
             let old = self.lines[idx].text.clone();
             let new = dedent(&old, levels, self.sw);
@@ -735,25 +598,17 @@ impl Engine {
 
     fn sort_range(&mut self, start: usize, end: usize) -> Result<(), EditError> {
         let (s, e) = self.resolve_range(start, end)?;
-        if s == e {
-            return Ok(());
-        }
+        if s == e { return Ok(()); }
         let before: Vec<String> = self.lines[s..=e].iter().map(|l| l.text.clone()).collect();
         self.lines[s..=e].sort_by(|a, b| a.text.cmp(&b.text));
         let after: Vec<String> = self.lines[s..=e].iter().map(|l| l.text.clone()).collect();
-        if before != after {
-            for l in &mut self.lines[s..=e] {
-                l.modified = true;
-            }
-        }
+        if before != after { for l in &mut self.lines[s..=e] { l.modified = true; } }
         Ok(())
     }
 
     fn print_range(&mut self, start: usize, end: usize) -> Result<(), EditError> {
         let (s, e) = self.resolve_range(start, end)?;
-        for idx in s..=e {
-            self.lines[idx].printed = true;
-        }
+        for idx in s..=e { self.lines[idx].printed = true; }
         Ok(())
     }
 
@@ -762,9 +617,7 @@ impl Engine {
         let re = build_regex(pattern, false)?;
 
         // Clear existing marks.
-        for l in &mut self.lines {
-            l.global_mark = false;
-        }
+        for l in &mut self.lines { l.global_mark = false; }
 
         for idx in s..=e {
             let m = re.is_match(&self.lines[idx].text);
@@ -785,9 +638,7 @@ impl Engine {
         }
 
         // Ensure marks are cleared.
-        for l in &mut self.lines {
-            l.global_mark = false;
-        }
+        for l in &mut self.lines { l.global_mark = false; }
 
         Ok(())
     }
@@ -798,9 +649,7 @@ impl Engine {
 /// Each command's lnhashes are verified immediately before it is applied. Single-line
 /// addresses may match the current text or a call-start hash recorded by an earlier
 /// in-place edit.
-pub fn edit_text(input: &str, commands: &[Command]) -> Result<EditResult, EditError> {
-    edit_text_with_sw(input, commands, 4)
-}
+pub fn edit_text(input: &str, commands: &[Command]) -> Result<EditResult, EditError> { edit_text_with_sw(input, commands, 4) }
 
 pub fn edit_text_with_sw(input: &str, commands: &[Command], sw: usize) -> Result<EditResult, EditError> {
     let input_lines: Vec<String> = input.lines().map(|l| l.to_string()).collect();
@@ -817,20 +666,14 @@ pub fn edit_buffers_with_sw(buffers: Vec<(String, String)>, commands: Vec<Buffer
     let mut indexes = HashMap::new();
     let mut states = Vec::with_capacity(buffers.len());
     for (target, text) in buffers {
-        if indexes.insert(target.clone(), states.len()).is_some() {
-            return Err(EditError::new(format!("duplicate buffer target: {target}")));
-        }
+        if indexes.insert(target.clone(), states.len()).is_some() { return Err(EditError::new(format!("duplicate buffer target: {target}"))); }
         let lines = text.lines().map(|line| line.to_string()).collect();
         states.push((target, text, Engine::new(lines, sw)));
     }
 
     for BufferCommand { target, command, destination } in commands {
         let source_idx = *indexes.get(&target).ok_or_else(|| EditError::new(format!("unknown source buffer: {target}")))?;
-        let transfer = match &command.cmd {
-            Subcommand::Move { dest } => Some((*dest, false)),
-            Subcommand::Copy { dest } => Some((*dest, true)),
-            _ => None,
-        };
+        let transfer = match &command.cmd { Subcommand::Move { dest } => Some((*dest, false)), Subcommand::Copy { dest } => Some((*dest, true)), _ => None };
         if let Some((dest, copy)) = transfer {
             let destination = destination.unwrap_or_else(|| target.clone());
             let dest_idx = *indexes.get(&destination).ok_or_else(|| EditError::new(format!("unknown destination buffer: {destination}")))?;
@@ -845,20 +688,14 @@ pub fn edit_buffers_with_sw(buffers: Vec<(String, String)>, commands: Vec<Buffer
             let (start, end, _) = states[source_idx].2.resolve_command_range(&command)?;
             let dest_line = states[dest_idx].2.resolve_destination_lineno(dest)?;
             let segment = if copy {
-                if start == 0 && end == 0 {
-                    Vec::new()
-                } else {
+                if start == 0 && end == 0 { Vec::new() } else {
                     let (s, e) = states[source_idx].2.resolve_range(start, end)?;
                     states[source_idx].2.lines[s..=e].to_vec()
                 }
-            } else {
-                states[source_idx].2.take_transfer(start, end)?
-            };
+            } else { states[source_idx].2.take_transfer(start, end)? };
             states[dest_idx].2.insert_transfer(dest_line, segment, copy);
         } else {
-            if destination.is_some() {
-                return Err(EditError::new("only m/t commands may name a destination buffer"));
-            }
+            if destination.is_some() { return Err(EditError::new("only m/t commands may name a destination buffer")); }
             states[source_idx].2.verify_command(&command)?;
             states[source_idx].2.apply_command(&command)?;
         }
@@ -868,16 +705,10 @@ pub fn edit_buffers_with_sw(buffers: Vec<(String, String)>, commands: Vec<Buffer
 }
 
 fn build_regex(pattern: &str, case_insensitive: bool) -> Result<Regex, EditError> {
-    if case_insensitive {
-        RegexBuilder::new(pattern).case_insensitive(true).build().map_err(|e| EditError::new(format!("invalid regex: {e}")))
-    } else {
-        Regex::new(pattern).map_err(|e| EditError::new(format!("invalid regex: {e}")))
-    }
+    if case_insensitive { RegexBuilder::new(pattern).case_insensitive(true).build().map_err(|e| EditError::new(format!("invalid regex: {e}"))) } else { Regex::new(pattern).map_err(|e| EditError::new(format!("invalid regex: {e}"))) }
 }
 
-fn is_name_byte(b: u8) -> bool {
-    b == b'_' || b.is_ascii_alphanumeric()
-}
+fn is_name_byte(b: u8) -> bool { b == b'_' || b.is_ascii_alphanumeric() }
 
 /// Strict template check: every `$` group reference in `repl` must resolve against `re`'s
 /// groups. The expand grammar substitutes unknown references with the EMPTY string -- in an
@@ -888,14 +719,10 @@ fn verify_template(re: &Regex, repl: &str) -> Result<(), EditError> {
     let n = re.captures_len(); // includes $0
     let check = |name: &str| -> Result<(), EditError> {
         if let Ok(i) = name.parse::<usize>() {
-            if i < n {
-                return Ok(());
-            }
+            if i < n { return Ok(()); }
             return Err(EditError::new(format!("replacement references group ${i}, but the pattern only defines groups $0-${}", n - 1)));
         }
-        if names.contains(name) {
-            return Ok(());
-        }
+        if names.contains(name) { return Ok(()); }
         Err(EditError::new(format!(
             "replacement references group '{name}', which the pattern does not define \
              (a literal `$` is written `$$`; a numbered group followed by text is `${{1}}text`)"
@@ -927,12 +754,8 @@ fn verify_template(re: &Regex, repl: &str) -> Result<(), EditError> {
         }
         let start = i + 1;
         let mut j = start;
-        while j < b.len() && is_name_byte(b[j]) {
-            j += 1;
-        }
-        if j > start {
-            check(&repl[start..j])?;
-        }
+        while j < b.len() && is_name_byte(b[j]) { j += 1; }
+        if j > start { check(&repl[start..j])?; }
         i = j.max(i + 1);
     }
     Ok(())
@@ -940,21 +763,15 @@ fn verify_template(re: &Regex, repl: &str) -> Result<(), EditError> {
 
 fn join_strings(a: &str, b: &str) -> String {
     let b = b.trim_start_matches(char::is_whitespace);
-    if a.is_empty() {
-        return b.to_string();
-    }
-    if b.is_empty() {
-        return a.to_string();
-    }
+    if a.is_empty() { return b.to_string(); }
+    if b.is_empty() { return a.to_string(); }
     let a_end_ws = a.chars().last().map(|c| c.is_whitespace()).unwrap_or(false);
     if a_end_ws { format!("{a}{b}") } else { format!("{a} {b}") }
 }
 
 fn dedent(line: &str, levels: usize, sw: usize) -> String {
     let mut s = line.to_string();
-    if sw == 0 {
-        return s;
-    }
+    if sw == 0 { return s; }
     for _ in 0..levels {
         if s.starts_with('\t') {
             s = s[1..].to_string();
@@ -963,9 +780,7 @@ fn dedent(line: &str, levels: usize, sw: usize) -> String {
         // Remove up to `sw` leading spaces as one level.
         let mut removed = 0usize;
         let bytes = s.as_bytes();
-        while removed < sw && removed < bytes.len() && bytes[removed] == b' ' {
-            removed += 1;
-        }
+        while removed < sw && removed < bytes.len() && bytes[removed] == b' ' { removed += 1; }
         if removed > 0 {
             s = s[removed..].to_string();
             continue;
