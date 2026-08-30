@@ -100,6 +100,29 @@ cat file.txt | exhash --stdin - '1|abcd|s/foo/bar/'
 
 In `--stdin` mode, multiline `a/i/c` text blocks are not available.
 
+### Notebook cells
+
+`lnhashview-cell` and `exhash-cell` apply the same workflow to one notebook cell, addressed by its exact or unique ID prefix:
+
+```bash
+lnhashview-cell nbs/00_core.ipynb ab12cd34
+exhash-cell nbs/00_core.ipynb ab12cd34 '3|beef|s/old/new/'
+exhash-cell --dry-run nbs/00_core.ipynb ab12cd34 '3|beef|d'
+```
+
+### Document outlines
+
+`exhash-open` opens Markdown, source code, notebooks, URLs, or stdin as a verified section tree. Its default output is the immediate outline; copy a displayed token back to read that section:
+
+```bash
+exhash-open README.md
+exhash-open README.md '1.2.|21|e675|,101|426c|'
+exhash-open README.md --paths --depth 2
+exhash-open README.md --search 'CLI|console'
+exhash-open README.md --lnhashs
+exhash-open https://example.com/llms.txt --links
+```
+
 ## Python API
 
 ```py

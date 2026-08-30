@@ -79,7 +79,7 @@ No local build is required for release; CI runs the release build, creates a Git
 
 ## How the CLIs work
 
-The `exhash` and `lnhashview` commands are Python console scripts declared in `[project.scripts]` (`python/exhash/_cli.py`). They handle argument parsing, file I/O (atomic writes, binary/UTF-8 rejection, `--stdin`/`--dry-run`), and delegate command parsing and editing to the extension: `_cli` calls the `exhash_argv` binding, which runs `parse_commands_from_args` (ex-style `a/i/c` text blocks terminated by `.`) plus `edit_text_with_sw`.
+The commands are Python console scripts declared in `[project.scripts]` (`python/exhash/_cli.py`). `exhash` and `exhash-cell` handle argument parsing, atomic file I/O, and delegate compact command parsing and editing to the extension. `lnhashview` and `lnhashview-cell` provide the corresponding address views. `exhash-open` is a fastcore `call_parse` wrapper over the document outline API.
 
 ## Command parsing modes
 

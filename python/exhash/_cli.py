@@ -1,6 +1,7 @@
-"Console-script entry points for the `exhash` and `lnhashview` CLIs."
-import os, re, sys, tempfile
+"Console-script entry points for exhash tools."
+import json, os, re, sys, tempfile
 from pathlib import Path
+from fastcore.script import call_parse
 
 from .exhash import exhash_argv as _exhash_argv, lnhashview as _lnhashview
 
@@ -32,6 +33,13 @@ OPTIONS
 
 LNHASHVIEW_USAGE = ("Usage: lnhashview <file> [start_line [end_line]]\n\n"
     "Prints lines as: <lineno>|<hash>|<content>; start_line/end_line are 1-based inclusive.")
+
+EXHASH_CELL_USAGE = """\
+Usage: exhash-cell [-h] [--dry-run] [--sw N] <notebook> <cell-id> [commands...]
+
+Apply exhash commands to one notebook cell. Multiline a/i/c text blocks are read
+from stdin and terminated by a line containing only '.'.
+"""
 
 
 def _die(msg, code=1):
@@ -129,3 +137,89 @@ def lnhashview_main(argv=None):
     text = _read_text_or_die(file)
     if start is not None and end is None: end = start  # single arg shows just that line
     for line in _lnhashview(text, start, end): print(line)
+
+
+@call_parse(pos=['start', 'end'])
+def lnhashview_cell_main(
+    file:str, # Notebook path
+    cell_id:str, # Exact or uniquely prefixed cell ID
+    start:int=None, # First source line to show
+    end:int=None, # Last source line to show
+):
+    "Show hash-addressed source lines from one notebook cell."
+    from . import lnhashview_cell
+    if start is not None and end is None: end = start
+    try: print(lnhashview_cell(file, cell_id, start, end))
+    except Exception as e: _die(f"error: {e}")
+
+
+def exhash_cell_main(argv=None):
+    "Entry point for the `exhash-cell` console script."
+    argv = list(sys.argv[1:] if argv is None else argv)
+    dry_run, sw, i = False, 4, 0
+    while i < len(argv):
+        a = argv[i]
+        if a == '--dry-run': dry_run, i = True, i+1
+        elif a == '--sw':
+            if i+1 >= len(argv): _die("error: --sw requires an integer argument", 2)
+            try: sw = int(argv[i+1])
+            except ValueError: _die(f"error: invalid --sw value {argv[i+1]!r}", 2)
+            i += 2
+        elif a in ('-h', '--help'):
+            print(EXHASH_CELL_USAGE, file=sys.stderr)
+            return
+        elif a.startswith('-') and len(a) > 1: _die(f"error: unknown flag {a}\n{EXHASH_CELL_USAGE}", 2)
+        else: break
+    if len(argv)-i < 2: _die(EXHASH_CELL_USAGE, 2)
+    file, cell_id, cmds = argv[i], argv[i+1], argv[i+2:]
+    text_block = sys.stdin.read() if any(_needs_text_block(c) for c in cmds) else ""
+    try:
+        from . import _cell_text, _load_cell
+        nb, cell = _load_cell(file, cell_id)
+        text = _cell_text(cell)
+        res = _exhash_argv(text, cmds, text_block, sw)
+        new = '\n'.join(res.lines)
+        if text.endswith('\n') and new: new += '\n'
+        if new != text and not dry_run:
+            cell['source'] = new.splitlines(keepends=True) if isinstance(cell['source'], list) else new
+            _atomic_write(file, json.dumps(nb, sort_keys=True, indent=1, ensure_ascii=False) + '\n')
+    except Exception as e: _die(f"error: {e}", 2)
+    if (diff := res.format_diff(1)): sys.stdout.write(diff)
+
+
+def _open_doc(src):
+    from . import open_doc
+    if src == '-': return open_doc(sys.stdin.read())
+    if re.match(r'https?://', src): return open_doc(src)
+    return open_doc(fname=src)
+
+
+@call_parse(pos=['token'])
+def open_doc_main(
+    src:str, # File path, URL, or - for stdin
+    token:str=None, # Verified section token to view
+    paths:bool=False, # Show the complete section outline?
+    depth:int=None, # Maximum section depth for --paths
+    search:str=None, # Search sections using a case-insensitive regex
+    links:bool=False, # List links in document order?
+    open_link:int=None, # Open a numbered link and show its outline
+    nums:bool=False, # Prefix viewed lines with source line numbers?
+    lnhashs:bool=False, # Prefix viewed lines with hash-verified addresses?
+):
+    "Open a document as a navigable, verified section outline."
+    modes = bool(token) + paths + (search is not None) + links + (open_link is not None)
+    if modes > 1: _die("error: token, --paths, --search, --links, and --open-link are mutually exclusive", 2)
+    if depth is not None and not paths: _die("error: --depth requires --paths", 2)
+    if (nums or lnhashs) and (paths or search is not None or links or open_link is not None):
+        _die("error: --nums and --lnhashs apply only to document or token views", 2)
+    try:
+        d = _open_doc(src)
+        if token: res = d.view(token, nums=nums, lnhashs=lnhashs)
+        elif nums or lnhashs: res = d.view(nums=nums, lnhashs=lnhashs)
+        elif paths: res = d.paths(depth)
+        elif search is not None: res = d.search(search)
+        elif links: res = d.links()
+        elif open_link is not None: res = d.open(open_link)
+        else: res = d
+    except Exception as e: _die(f"error: {e}")
+    print(res)
