@@ -26,6 +26,9 @@ Issues = "https://github.com/AnswerDotAI/exhash/issues"
 [project.scripts]
 exhash = "exhash._cli:exhash_main"
 lnhashview = "exhash._cli:lnhashview_main"
+exhash-cell = "exhash._cli:exhash_cell_main"
+lnhashview-cell = "exhash._cli:lnhashview_cell_main"
+exhash-open = "exhash._cli:open_doc_main"
 
 [project.entry-points.pyskills]
 exhash = "exhash.skill"

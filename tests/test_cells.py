@@ -1,5 +1,6 @@
 import json, pytest
 from exhash import lnhash, lnhashview_cell, lnhashview_cells, cell_exhash, file_exhash
+from exhash._cli import exhash_cell_main
 
 def mk_nb(path, cells):
     "Write a minimal notebook; `cells` is a list of (id, source) with source str or list"
@@ -67,6 +68,17 @@ def test_cell_exhash_writes_by_default(tmp_path):
     diff = cell_exhash(p, 'aaaa1111', (lnhash(1, "x=1"), "s", "1", "9"))
     assert isinstance(diff, str) and 'x=9' in diff
     assert json.loads(p.read_text())['cells'][0]['source'] == 'x=9'   # written by default
+
+
+def test_exhash_cell_cli_dry_run_then_write(tmp_path, capsys):
+    p = tmp_path/'t.ipynb'
+    mk_nb(p, [('aaaa1111', 'x=1')])
+    cmd = f"{lnhash(1, 'x=1')}s/1/2/"
+    exhash_cell_main(['--dry-run', str(p), 'aaaa', cmd])
+    assert json.loads(p.read_text())['cells'][0]['source'] == 'x=1'
+    exhash_cell_main([str(p), 'aaaa', cmd])
+    assert json.loads(p.read_text())['cells'][0]['source'] == 'x=2'
+    assert 'x=2' in capsys.readouterr().out
 
 
 def test_cell_exhash_stacks_call_start_addresses(tmp_path):
