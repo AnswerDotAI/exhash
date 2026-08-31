@@ -19,8 +19,8 @@ ADDRESSING
 
 COMMANDS
   s/pat/rep/[flags]  Substitute (Rust regex; flags g, i). y/src/dst/ transliterate.
-  d delete   a/i/c append/insert/change (inline text, or a text block via stdin
-  terminated by a '.' line)   j join   m/t move/copy to dest   >/< indent/dedent
+  d delete   a/i/c append/insert/change (inline text, or one text block read
+  from stdin through EOF)   j join   m/t move/copy to dest   >/< indent/dedent
   sort   p print   g/pat/cmd, g!/pat/cmd, v/pat/cmd global
 
 OPTIONS
@@ -37,8 +37,11 @@ LNHASHVIEW_USAGE = ("Usage: lnhashview <file> [start_line [end_line]]\n\n"
 EXHASH_CELL_USAGE = """\
 Usage: exhash-cell [-h] [--dry-run] [--sw N] <notebook> <cell-id> [commands...]
 
-Apply exhash commands to one notebook cell. Multiline a/i/c text blocks are read
-from stdin and terminated by a line containing only '.'.
+Apply compact exhash commands to one notebook cell. Put the verified address and
+operation in one argument, for example '3|beef|s/old/new/' or '3|beef|d'.
+
+Multiline a/i/c text blocks use a command such as '3|beef|c'. The one command
+that reads a text block consumes stdin through EOF. Every input line is literal.
 """
 
 
@@ -142,14 +145,18 @@ def lnhashview_main(argv=None):
 @call_parse(pos=['start', 'end'])
 def lnhashview_cell_main(
     file:str, # Notebook path
-    cell_id:str, # Exact or uniquely prefixed cell ID
+    cell_id:str, # Exact/prefixed cell ID, or comma-separated IDs
     start:int=None, # First source line to show
     end:int=None, # Last source line to show
 ):
-    "Show hash-addressed source lines from one notebook cell."
-    from . import lnhashview_cell
+    "Show hash-addressed source lines from one or more notebook cells."
+    from . import lnhashview_cell, lnhashview_cells
     if start is not None and end is None: end = start
-    try: print(lnhashview_cell(file, cell_id, start, end))
+    cell_ids = [o.strip() for o in cell_id.split(',')]
+    if any(not o for o in cell_ids): _die("error: cell IDs must be a comma-separated list without empty entries", 2)
+    try:
+        res = lnhashview_cell(file, cell_ids[0], start, end) if len(cell_ids) == 1 else lnhashview_cells(file, *cell_ids, start=start, end=end)
+        print(res)
     except Exception as e: _die(f"error: {e}")
 
 

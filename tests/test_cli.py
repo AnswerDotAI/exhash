@@ -105,7 +105,7 @@ def test_move_to_last_line_destination(tmp_path):
 def test_multiline_append_from_stdin(tmp_path):
     f = tmp_path / "f.txt"
     f.write_text("a\n")
-    out = run([str(f), f"{lnhash(1, 'a')}a"], input="x\ny\n.\n")
+    out = run([str(f), f"{lnhash(1, 'a')}a"], input="x\ny\n")
     assert out.returncode == 0
     assert add(2, "x") in out.stdout
     assert add(3, "y") in out.stdout
@@ -122,10 +122,17 @@ def test_inline_change_from_arg(tmp_path):
 
 def test_creates_missing_file_with_zero_append(tmp_path):
     f = tmp_path / "new.txt"
-    out = run([str(f), "0|0000|a"], input="first line\n.\n")
+    out = run([str(f), "0|0000|a"], input="first line\n")
     assert out.returncode == 0
     assert out.stdout == diff(f"{add(1, 'first line')}\n")
     assert f.read_text() == "first line\n"
+
+def test_multiline_stdin_is_literal(tmp_path):
+    f = tmp_path / "f.txt"
+    f.write_text("a\n")
+    out = run([str(f), f"{lnhash(1, 'a')}a"], input=".\n..\n")
+    assert out.returncode == 0
+    assert f.read_text() == "a\n.\n..\n"
 
 def test_rejects_binary_file(tmp_path):
     f = tmp_path / "f.bin"

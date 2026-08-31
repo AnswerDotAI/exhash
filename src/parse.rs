@@ -49,13 +49,18 @@ pub struct Subst {
     pub case_insensitive: bool,
 }
 
-/// Parse commands from CLI argv, reading any multiline text blocks from `stdin`.
+/// Parse commands from CLI argv, reading one multiline text block from `stdin` through EOF.
 ///
 /// Each element of `args` is a single command line (e.g. `42|a3f2|s/foo/bar/g`).
 pub fn parse_commands_from_args(args: &[String], stdin: &mut impl BufRead) -> Result<Vec<Command>, EditError> {
     let mut out = Vec::with_capacity(args.len());
+    let mut read_stdin = false;
     for a in args {
-        let cmd = parse_command_with_text(a, || read_text_block_from_bufread(stdin))?;
+        let cmd = parse_command_with_text(a, || {
+            if read_stdin { return Err(EditError::new("only one command can read a text block from stdin")); }
+            read_stdin = true;
+            read_text_block_from_bufread(stdin)
+        })?;
         out.push(cmd);
     }
     Ok(out)
@@ -365,14 +370,13 @@ fn read_text_block_from_bufread(stdin: &mut impl BufRead) -> Result<Vec<String>,
     loop {
         buf.clear();
         let n = stdin.read_line(&mut buf).map_err(|e| EditError::new(format!("failed to read stdin: {e}")))?;
-        if n == 0 { return Err(EditError::new("unexpected EOF while reading text block")); }
+        if n == 0 { break; }
         // Trim \n, then optional \r.
         if buf.ends_with('\n') {
             buf.pop();
             if buf.ends_with('\r') { buf.pop(); }
         }
-        if buf == "." { break; }
-        if buf == ".." { out.push(".".to_string()); } else { out.push(buf.clone()); }
+        out.push(buf.clone());
     }
     Ok(out)
 }

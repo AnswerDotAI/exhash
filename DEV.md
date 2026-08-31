@@ -89,7 +89,7 @@ The Rust core takes commands three ways:
 - Multi-buffer structural (`edit_buffers` binding): Python passes ordered `(target, text)` buffers and target-resolved command tuples. Rust keeps one engine per target and executes the full call, including cross-target `m`/`t`, before returning per-target results.
 - Compact ex-style strings, where strings are the input medium:
   - `parse_commands_from_script(&str)`: for script strings; commands are separated by newlines. Single-line `a/i/c` text may be inline; if omitted, following lines up to `.` are used as the text block.
-  - `parse_commands_from_args(&[String], &mut BufRead)`: used by the `exhash` CLI via the `exhash_argv` binding; each arg is a command. Single-line `a/i/c` text may be inline; if omitted, text blocks are read from the stdin stream terminated by `.`.
+  - `parse_commands_from_args(&[String], &mut BufRead)`: used by the `exhash` CLI via the `exhash_argv` binding; each arg is a command. Single-line `a/i/c` text may be inline. One command may instead read a multiline text block from stdin through EOF.
 
 File-qualified addresses and notebook cell prefixes are resolved by the Python `file_exhash` wrapper after tuple normalization. The resulting target identifiers are opaque to Rust.
 

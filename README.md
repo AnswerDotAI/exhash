@@ -87,7 +87,7 @@ When passing multiple commands, each command's lnhashes are verified immediately
 For CLI multiline `a/i/c` commands, omit inline text and provide the text block on stdin:
 
 ```bash
-printf "new line 1\nnew line 2\n.\n" | exhash file.txt "2|beef|a"
+printf "new line 1\nnew line 2\n" | exhash file.txt "2|beef|a"
 ```
 
 If the file does not exist and the command set is valid on empty input, exhash treats it as an empty file and writes the result. For example, `0|0000|a` can create a new file.
@@ -102,12 +102,14 @@ In `--stdin` mode, multiline `a/i/c` text blocks are not available.
 
 ### Notebook cells
 
-`lnhashview-cell` and `exhash-cell` apply the same workflow to one notebook cell, addressed by its exact or unique ID prefix:
+`lnhashview-cell` and `exhash-cell` apply the same workflow to notebook cells, addressed by exact or unique ID prefixes. Pass comma-separated IDs to view several cells together; the output adds a `# cell <id>` header to each group:
 
 ```bash
 lnhashview-cell nbs/00_core.ipynb ab12cd34
+lnhashview-cell nbs/00_core.ipynb ab12cd34,ef56ab78
 exhash-cell nbs/00_core.ipynb ab12cd34 '3|beef|s/old/new/'
 exhash-cell --dry-run nbs/00_core.ipynb ab12cd34 '3|beef|d'
+printf 'replacement line\n' | exhash-cell nbs/00_core.ipynb ab12cd34 '3|beef|c'
 ```
 
 ### Document outlines
