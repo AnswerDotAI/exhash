@@ -1,4 +1,4 @@
-import json, pytest
+import json, subprocess, pytest
 from exhash import lnhash, lnhashview_cell, lnhashview_cells, cell_exhash, file_exhash
 from exhash._cli import exhash_cell_main
 
@@ -28,6 +28,16 @@ def test_lnhashview_cells(tmp_path):
     assert lines[3] == '# cell bbbb2222'
     assert lines[4].startswith(lnhash(1, 'x=1'))
     assert str(lines) == chr(10).join(lines)
+
+
+def test_lnhashview_cell_cli_accepts_comma_separated_ids(tmp_path):
+    p = tmp_path/'t.ipynb'
+    mk_nb(p, [('aaaa1111', 'x=1'), ('bbbb2222', 'y=2')])
+    single = subprocess.run(['lnhashview-cell', str(p), 'aaaa'], text=True, capture_output=True)
+    multiple = subprocess.run(['lnhashview-cell', str(p), 'aaaa,bbbb'], text=True, capture_output=True)
+    assert single.returncode == multiple.returncode == 0
+    assert single.stdout.startswith(f'{lnhash(1, "x=1")}x=1') and '# cell' not in single.stdout
+    assert '# cell aaaa1111' in multiple.stdout and '# cell bbbb2222' in multiple.stdout
 
 def test_lnhashview_cell_prefix_and_errors(tmp_path):
     p = tmp_path/'t.ipynb'
@@ -79,6 +89,14 @@ def test_exhash_cell_cli_dry_run_then_write(tmp_path, capsys):
     exhash_cell_main([str(p), 'aaaa', cmd])
     assert json.loads(p.read_text())['cells'][0]['source'] == 'x=2'
     assert 'x=2' in capsys.readouterr().out
+
+
+def test_exhash_cell_cli_help(capsys):
+    exhash_cell_main(['--help'])
+    help_ = capsys.readouterr().err
+    assert "'3|beef|s/old/new/'" in help_
+    assert "'3|beef|c'" in help_
+    assert 'through EOF' in help_
 
 
 def test_cell_exhash_stacks_call_start_addresses(tmp_path):

@@ -535,8 +535,7 @@ def test_missing_path_error_messages(tmp_path):
 def test_unexpanded_ipython_variable_is_named_in_path_errors(tmp_path):
     "An undefined {name}/$name in a %%exhash line reaches us as literal text, so say so instead of blaming the directory"
     for p in ('{impdir}/DEV.md', '$impdir/DEV.md', '${impdir}/DEV.md'):
-        with pytest.raises(FileNotFoundError, match='unexpanded IPython variable'):
-            file_exhash(p, ("0|0000|", "a", "hi"))
+        with pytest.raises(FileNotFoundError, match='unexpanded IPython variable'): file_exhash(p, ("0|0000|", "a", "hi"))
     with pytest.raises(FileNotFoundError, match='unexpanded IPython variable'):
         cell_exhash('{nbdir}/nb.ipynb', 'ab12', ("1|abcd|", "c", "hi"))
     with pytest.raises(FileNotFoundError) as e:   # an ordinary missing path keeps the plain message
