@@ -1,9 +1,9 @@
 "Console-script entry points for exhash tools."
-import json, os, re, sys, tempfile
+import re, sys
 from pathlib import Path
 from fastcore.script import call_parse
 
-from .exhash import exhash_argv as _exhash_argv, lnhashview as _lnhashview
+from .exhash import exhash_argv as _exhash_argv, lnhashview as _lnhashview, edit_file_argv as _edit_file_argv, edit_cell_argv as _edit_cell_argv
 
 _ADDR_RE = re.compile(r'(?:\$|%|\d+\|[0-9a-fA-F]{4}\|)')
 
@@ -55,20 +55,6 @@ def _read_text_or_die(path):
     try: return data.decode("utf-8")
     except UnicodeDecodeError: _die("error: non-UTF8 file rejected")
 
-def _atomic_write(path, content):
-    p = Path(path).expanduser()
-    d = str(p.parent) or "."
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=f".{p.name}.exhash.tmp.")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f: f.write(content)
-        try: os.chmod(tmp, os.stat(p).st_mode)
-        except FileNotFoundError: pass
-        os.replace(tmp, p)
-    except BaseException:
-        try: os.unlink(tmp)
-        except OSError: pass
-        raise
-
 def _needs_text_block(cmd):
     "True if `cmd` is an a/i/c command with no inline text (so it reads a stdin block)."
     m = _ADDR_RE.match(cmd)
@@ -115,14 +101,8 @@ def exhash_main(argv=None):
         return
 
     text_block = sys.stdin.read() if (not sys.stdin.isatty() or any(_needs_text_block(c) for c in cmds)) else ""
-    try: text = _read_text_or_die(file)
-    except FileNotFoundError: text = ""
-    try: res = _exhash_argv(text, cmds, text_block, sw)
-    except ValueError as e: _die(f"error: {e}", 2)
-    new_text = "\n".join(res.lines) + "\n" if res.lines else ""
-    if not dry_run:
-        try: _atomic_write(file, new_text)
-        except OSError as e: _die(f"error: failed to write {file}: {e}")
+    try: res = _edit_file_argv(file, cmds, text_block, sw, not dry_run)
+    except (ValueError, OSError) as e: _die(f"error: {e}", 2)
     diff = res.format_diff(1)
     if diff: sys.stdout.write(diff)
 
@@ -180,16 +160,7 @@ def exhash_cell_main(argv=None):
     if len(argv)-i < 2: _die(EXHASH_CELL_USAGE, 2)
     file, cell_id, cmds = argv[i], argv[i+1], argv[i+2:]
     text_block = sys.stdin.read() if any(_needs_text_block(c) for c in cmds) else ""
-    try:
-        from . import _cell_text, _load_cell
-        nb, cell = _load_cell(file, cell_id)
-        text = _cell_text(cell)
-        res = _exhash_argv(text, cmds, text_block, sw)
-        new = '\n'.join(res.lines)
-        if text.endswith('\n') and new: new += '\n'
-        if new != text and not dry_run:
-            cell['source'] = new.splitlines(keepends=True) if isinstance(cell['source'], list) else new
-            _atomic_write(file, json.dumps(nb, sort_keys=True, indent=1, ensure_ascii=False) + '\n')
+    try: res = _edit_cell_argv(file, cell_id, cmds, text_block, sw, not dry_run)
     except Exception as e: _die(f"error: {e}", 2)
     if (diff := res.format_diff(1)): sys.stdout.write(diff)
 

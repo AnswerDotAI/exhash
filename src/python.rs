@@ -3,11 +3,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use pyo3::exceptions::{PyRuntimeError, PyUserWarning, PyValueError};
 use pyo3::prelude::*;
 
-use crate::parse::{
-    command_from_parts, parse_buffer_destination_address, parse_destination_address, parse_optional_usize, split_text_payload, subst_from_parts,
-    translit_from_parts,
-};
-use crate::{BufferCommand, Command, EditError, Subcommand};
+use crate::commands::{buffer_command_from_fields, command_from_fields};
+use crate::{BufferCommand, Command, CommandField, EditError, Subcommand};
 
 /// Run a panic-prone pure-Rust step, converting any panic into a clean
 /// `RuntimeError` instead of surfacing pyo3's `BaseException`-derived
@@ -34,6 +31,7 @@ struct EditResultPy {
     origins: Vec<Option<usize>>,
     #[pyo3(get)]
     printed: Vec<usize>,
+    #[pyo3(get)]
     original_text: String,
 }
 
@@ -66,6 +64,9 @@ fn edit_result_py(original_text: String, result: crate::EditResult) -> EditResul
 
 #[pymethods]
 impl EditResultPy {
+    #[getter]
+    fn original_lines(&self) -> Vec<&str> { self.original_text.lines().collect() }
+
     #[pyo3(signature = (context=1))]
     fn format_diff(&self, py: Python<'_>, context: usize) -> PyResult<Py<PyAny>> { pretty_string(py, self.diff_text(context)) }
 
@@ -150,62 +151,19 @@ enum PyField {
     Seq(Vec<PyField>),
 }
 
-fn command_from_pyfields(fields: &[PyField]) -> Result<Command, EditError> {
-    let [PyField::Str(addr), PyField::Str(op), rest @ ..] = fields else { return Err(EditError::new("command must start with (address, op) strings")); };
-    command_from_parts(addr, subcommand_from_pyfields(op, rest)?)
-}
-
-fn buffer_command_from_pyfields(fields: &[PyField]) -> Result<Command, EditError> {
-    let [PyField::Str(addr), PyField::Str(op), PyField::Str(dest)] = fields else { return command_from_pyfields(fields); };
-    if !matches!(op.as_str(), "m" | "t") { return command_from_pyfields(fields); }
-    let op_char = if op == "m" { 'm' } else { 't' };
-    let dest = parse_buffer_destination_address(dest, op_char)?;
-    let sub = if op == "m" { Subcommand::Move { dest } } else { Subcommand::Copy { dest } };
-    command_from_parts(addr, sub)
-}
-
-fn str_fields<'a>(op: &str, fields: &'a [PyField]) -> Result<Vec<&'a str>, EditError> {
-    fields
-        .iter()
-        .map(|f| match f { PyField::Str(s) => Ok(s.as_str()), PyField::Seq(_) => Err(EditError::new(format!("{op} fields must be strings"))) })
-        .collect()
-}
-
-fn subcommand_from_pyfields(op: &str, fields: &[PyField]) -> Result<Subcommand, EditError> {
-    if let "g" | "g!" | "v" = op {
-        let [PyField::Str(pattern), PyField::Seq(inner)] = fields else { return Err(EditError::new(format!("{op} takes (pattern, (subcommand, ...))"))); };
-        let [PyField::Str(iop), irest @ ..] = inner.as_slice() else { return Err(EditError::new("global subcommand must start with an op string")); };
-        if matches!(iop.as_str(), "g" | "g!" | "v") { return Err(EditError::new("global commands cannot nest")); }
-        return Ok(Subcommand::Global { invert: op != "g", pattern: pattern.clone(), cmd: Box::new(subcommand_from_pyfields(iop, irest)?) });
-    }
-    let f = str_fields(op, fields)?;
-    match (op, f.as_slice()) {
-        ("d", []) => Ok(Subcommand::Delete),
-        ("p", []) => Ok(Subcommand::Print),
-        ("j", []) => Ok(Subcommand::Join),
-        ("sort", []) => Ok(Subcommand::Sort),
-        ("a", [text]) => Ok(Subcommand::Append(split_text_payload(text))),
-        ("i", [text]) => Ok(Subcommand::Insert(split_text_payload(text))),
-        ("c", [text]) => Ok(Subcommand::Change(split_text_payload(text))),
-        ("s", [pat, rep]) => Ok(Subcommand::Substitute(subst_from_parts((*pat).into(), (*rep).into(), "")?)),
-        ("s", [pat, rep, flags]) => Ok(Subcommand::Substitute(subst_from_parts((*pat).into(), (*rep).into(), flags)?)),
-        ("y", [source, dest]) => {
-            let (source, dest) = translit_from_parts((*source).into(), (*dest).into())?;
-            Ok(Subcommand::Transliterate { source, dest })
-        }
-        ("m", [dest]) => Ok(Subcommand::Move { dest: parse_destination_address(dest, 'm')? }),
-        ("t", [dest]) => Ok(Subcommand::Copy { dest: parse_destination_address(dest, 't')? }),
-        (">", rest @ ([] | [_])) => Ok(Subcommand::Indent { levels: parse_optional_usize(rest.first().copied().unwrap_or(""))? }),
-        ("<", rest @ ([] | [_])) => Ok(Subcommand::Dedent { levels: parse_optional_usize(rest.first().copied().unwrap_or(""))? }),
-        _ => Err(EditError::new(format!("invalid tuple command: {op:?} with {} field(s)", f.len()))),
+impl PyField {
+    fn native(&self) -> CommandField {
+        match self { Self::Str(s) => CommandField::Str(s.clone()), Self::Seq(v) => CommandField::Seq(v.iter().map(Self::native).collect()) }
     }
 }
 
 #[pyfunction]
 #[pyo3(name = "exhash", signature = (text, *cmds, sw=4))]
 fn py_exhash(py: Python<'_>, text: &str, cmds: Vec<Vec<PyField>>, sw: usize) -> PyResult<EditResultPy> {
-    let parsed = guard("parsing commands", || cmds.iter().map(|c| command_from_pyfields(c)).collect::<Result<Vec<_>, _>>())?
-        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let parsed = guard("parsing commands", || {
+        cmds.iter().map(|c| command_from_fields(&c.iter().map(PyField::native).collect::<Vec<_>>())).collect::<Result<Vec<_>, _>>()
+    })?
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
     warn_on_ex_style_dot_terminators(py, &parsed)?;
     let res = guard("applying edits", || crate::edit_text_with_sw(text, &parsed, sw))?.map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(edit_result_py(text.to_string(), res))
@@ -222,7 +180,9 @@ fn edit_buffers(
     let parsed = guard("parsing buffer commands", || {
         commands
             .into_iter()
-            .map(|(target, fields, destination)| Ok(BufferCommand { target, command: buffer_command_from_pyfields(&fields)?, destination }))
+            .map(|(target, fields, destination)| {
+                Ok(BufferCommand { target, command: buffer_command_from_fields(&fields.iter().map(PyField::native).collect::<Vec<_>>())?, destination })
+            })
             .collect::<Result<Vec<_>, EditError>>()
     })?
     .map_err(|e| PyValueError::new_err(e.to_string()))?;
@@ -240,8 +200,85 @@ fn exhash_argv(text: &str, cmds: Vec<String>, text_block: &str, sw: usize) -> Py
     Ok(edit_result_py(text.to_string(), res))
 }
 
+fn file_error(error: crate::FileError) -> PyErr {
+    use pyo3::exceptions::{PyFileNotFoundError, PyKeyError, PyOSError};
+    match error {
+        crate::FileError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => PyFileNotFoundError::new_err(e.to_string()),
+        crate::FileError::Io(e) => PyOSError::new_err(e.to_string()),
+        crate::FileError::Cell(e) => PyKeyError::new_err(e),
+        other => PyValueError::new_err(other.to_string()),
+    }
+}
+
+#[pyfunction]
+#[pyo3(signature = (path, start=None, end=None))]
+fn view_file(path: &str, start: Option<usize>, end: Option<usize>) -> PyResult<Vec<String>> { crate::view_file(path, start, end).map_err(file_error) }
+#[pyfunction]
+#[pyo3(signature = (path, cell_id, start=None, end=None))]
+fn view_cell(path: &str, cell_id: &str, start: Option<usize>, end: Option<usize>) -> PyResult<Vec<String>> {
+    crate::view_cell(path, cell_id, start, end).map_err(file_error)
+}
+#[pyfunction]
+#[pyo3(signature = (path, cell_ids, start=None, end=None))]
+fn view_cells(path: &str, cell_ids: Vec<String>, start: Option<usize>, end: Option<usize>) -> PyResult<Vec<String>> {
+    crate::view_cells(path, &cell_ids, start, end).map_err(file_error)
+}
+#[pyfunction]
+#[pyo3(signature = (path, commands, sw=4, inplace=true))]
+fn edit_files(py: Python<'_>, path: &str, commands: Vec<Vec<PyField>>, sw: usize, inplace: bool) -> PyResult<Vec<(String, Option<String>, EditResultPy)>> {
+    let commands: Vec<Vec<_>> = commands.iter().map(|c| c.iter().map(PyField::native).collect()).collect();
+    // Warnings are Python presentation; qualified address parsing lives in Rust.
+    let warning_commands = commands
+        .iter()
+        .filter_map(|c| {
+            let [CommandField::Str(_), CommandField::Str(op), rest @ ..] = c.as_slice() else { return None; };
+            if !matches!(op.as_str(), "a" | "i" | "c" | "g" | "g!" | "v") { return None; }
+            let mut local = vec![CommandField::Str("%".into()), CommandField::Str(op.clone())];
+            local.extend_from_slice(rest);
+            command_from_fields(&local).ok()
+        })
+        .collect::<Vec<_>>();
+    warn_on_ex_style_dot_terminators(py, &warning_commands)?;
+    let results = guard("editing files", || crate::edit_files(path, &commands, sw, inplace))?.map_err(file_error)?;
+    Ok(results.into_iter().map(|r| (r.path, r.cell, edit_result_py(r.original_text, r.result))).collect())
+}
+#[pyfunction]
+#[pyo3(signature = (path, cell_id, commands, sw=4, inplace=true))]
+fn edit_cell(py: Python<'_>, path: &str, cell_id: &str, commands: Vec<Vec<PyField>>, sw: usize, inplace: bool) -> PyResult<EditResultPy> {
+    let parsed = commands
+        .iter()
+        .map(|c| command_from_fields(&c.iter().map(PyField::native).collect::<Vec<_>>()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    warn_on_ex_style_dot_terminators(py, &parsed)?;
+    let r = guard("editing a cell", || crate::edit_cell(path, cell_id, &parsed, sw, inplace))?.map_err(file_error)?;
+    Ok(edit_result_py(r.original_text, r.result))
+}
+#[pyfunction]
+#[pyo3(signature = (path, cell_id, cmds, text_block="", sw=4, inplace=true))]
+fn edit_cell_argv(path: &str, cell_id: &str, cmds: Vec<String>, text_block: &str, sw: usize, inplace: bool) -> PyResult<EditResultPy> {
+    let parsed = crate::parse_commands_from_args(&cmds, &mut std::io::Cursor::new(text_block.as_bytes())).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let r = guard("editing a cell", || crate::files::edit_cell_with_writer(path, cell_id, &parsed, sw, inplace, crate::files::atomic_write))?
+        .map_err(file_error)?;
+    Ok(edit_result_py(r.original_text, r.result))
+}
+
+#[pyfunction]
+#[pyo3(signature = (path, cmds, text_block="", sw=4, inplace=true))]
+fn edit_file_argv(path: &str, cmds: Vec<String>, text_block: &str, sw: usize, inplace: bool) -> PyResult<EditResultPy> {
+    let r = guard("editing a file", || crate::edit_file_argv(path, &cmds, text_block, sw, inplace))?.map_err(file_error)?;
+    Ok(edit_result_py(r.original_text, r.result))
+}
+
 #[pymodule]
 fn exhash(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(view_file, m)?)?;
+    m.add_function(wrap_pyfunction!(view_cell, m)?)?;
+    m.add_function(wrap_pyfunction!(view_cells, m)?)?;
+    m.add_function(wrap_pyfunction!(edit_files, m)?)?;
+    m.add_function(wrap_pyfunction!(edit_cell, m)?)?;
+    m.add_function(wrap_pyfunction!(edit_cell_argv, m)?)?;
+    m.add_function(wrap_pyfunction!(edit_file_argv, m)?)?;
     m.add_class::<EditResultPy>()?;
     m.add_function(wrap_pyfunction!(line_hash, m)?)?;
     m.add_function(wrap_pyfunction!(lnhash, m)?)?;

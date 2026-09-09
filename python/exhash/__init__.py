@@ -1,8 +1,9 @@
 "Hash-verified line-addressed text editing. See `exhash.skill` for the workflow guide: view with `lnhashview_*` first, then edit with addresses taken from that view."
 
-import json, re
+import re
 from pathlib import Path
 from .exhash import line_hash as _line_hash, lnhash as _lnhash, lnhashview as _lnhashview, exhash as _exhash, edit_buffers as _edit_buffers
+from .exhash import view_file as _view_file, view_cell as _view_cell, view_cells as _view_cells, edit_files as _edit_files, edit_cell as _edit_cell
 from fastcore.basics import fail_clean, PrettyString
 
 MAXLEN = 180 # Most characters shown per displayed line
@@ -33,7 +34,7 @@ def lnhashview(text:str, start:int=None, end:int=None) -> "LnhashView":
 @fail_clean(*stdexcs)
 def lnhashview_file(path:str, start:int=None, end:int=None) -> "LnhashView":
     'Return lines formatted as space-padded ``lineno|hash|content`` for file at ``path`` (expands ``~``). Optional 1-based ``start``/``end`` filter the range; ``end`` past EOF is clamped.'
-    return LnhashView(_lnhashview(Path(path).expanduser().read_text(), start, end))
+    return LnhashView(_view_file(str(path), start, end))
 
 
 _NOFIELD = {'d', 'p', 'j', 'sort'}
@@ -229,116 +230,6 @@ def _diff_out(res):
 
 
 
-def _unescape_path(path):
-    out, escaped = [], False
-    for ch in path:
-        if escaped:
-            if ch not in ':\\': out.append('\\')
-            out.append(ch)
-            escaped = False
-        elif ch == '\\': escaped = True
-        else: out.append(ch)
-    if escaped: out.append('\\')
-    return ''.join(out)
-
-
-def _split_file_prefix(s):
-    if _ADDR_RE.match(s): return None, s
-    escaped = False
-    for i, ch in enumerate(s):
-        if escaped:
-            escaped = False
-            continue
-        if ch == '\\':
-            escaped = True
-            continue
-        if ch == ':' and _ADDR_RE.match(s[i + 1:]):
-            path = _unescape_path(s[:i])
-            if not path: raise ValueError('empty filename prefix')
-            return _norm_path(path), s[i + 1:]
-    return None, s
-
-
-_CELLPATH_RE = re.compile(r'(.*\.ipynb):([A-Za-z0-9_-]+)')
-
-def _target_key(target):
-    path, cell = target
-    return path if cell is None else f'{path}:{cell}'
-
-
-def _parse_fileaddr(s, default):
-    s = s.lstrip()
-    path, rest = _split_file_prefix(s)
-    target = (path, None) if path else default
-    if path and (m2 := _CELLPATH_RE.fullmatch(path)): target = (m2.group(1), m2.group(2))
-    m = _ADDR_RE.match(rest)
-    if not m: raise ValueError(f'expected exhash address near {s[:40]!r}')
-    return target, m.group(0), rest[m.end():]
-
-
-def _parse_file_command(cmd, default):
-    addr, op, *fields = cmd
-    src, addr1, rest = _parse_fileaddr(addr, default)
-    has_comma, addr2 = False, None
-    if rest.startswith(','):
-        has_comma = True
-        src2, addr2, rest = _parse_fileaddr(rest[1:], src)
-        if src2 != src: raise ValueError('a range must stay within one file or cell')
-    if rest.strip(): raise ValueError(f'unexpected trailing characters in address: {rest!r}')
-    parsed = dict(src=src, addr1=addr1, addr2=addr2, has_comma=has_comma, op=op, dest=None, dest_addr=None, local=None)
-    local_addr = addr1 if addr2 is None else f'{addr1},{addr2}'
-    if op in ('m', 't'):
-        dest, dest_addr, tail = _parse_fileaddr(fields[0], src)
-        if tail.strip(): raise ValueError(f'unexpected trailing characters after destination: {tail!r}')
-        parsed.update(dest=dest, dest_addr=dest_addr, local=(local_addr, op, dest_addr))
-    else: parsed['local'] = (local_addr, op, *fields)
-    return parsed
-
-
-_UNEXPANDED_RE = re.compile(r'\{[A-Za-z_]\w*\}|\$\{?[A-Za-z_]\w*\}?')
-
-
-def _unexpanded(path):
-    "A note naming the IPython interpolation left literal in `path`: in a `%%exhash` line, an undefined `{name}`/`$name` is passed through as text, so the path silently becomes nonsense."
-    m = _UNEXPANDED_RE.search(str(path))
-    return f" -- note: {m.group(0)!r} looks like an unexpanded IPython variable (undefined names in a magic line are passed through literally)" if m else ""
-
-
-def _load_buffer(st, target, missing_ok=False):
-    path, cell = target
-    if cell is not None:
-        if path not in st['nbs']:
-            nbp = Path(path).expanduser()
-            if not nbp.exists(): raise FileNotFoundError(f'notebook not found: {path}{_unexpanded(path)}')
-            st['nbs'][path] = json.loads(nbp.read_text())
-        c = _find_cell(st['nbs'][path], cell, path)
-        target = (path, c['id'])
-        if target not in st['bufs']:
-            text = _cell_text(c)
-            st['bufs'][target] = dict(target=target, path=path, cellref=c, trail_nl=text.endswith('\n'), original=text.splitlines(), lines=text.splitlines())
-        return st['bufs'][target]
-    if target in st['bufs']: return st['bufs'][target]
-    p = Path(path)
-    try: lines = p.read_text().splitlines()
-    except FileNotFoundError:
-        if not missing_ok: raise FileNotFoundError(f'file not found: {path}{_unexpanded(path)} (a new file can only be created with a 0|0000| a/i command)') from None
-        if not p.parent.exists(): raise FileNotFoundError(f'cannot create {path}: parent directory {p.parent} does not exist{_unexpanded(path)}') from None
-        lines = []
-    st['bufs'][target] = dict(target=target, path=path, cellref=None, original=list(lines), lines=list(lines))
-    return st['bufs'][target]
-
-
-def _can_create_missing(parsed): return parsed['addr1'] == '0|0000|' and parsed['op'] in ('a', 'i')
-
-
-def _prepare_file_command(st, parsed):
-    src = _load_buffer(st, parsed['src'], missing_ok=_can_create_missing(parsed) and parsed['src'][1] is None)
-    dest = None
-    if parsed['dest'] is not None:
-        dest = _load_buffer(st, parsed['dest'], missing_ok=parsed['dest_addr'] == '0|0000|' and parsed['dest'][1] is None)
-    return (_target_key(src['target']), parsed['local'], _target_key(dest['target']) if dest else None)
-
-
 @fail_clean(*stdexcs)
 def file_exhash(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
     r'''Read files and notebook cells, apply file-aware exhash commands, and return per-target results or a combined diff.
@@ -371,71 +262,22 @@ def file_exhash(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
     ``FileSetEditResult`` is returned with ``files``, ``changed``, ``default_path``,
     ``res[path]`` (cell targets under ``'path:cellid'``), and ``res.format_diff(context=1)``.
     '''
-    default, st = (_norm_path(path), None), dict(bufs={}, nbs={})
-    commands = [_prepare_file_command(st, _parse_file_command(cmd, default)) for cmd in _normalize_cmds(cmds)]
-    if not st['bufs']: _load_buffer(st, default)
-    by_key = {_target_key(target): buf for target, buf in st['bufs'].items()}
-    buffers = [(key, _text_from_lines(buf['lines'])) for key, buf in by_key.items()]
-    native = _edit_buffers(buffers, commands, sw=sw)
-    files = {key: FileEditResult(key, by_key[key]['original'], result, cell=by_key[key]['target'][1]) for key, result in native}
-    for key, result in files.items(): by_key[key]['lines'] = result.lines
+    native = _edit_files(str(path), _normalize_cmds(cmds), sw=sw, inplace=inplace)
+    files = {key: FileEditResult(key, result.original_lines, result, cell=cell) for key, cell, result in native}
     result = FileSetEditResult(files, _norm_path(path))
-    if inplace:
-        nbs_out = {}
-        for t, buf in st['bufs'].items():
-            if buf['original'] == buf['lines']: continue
-            if buf['cellref'] is None: _write_lines(buf['path'], buf['lines'])
-            else:
-                new = '\n'.join(buf['lines'])
-                if buf['trail_nl'] and new: new += '\n'
-                c = buf['cellref']
-                c['source'] = new.splitlines(keepends=True) if isinstance(c['source'], list) else new
-                nbs_out[buf['path']] = st['nbs'][buf['path']]
-        for pth, nb in nbs_out.items(): Path(pth).expanduser().write_text(json.dumps(nb, sort_keys=True, indent=1, ensure_ascii=False) + '\n')
-        return result._trunc_diff()
-    return result
-
-
-
-
-def _find_cell(nb, cell_id, path):
-    'The cell in `nb` whose id is ``cell_id`` (exact match or unique prefix).'
-    cells = [c for c in nb['cells'] if c.get('id','').startswith(cell_id)]
-    exact = [c for c in cells if c.get('id')==cell_id]
-    if exact: cells = exact
-    if not cells: raise KeyError(f'no cell with id {cell_id!r} in {path}')
-    if len(cells)>1: raise KeyError(f'cell id prefix {cell_id!r} is ambiguous in {path}')
-    return cells[0]
-
-
-def _load_cell(path, cell_id):
-    'Return ``(nb, cell)`` for the cell whose id is ``cell_id`` (exact match or unique prefix).'
-    nbp = Path(path).expanduser()
-    if not nbp.exists(): raise FileNotFoundError(f'notebook not found: {path}{_unexpanded(path)}')
-    nb = json.loads(nbp.read_text())
-    return nb, _find_cell(nb, cell_id, path)
-
-
-def _cell_text(cell):
-    src = cell['source']
-    return src if isinstance(src, str) else ''.join(src)
+    return result._trunc_diff() if inplace else result
 
 
 @fail_clean(*stdexcs)
 def lnhashview_cell(path:str, cell_id:str, start:int=None, end:int=None) -> "LnhashView":
     'Return lines formatted as ``lineno|hash|content`` for the source of notebook cell ``cell_id`` in ipynb file at ``path`` (expands ``~``). ``cell_id`` may be an exact id or unique prefix; optional 1-based ``start``/``end`` filter the range.'
-    return LnhashView(_lnhashview(_cell_text(_load_cell(path, cell_id)[1]), start, end))
+    return LnhashView(_view_cell(str(path), cell_id, start, end))
 
 
 @fail_clean(*stdexcs)
 def lnhashview_cells(path:str, *cell_ids:str, start:int=None, end:int=None) -> "LnhashView":
     'Return grouped lnhash views for explicit notebook cell ids in the ipynb file at ``path`` (expands ``~``). Each group starts with ``# cell <id>``; following lines keep normal ``lineno|hash|content`` format.'
-    out = []
-    for cell_id in cell_ids:
-        _, cell = _load_cell(path, cell_id)
-        out.append(f"# cell {cell.get('id', cell_id)}")
-        out += _lnhashview(_cell_text(cell), start, end)
-    return LnhashView(out)
+    return LnhashView(_view_cells(str(path), cell_ids, start, end))
 
 
 @fail_clean(*stdexcs)
@@ -453,15 +295,7 @@ def cell_exhash(path:str, cell_id:str, *cmds:tuple, sw:int=4, inplace:bool=True)
     returns the printed lines as a bare, untruncated ``lnhashview``. Pass
     ``inplace=False`` to preview instead: the EditResult is returned without touching the file.
     """
-    nb, cell = _load_cell(path, cell_id)
-    text = _cell_text(cell)
-    res = exhash(text, cmds, sw=sw)
-    if not inplace: return res
-    new = '\n'.join(res['lines'])
-    if text.endswith('\n') and new: new += '\n'
-    if new != text:
-        cell['source'] = new.splitlines(keepends=True) if isinstance(cell['source'], list) else new
-        Path(path).expanduser().write_text(json.dumps(nb, sort_keys=True, indent=1, ensure_ascii=False) + '\n')
-    return _diff_out(res)
+    res = _edit_cell(str(path), cell_id, _normalize_cmds(cmds), sw=sw, inplace=inplace)
+    return _diff_out(res) if inplace else res
 
 from .outline import *

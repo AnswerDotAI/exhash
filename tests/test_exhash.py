@@ -320,6 +320,32 @@ def test_file_exhash_read(tmp_path):
     assert len(lines) == 2
     assert "hello" in lines[0]
 
+@pytest.mark.parametrize('newline', ['\r', '\r\n', '\n'])
+def test_file_exhash_universal_newlines(tmp_path, newline):
+    f = tmp_path/'test.txt'
+    original = f'alpha{newline}beta{newline}'.encode()
+    f.write_bytes(original)
+    assert list(lnhashview_file(f)) == [f'{lnhash(1, "alpha")}alpha', f'{lnhash(2, "beta")}beta']
+    assert file_exhash(f, inplace=False).changed == []
+    file_exhash(f)
+    assert f.read_bytes() == original
+    cmd = (lnhash(2, 'beta'), 'c', 'BETA')
+    assert file_exhash(f, cmd, inplace=False)[f].lines == ['alpha', 'BETA']
+    file_exhash(f, cmd)
+    assert f.read_bytes() == b'alpha\nBETA\n'
+
+@pytest.mark.parametrize('separator', ['\u2028', '\u2029', '\x85', '\v', '\f'])
+def test_file_exhash_unicode_separator_noop(tmp_path, separator):
+    f = tmp_path/'test.txt'
+    text = f'alpha{separator}beta\n'
+    f.write_text(text)
+    result = file_exhash(f, inplace=False)
+    assert result.changed == []
+    assert result[f].original_lines == result[f].lines == [text[:-1]]
+    assert result.format_diff() == ''
+    assert file_exhash(f) == ''
+    assert f.read_text() == text
+
 def test_file_exhash_inplace(tmp_path):
     f = tmp_path / "test.txt"
     f.write_text("foo\nbar\n")
