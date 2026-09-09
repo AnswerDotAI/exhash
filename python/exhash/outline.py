@@ -284,7 +284,7 @@ class NbSection(Section):
 
 def _parse_nb(path):
     "Build an `NbSection` tree from the ipynb file at `path`: md-cell headings over cells"
-    from . import _cell_text
+    def _cell_text(c): return c["source"] if isinstance(c["source"], str) else "".join(c["source"])
     path = Path(path).expanduser()
     nb = json.loads(path.read_text())
     cells = [(c.get('id',''), c['cell_type'], _cell_text(c).rstrip('\n')) for c in nb['cells']]

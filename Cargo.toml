@@ -15,8 +15,11 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 crc32fast = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+tempfile = "3"
 regex = "1.7.1"
-pyo3 = ">=0.28"
+pyo3 = { version = ">=0.28", optional = true }
 tree-sitter = "0.26.12"
 tree-sitter-python = "0.25.0"
 tree-sitter-javascript = "0.25.0"
@@ -26,7 +29,8 @@ tree-sitter-zig = "1.1.2"
 tree-sitter-swift = "0.7.3"
 
 [features]
-extension-module = ["pyo3/extension-module"]
+python = ["dep:pyo3"]
+extension-module = ["python", "pyo3/extension-module"]
 
 [lints.clippy]
 too_many_arguments = "allow"
