@@ -125,7 +125,7 @@ fn set_source(cell: &mut Value, text: String) {
     cell["source"] =
         if cell["source"].is_array() { Value::Array(text.split_inclusive('\n').map(|s| Value::String(s.into())).collect()) } else { Value::String(text) };
 }
-fn notebook_text(nb: &Value) -> Result<Vec<u8>> {
+pub fn notebook_text(nb: &Value) -> Result<Vec<u8>> {
     // Match Jupyter/Python's sorted, one-space-indented, UTF-8 JSON layout.
     let mut sorted = nb.clone();
     sorted.sort_all_objects();

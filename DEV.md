@@ -62,6 +62,7 @@ leave earlier writes completed. Notebook source form, metadata, outputs, and
 trailing newlines are preserved; each notebook is read/written once. JSON uses
 arbitrary-precision numbers so unrelated notebook metadata cannot be rounded.
 Python `file_exhash` and `cell_exhash` are thin adapters over this core.
+The Rust `notebook_text` export supplies the same sorted, one-space-indented JSON serialization to embedding callers.
 File views and `file_exhash` normalize CR, CRLF, and LF line endings on read. Unicode separators remain line content, and Python result wrappers use the Rust engine's original lines so no-op detection and diffs agree. No-op file edits leave the original bytes untouched.
 `lnhashview` range requests clamp `end` past EOF to the last available line, while invalid `start` values still error.
 
