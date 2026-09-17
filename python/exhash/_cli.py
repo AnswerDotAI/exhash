@@ -178,7 +178,7 @@ def open_doc_main(
     token:str=None, # Verified section token to view
     paths:bool=False, # Show the complete section outline?
     depth:int=None, # Maximum section depth for --paths
-    search:str=None, # Search sections using a case-insensitive regex
+    search:str=None, # Show matching source lines using a case-insensitive regex
     links:bool=False, # List links in document order?
     open_link:int=None, # Open a numbered link and show its outline
     nums:bool=False, # Prefix viewed lines with source line numbers?

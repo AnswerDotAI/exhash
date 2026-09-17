@@ -76,7 +76,7 @@ impl EditResultPy {
         // A print-only result is a view, not a diff: never truncate it.
         let bare = self.modified.is_empty() && self.deleted.is_empty() && !self.printed.is_empty();
         let full = self.diff_text(1);
-        let diff = if bare { full } else { truncate_diff(&full, 15, 160) };
+        let diff = if bare { full } else { truncate_diff(&full, 15, 180) };
         if diff.is_empty() { format!("EditResult({} lines, no changes)", self.lines.len()) } else if bare { format!("EditResult({} lines, {} printed, no changes)\n{}", self.lines.len(), self.printed.len(), diff) } else { format!("EditResult({} lines, {} modified, {} deleted)\n{}", self.lines.len(), self.modified.len(), self.deleted.len(), diff) }
     }
 

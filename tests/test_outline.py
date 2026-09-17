@@ -87,11 +87,24 @@ def test_preview_truncation():
 def test_search():
     d = open_doc(SAMPLE)
     hits = d.search('runs')
-    assert [n.title for n in hits] == ['SessionStart', 'PostCompact']
-    assert hits.counts == [1, 1]
+    assert [h.section.title for h in hits] == ['SessionStart', 'PostCompact']
     assert list(d.search('(unbalanced')) == []         # invalid regex: no raise, literal, no hits
     d2 = open_doc(LINKS_MD)
-    assert d2.search('(install').counts == [1]         # invalid regex falls back to literal matching
+    assert len(d2.search('(install')) == 1             # invalid regex falls back to literal matching
+
+
+def test_search_hits_and_continuation():
+    d = open_doc('# Outer\nbefore\nhit hit\nhit again\ncontinued\n' + 'x'*200 + '\n## Inner\nhit\n# Next\nhit')
+    hits = d.search('HIT')
+    assert [h.section for h in hits] == [d[1], d[1], d[1][1], d[2]]
+    assert hits[0].address == lnhash(3, 'hit hit') and hits[1].address == lnhash(4, 'hit again')
+    rows = repr(hits).splitlines()
+    assert rows[0].startswith(f'{d[1].token} {hits[0].address} hit hit¶hit again¶continued¶')
+    assert len(rows[0]) == 180 and rows[0].endswith('…')
+    assert [h.preview for h in hits[2:]] == ['hit', 'hit']  # no continuation into the next section
+    assert repr(hits[:2]) == '\n'.join(rows[:2])
+    assert repr(d[1].search('hit')) == '\n'.join(rows[:3])
+    assert all(d.at(row.split()[0]) is h.section for row,h in zip(rows, hits))
 
 
 LINKS_MD = '''# Guide
@@ -118,7 +131,8 @@ def test_links():
     row = [x for x in repr(d).splitlines() if x.startswith('1.|')][0]
     assert '[install][1]' in row and 'install.md' not in row   # previews render links numbered, never URLs
     assert repr(d).splitlines()[0].startswith('.|1|')         # root row: ordinary, addressable, range-editable
-    assert '[install][1]' in d.search('five minutes').previews[0]
+    assert '[install][1]' in d.search('five minutes')[0].preview
+    assert '[install][1]' in d.search('Guide')[0].preview   # links on continuation lines are numbered too
     assert '![logo](logo.png)' in d.text               # images untouched
     assert '[fenced](ignored.md)' in d.text            # fenced content untouched
     assert d.view() == d.text and '[install][1]' in d.view()   # plain view: reading mode, links numbered
@@ -178,7 +192,9 @@ def tail(): pass
 
 RS_SRC = '''use std::fmt;
 
-pub fn free() -> i32 { 1 }
+pub fn free(
+    value: i32,
+) -> i32 { value }
 
 pub struct Point { x: i32 }
 
@@ -229,12 +245,14 @@ def test_code_outlines(tmp_path):
     assert d.find('tail').preview() == 'def tail(): pass'         # a one-line body is its own preview
     row = repr(d.paths()).splitlines()[-1]
     assert 'def tail(): pass' in row and ' tail ' not in row      # listing rows show the def line, not a bare title
-    assert ' top ' in repr(d.search('"doc"'))                     # search rows keep the title: their preview is the match
+    hit = d.search('"doc"')[0]
+    assert hit.section is d.find('top') and hit.preview == '"doc"¶    return a + b'
 
     (tmp_path/'lib.rs').write_text(RS_SRC)
     r = open_doc(tmp_path/'lib.rs')
     assert [n.title for n in r.paths()] == ['free', 'Point', 'impl fmt::Display for Point', 'fmt', 'inner', 'helper']
     assert r.find('helper').addr == '4.1'
+    assert r.search('fn free')[0].preview == 'pub fn free(¶    value: i32,¶) -> i32 { value }'
 
     (tmp_path/'app.js').write_text(JS_SRC)
     j = open_doc(tmp_path/'app.js')
@@ -275,6 +293,10 @@ def test_nb_outline(tmp_path):
     assert v[0] == f'cccc3333:1|{line_hash("## Fetching")}|## Fetching'
     assert v[-1].startswith('dddd4444:1|')             # rows are cell-qualified, ready for cell_exhash
     assert 'def fetch' in fetch.src and d.find('Reporting').preview().startswith('One line per field.')
+    hits = d.search('def')
+    assert hits[0].section is fetch and hits[0].address == f'dddd4444:{lnhash(1, "def fetch(): pass")}'
+    assert repr(fetch.search('def')) == repr(hits[:1])
+    assert d.search('field')[0].address == f'eeee5555:{lnhash(3, "One line per field.")}'
 
 
 SWIFT_SRC = '''import Foundation

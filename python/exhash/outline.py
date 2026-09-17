@@ -7,12 +7,19 @@ from .exhash import md_scan as _md_scan, code_scan as _code_scan
 from .exhash import lnhash as _lnhash, line_hash as _line_hash
 from . import MAXLEN
 
-__all__ = ['Link', 'Links', 'Section', 'Sections', 'open_doc']
+__all__ = ['Link', 'Links', 'Section', 'Sections', 'SearchHit', 'SearchHits', 'open_doc']
 
 
 def _preview(text, maxlen=MAXLEN):
     text = re.sub(r'\n(?:\s*\n)*', '¶', text.strip())
     return text if len(text) <= maxlen else text[:maxlen-1] + '…'
+
+
+def _row(prefix, preview, width=MAXLEN):
+    budget = width - len(prefix) - 1
+    if budget < 2: return prefix
+    if len(preview) > budget: preview = preview[:budget-1] + '…'
+    return f'{prefix} {preview}' if preview else prefix
 
 
 class Link:
@@ -34,27 +41,33 @@ class Links(list):
 
 
 class Sections(list):
-    "Sections listed as fixed-width `token title (count) [size] preview` rows; each row is the live node. Code rows have no title: the def line opens the preview"
-    def __init__(self, items=None, counts=None, previews=None, width=MAXLEN):
+    "Sections listed as fixed-width `token title [size] preview` rows; each row is the live node. Code rows show the def line instead of a title"
+    def __init__(self, items=None, width=MAXLEN):
         super().__init__(items or [])
-        self.counts,self.previews,self.width = counts,previews,width
+        self.width = width
     def __getitem__(self, k):
-        if isinstance(k, slice):
-            sub = lambda xs: xs[k] if xs else xs
-            return Sections(list.__getitem__(self, k), sub(self.counts), sub(self.previews), self.width)
+        if isinstance(k, slice): return Sections(list.__getitem__(self, k), self.width)
         return list.__getitem__(self, k)
-    def _row(self, n, c, p):
-        parts = [n.token, n.title if n.show_title or p is not None else '', None if c is None else f'({c})', f'[{humanize(len(n.src))}]']
+    def _row(self, n):
+        parts = [n.token, n.title if n.show_title else '', f'[{humanize(len(n.src))}]']
         pre = ' '.join(x for x in parts if x)
-        budget = self.width - len(pre) - 1
-        if budget < 2: return pre
-        if p is None: p = n.preview(budget)
-        if len(p) > budget: p = p[:budget-1] + '…'
-        return f'{pre} {p}' if p else pre
-    def __repr__(self):
-        cs = self.counts or [None]*len(self)
-        ps = self.previews or [None]*len(self)
-        return '\n'.join(self._row(n,c,p) for n,c,p in zip(self, cs, ps))
+        return _row(pre, n.preview(self.width), self.width)
+    def __repr__(self): return '\n'.join(self._row(n) for n in self)
+    def _repr_pretty_(self, p, cycle): p.text('...' if cycle else repr(self))
+
+
+class SearchHit:
+    "One matching source line: its containing `section`, verified line `address`, and ¶-joined continuation `preview`"
+    def __init__(self, section, address, preview): store_attr()
+    def __repr__(self): return _row(f'{self.section.token} {self.address}', self.preview)
+
+
+class SearchHits(list):
+    "Search hits in source order, displayed as `section-token line-address preview` rows within 180 characters"
+    def __getitem__(self, k):
+        res = list.__getitem__(self, k)
+        return SearchHits(res) if isinstance(k, slice) else res
+    def __repr__(self): return '\n'.join(map(repr, self))
     def _repr_pretty_(self, p, cycle): p.text('...' if cycle else repr(self))
 
 
@@ -137,20 +150,32 @@ class Section(dict):
     def search(self,
         pat, # Case-insensitive regex, matched line by line; an invalid regex matches literally
     ):
-        "The deepest sections owning a line matching `pat`, in document order, with match counts and matching-line previews"
+        """Return `SearchHits`, one `SearchHit` per matching source line in source order, not grouped by section.
+
+        Each hit exposes `section` (the containing live section), `address` (the matching line's verified address),
+        and `preview`. Rows are `section-token line-address preview`, capped at 180 characters. The preview starts
+        at the matching line and continues across newlines as ¶, up to the section's end; links display as `[text][n]`.
+        Matching uses raw source, and multiple regex matches on one line still produce only one hit.
+
+        Section tokens repeat for hits in the same section: copy the token to `view()` to read that section,
+        or use the line address to edit the hit. Notebook line addresses are `cellid:lineno|hash|`.
+        Slicing the results preserves their display format.
+        """
         try: r = re.compile(pat, re.IGNORECASE)
         except re.error: r = re.compile(re.escape(pat), re.IGNORECASE)
         subtree = [self, *self._walk()]
-        hits = {}
-        links = getattr(self.root, '_links', [])
+        hits = SearchHits()
+        text = self.text.splitlines()
         for i,line in enumerate(self.src.splitlines()):
             if not r.search(line): continue
             ln = self.start_line + i
             own = max((n for n in subtree if n.start_line <= ln <= n.end_line), key=lambda n: (n.start_line, len(n.addr)))
-            node,c,first = hits.get(id(own), (own, 0, _numbered(line, [l for l in links if l.line == ln])))
-            hits[id(own)] = (node, c+1, first)
-        return Sections([n for n,_,_ in hits.values()], counts=[c for _,c,_ in hits.values()],
-            previews=[_preview(f) for _,_,f in hits.values()])
+            preview = _preview('\n'.join(text[i:own.end_line-self.start_line+1]))
+            hits.append(SearchHit(own, own._line_address(ln), preview))
+        return hits
+
+    def _line_address(self, lineno):
+        return _lnhash(lineno, self.src.splitlines()[lineno-self.start_line])
 
     def links(self,
         pat='', # Case-insensitive regex matched against each link's text, target, and tail
@@ -280,6 +305,12 @@ class NbSection(Section):
         for cid,_,src in self.cells:
             for i,l in enumerate(src.splitlines()): res.append(f'{cid}:{_lnhash(i+1, l)}{l}' if lnhashs else f'{cid}:{i+1}: {l}')
         return '\n'.join(res)
+
+    def _line_address(self, lineno):
+        for cid,_,src in self.root.cells:
+            lines = src.splitlines() or ['']
+            if lineno <= len(lines): return f'{cid}:{_lnhash(lineno, lines[lineno-1])}'
+            lineno -= len(lines)
 
 
 def _parse_nb(path):

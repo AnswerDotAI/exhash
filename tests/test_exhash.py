@@ -574,6 +574,7 @@ def test_truncate_diff():
     long_line = "x" * 200
     t = truncate_diff(f"+1|abcd|{long_line}\n")
     assert t.splitlines()[0] == ("+1|abcd|" + long_line)[:MAXLEN] + "…"
+    assert repr(exhash('', [('0|0000|', 'a', long_line)])).splitlines()[-1] == ('+' + lnhash(1, long_line) + long_line)[:MAXLEN] + '…'
     many = "\n".join(f"+{i}|abcd|line {i}" for i in range(1, 41)) + "\n"
     t = truncate_diff(many)
     lines = t.splitlines()
