@@ -68,7 +68,7 @@ fn unescape(path: &str) -> String {
     out
 }
 fn address(input: &str, default: &Target) -> Result<(Target, String, String)> {
-    static ADDR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(?:\$|%|\d+\|[0-9a-fA-F]{4}\|)").unwrap());
+    static ADDR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(?:\$|%|\d+\|[A-Za-z0-9_-]{2}\|)").unwrap());
     static CELL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(.*\.ipynb):([A-Za-z0-9_-]+)$").unwrap());
     let input = input.trim_start();
     let mut target = default.clone();
@@ -201,7 +201,7 @@ impl Files {
                 Err(e) if e.kind() == io::ErrorKind::NotFound => {
                     let path = &target.path;
                     if !missing_ok {
-                        return Err(missing(format!("file not found: {path}{} (a new file can only be created with a 0|0000| a/i command)", unexpanded(path))));
+                        return Err(missing(format!("file not found: {path}{} (a new file can only be created with a 0|AA| a/i command)", unexpanded(path))));
                     }
                     let parent = Path::new(path).parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
                     if !parent.exists() {
@@ -248,8 +248,8 @@ pub fn edit_files(path: &str, commands: &[Vec<CommandField>], sw: usize, inplace
             (None, None)
         };
         let command = buffer_command_from_fields(&local)?;
-        let target = files.load(src, addr1 == "0|0000|" && matches!(op.as_str(), "a" | "i"))?;
-        let destination = dest.map(|d| files.load(d, dest_addr.as_deref() == Some("0|0000|"))).transpose()?;
+        let target = files.load(src, addr1 == "0|AA|" && matches!(op.as_str(), "a" | "i"))?;
+        let destination = dest.map(|d| files.load(d, dest_addr.as_deref() == Some("0|AA|"))).transpose()?;
         parsed.push(BufferCommand { target, command, destination });
     }
     if files.buffers.is_empty() { files.load(default, false)?; }
@@ -340,13 +340,13 @@ mod tests {
         let dst = dir.path().join("dst.txt").to_string_lossy().into_owned();
         fs::write(&src, "alpha\nbeta\n").unwrap();
         let addr = crate::format_lnhash(1, "alpha");
-        let cmds = vec![fields(&[&addr, "m", &format!("{dst}:0|0000|")])];
+        let cmds = vec![fields(&[&addr, "m", &format!("{dst}:0|AA|")])];
         let preview = edit_files(&src, &cmds, 4, false).unwrap();
         assert_eq!(preview[0].result.lines, ["beta"]);
         assert_eq!(preview[1].result.lines, ["alpha"]);
         assert!(!Path::new(&dst).exists());
         let mut bad = cmds.clone();
-        bad.push(fields(&["1|dead|", "d"]));
+        bad.push(fields(&["1|6t|", "d"]));
         assert!(edit_files(&src, &bad, 4, true).is_err());
         assert_eq!(fs::read_to_string(&src).unwrap(), "alpha\nbeta\n");
         assert!(!Path::new(&dst).exists());

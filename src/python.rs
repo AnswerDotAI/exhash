@@ -110,7 +110,7 @@ fn truncate_diff(s: &str, max_lines: usize, maxlen: usize) -> String {
 }
 
 #[pyfunction]
-fn line_hash(line: &str) -> String { format!("{:04x}", crate::line_hash_u16(line)) }
+fn line_hash(line: &str) -> String { crate::lnhash::format_hash(crate::line_hash_u16(line)) }
 
 #[pyfunction]
 fn lnhash(lineno: usize, line: &str) -> String { crate::format_lnhash(lineno, line) }

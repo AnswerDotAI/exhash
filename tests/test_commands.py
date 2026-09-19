@@ -38,7 +38,7 @@ def test_print_only_diff_is_a_bare_lnhashview():
     lines = text.splitlines()
     res = exhash(text, [(lnhash(2, lines[1]), "p"), (lnhash(11, lines[10]), "p")])
     # line numbers pad to the width of the largest printed number, exactly like lnhashview
-    assert res.format_diff() == " 2|8767|line 2\n11|2808|line 11\n"
+    assert res.format_diff() == " 2|dn|line 2\n11|gI|line 11\n"
 
 def test_whole_file_print_equals_lnhashview():
     text = "".join(f"line {i}\n" for i in range(1, 13))
@@ -51,9 +51,9 @@ def test_printed_lines_are_forced_context_in_a_real_diff():
     res = exhash(text, [(lnhash(11, lines[10]), "p"), (lnhash(2, lines[1]), "s", "line 2", "LINE TWO")])
     assert res["printed"] == [11]
     out = res.format_diff().splitlines()
-    assert "-2|8767|line 2" in out
-    assert "+2|3a84|LINE TWO" in out
-    assert out[-1] == " 11|2808|line 11"
+    assert "-2|dn|line 2" in out
+    assert "+2|qE|LINE TWO" in out
+    assert out[-1] == " 11|gI|line 11"
     assert "---" in out[1:]
 
 def test_edited_and_printed_line_shows_once_as_added():
@@ -93,7 +93,7 @@ def test_call_start_hashes_for_stacked_single_line_commands():
 
     with pytest.raises(ValueError, match="changed since your view"): exhash(text, [(addr, "d"), (addr, "s", "abc", "ABC")])
     with pytest.raises(ValueError, match="already edited by an earlier command"):
-        exhash(text, [(addr, "s", "abc", "ABC"), ("1|1234|", "d")])
+        exhash(text, [(addr, "s", "abc", "ABC"), ("1|I0|", "d")])
     end = lnhash(2, "next")
     with pytest.raises(ValueError, match="stale lnhash"): exhash(text, [(f"{addr},{end}", "s", "a", "A"), (f"{addr},{end}", "s", "b", "B")])
     edited = exhash(text, [(addr, "s", "abc", "ABC")])
@@ -107,7 +107,7 @@ def test_call_start_hashes_for_stacked_single_line_commands():
     assert res["lines"] == ["    ABC"]
     inserted = lnhash(1, "inserted")
     with pytest.raises(ValueError, match="changed since your view"):
-        exhash("base\n", [("0|0000|", "a", "inserted"), (inserted, "s", "inserted", "EDITED"), (inserted, "d")])
+        exhash("base\n", [("0|AA|", "a", "inserted"), (inserted, "s", "inserted", "EDITED"), (inserted, "d")])
     joined = lnhash(1, "left")
     with pytest.raises(ValueError, match="changed since your view"):
         exhash("left\nright\n", [(joined, "s", "left", "LEFT"), (joined, "j"), (joined, "d")])
@@ -125,7 +125,7 @@ def test_move_destination_in_range_errors():
     with pytest.raises(ValueError, match="destination is within"): exhash(text, [(f"{a1},{a2}", "m", a2)])
 
 def test_zero_address_delete_rejected():
-    with pytest.raises(ValueError, match="only allowed"): exhash("a\n", [("0|0000|", "d")])
+    with pytest.raises(ValueError, match="only allowed"): exhash("a\n", [("0|AA|", "d")])
 
 def test_substitute_no_match_fails():
     with pytest.raises(ValueError, match="no match"): exhash("abc\n", [(lnhash(1, "abc"), "s", "zzz", "yyy")])
@@ -183,7 +183,7 @@ def test_clean_traceback(tmp_path):
     import traceback
     p = tmp_path/'t.txt'
     p.write_text('a\n')
-    for fn,args in [(exhash, ('a\n', [('1|dead|', 'c', 'x')])), (file_exhash, (str(p), ('1|dead|', 'c', 'x')))]:
+    for fn,args in [(exhash, ('a\n', [('1|6t|', 'c', 'x')])), (file_exhash, (str(p), ('1|6t|', 'c', 'x')))]:
         try: fn(*args)
         except ValueError as e:
             assert e.__cause__ is None

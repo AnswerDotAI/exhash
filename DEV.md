@@ -53,7 +53,7 @@ implementation. `cargo test` additionally tests the Rust API with no Python feat
 `edit_text` verifies lnhashes command-by-command immediately before each command executes. A single-line address can match the line's current hash or a recorded call-start hash from an earlier in-place edit. Records are inserted only once per line. A structural edit drops records at and below its topmost affected line; range addresses do not use the fallback.
 The `$` (last line) and `%` (whole file) address forms are resolved against the current buffer and do not require hashes.
 `edit_text_with_sw` exposes configurable shift width for `<` and `>`; `edit_text` defaults to `sw=4`.
-In CLI and Python file-helper flows, a missing file is treated as empty input only when the parsed command set is valid against an empty buffer (for example `0|0000|a`); otherwise the original file-not-found error is preserved.
+In CLI and Python file-helper flows, a missing file is treated as empty input only when the parsed command set is valid against an empty buffer (for example `0|AA|a`); otherwise the original file-not-found error is preserved.
 Rust `edit_files` resolves optional `path:` and notebook-cell prefixes, loads every
 referenced buffer, and calls `edit_buffers_with_sw` once. Rust owns validation,
 transfers, diffs, and file/notebook writes. Every command succeeds before writes

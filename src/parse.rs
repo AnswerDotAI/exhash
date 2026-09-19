@@ -51,7 +51,7 @@ pub struct Subst {
 
 /// Parse commands from CLI argv, reading one multiline text block from `stdin` through EOF.
 ///
-/// Each element of `args` is a single command line (e.g. `42|a3f2|s/foo/bar/g`).
+/// Each element of `args` is a single command line (e.g. `42|Py|s/foo/bar/g`).
 pub fn parse_commands_from_args(args: &[String], stdin: &mut impl BufRead) -> Result<Vec<Command>, EditError> {
     let mut out = Vec::with_capacity(args.len());
     let mut read_stdin = false;
@@ -129,17 +129,17 @@ fn build_command(addr1: Address, addr2: Option<Address>, has_comma: bool, cmd: S
     if matches!(addr1, Address::WholeFile) && (has_comma || addr2.is_some()) { return Err(EditError::new("% is already a whole-file range")); }
     if matches!(addr2, Some(Address::WholeFile)) { return Err(EditError::new("% is only allowed as a standalone address")); }
 
-    // Enforce 0|0000| rules.
+    // Enforce 0|AA| rules.
     if let Address::LnHash(a1) = addr1
         && a1.lineno == 0
     {
-        if a1.hash != 0 { return Err(EditError::new("0|0000| must have hash 0000")); }
-        if has_comma || addr2.is_some() { return Err(EditError::new("0|0000| is not allowed in ranges")); }
-        match cmd { Subcommand::Append(_) | Subcommand::Insert(_) => {} _ => return Err(EditError::new("0|0000| is only allowed with i or a")) }
+        if a1.hash != 0 { return Err(EditError::new("0|AA| must have hash AA")); }
+        if has_comma || addr2.is_some() { return Err(EditError::new("0|AA| is not allowed in ranges")); }
+        match cmd { Subcommand::Append(_) | Subcommand::Insert(_) => {} _ => return Err(EditError::new("0|AA| is only allowed with i or a")) }
     }
     if let Some(Address::LnHash(a2)) = addr2
         && (a2.lineno == 0 || matches!(addr1, Address::LnHash(LnHash { lineno: 0, .. })))
-    { return Err(EditError::new("0|0000| is not allowed in ranges")); }
+    { return Err(EditError::new("0|AA| is not allowed in ranges")); }
 
     Ok(Command { addr1, addr2, has_comma, cmd })
 }
@@ -160,8 +160,8 @@ fn parse_destination_address_inner(input: &str, op: char, allow_zero: bool) -> R
     let (addr, rest) = parse_address_prefix(input)?;
     if !rest.trim().is_empty() { return Err(EditError::new(format!("unexpected trailing characters after destination: {:?}", rest))); }
     match addr {
-        Address::LnHash(LnHash { lineno: 0, hash }) if hash != 0 => Err(EditError::new("0|0000| must have hash 0000")),
-        Address::LnHash(LnHash { lineno: 0, .. }) if !allow_zero => Err(EditError::new(format!("destination 0|0000| is not allowed for {op}"))),
+        Address::LnHash(LnHash { lineno: 0, hash }) if hash != 0 => Err(EditError::new("0|AA| must have hash AA")),
+        Address::LnHash(LnHash { lineno: 0, .. }) if !allow_zero => Err(EditError::new(format!("destination 0|AA| is not allowed for {op}"))),
         Address::WholeFile => Err(EditError::new(format!("destination % is not allowed for {op}"))),
         _ => Ok(addr),
     }

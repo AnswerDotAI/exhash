@@ -11,7 +11,7 @@ MAXLEN = 180 # Most characters shown per displayed line
 stdexcs = (ValueError, OSError, KeyError)
 
 def line_hash(line:str) -> str:
-    'Return a 4-char lowercase hex hash for a single line of text.'
+    'Return a 2-char Base64url hash for a single line of text.'
     return _line_hash(line)
 
 
@@ -117,7 +117,7 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
 
       from exhash import exhash, lnhash, lnhashview
       text = "foo\\nbar\\n"
-      addr = lnhash(1, "foo")           # "1|a1b2|"
+      addr = lnhash(1, "foo")           # "1|Gy|"
       res = exhash(text, [(addr, "s", "foo", "baz")])
       print(res["lines"])                # ["baz", "bar"]
       print(res.format_diff())           # unified-diff-style summary
@@ -198,7 +198,7 @@ class FileSetEditResult:
         return f'FileSetEditResult({len(self.files)} files, {counts})' + (f'\n{diff}' if diff else '')
 
 
-_ADDR_RE = re.compile(r'(?:\$|%|\d+\|[0-9a-fA-F]{4}\|)')
+_ADDR_RE = re.compile(r'(?:\$|%|\d+\|[A-Za-z0-9_-]{2}\|)')
 
 
 def _norm_path(path): return str(Path(path).expanduser())
@@ -240,7 +240,7 @@ def file_exhash(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
     another file, or ``path.ipynb:cellid:`` to target one notebook cell's
     source (``cellid`` may be an exact id or unique prefix)::
 
-      ("src/a.py:10|aaaa|,20|bbbb|", "m", "src/b.py:$")
+      ("src/a.py:10|qq|,20|u7|", "m", "src/b.py:$")
 
     A range must stay within one file or cell. An ``m``/``t`` destination that
     omits the prefix inherits it from the *first address*, never from ``path``:
@@ -248,7 +248,7 @@ def file_exhash(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
     ``path`` names another. So whenever the source is qualified, qualify the
     destination too. Escape literal colons in filenames as ``\:`` and literal
     backslashes as ``\\``. Missing files are treated as empty only for commands
-    valid against an empty buffer (``0|0000|`` with ``a``/``i``, or as an
+    valid against an empty buffer (``0|AA|`` with ``a``/``i``, or as an
     ``m``/``t`` destination); cells are never created: a cell target must
     already exist, or the command raises ``KeyError``.
 

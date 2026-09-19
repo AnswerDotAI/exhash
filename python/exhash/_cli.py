@@ -5,7 +5,7 @@ from fastcore.script import call_parse
 
 from .exhash import exhash_argv as _exhash_argv, lnhashview as _lnhashview, edit_file_argv as _edit_file_argv, edit_cell_argv as _edit_cell_argv
 
-_ADDR_RE = re.compile(r'(?:\$|%|\d+\|[0-9a-fA-F]{4}\|)')
+_ADDR_RE = re.compile(r'(?:\$|%|\d+\|[A-Za-z0-9_-]{2}\|)')
 
 EXHASH_USAGE = """\
 Usage: exhash [-h] [--dry-run] [--stdin] [--sw N] <file|-> [commands...]
@@ -13,9 +13,9 @@ Usage: exhash [-h] [--dry-run] [--stdin] [--sw N] <file|-> [commands...]
 Verified line-addressed file editor using lnhash addresses.
 
 ADDRESSING
-  Commands use lnhash addresses: lineno|hash| where hash is a 4-char hex
-  content hash. Use `lnhashview file.txt` to get addresses. Single: 12|a3f2|cmd
-  Range: 12|a3f2|,15|b1c3|cmd  Last: $cmd  Whole: %cmd  Before line 1: 0|0000|
+  Commands use lnhash addresses: lineno|hash| where hash is a 2-char Base64url
+  content hash. Use `lnhashview file.txt` to get addresses. Single: 12|Py|cmd
+  Range: 12|Py|,15|HD|cmd  Last: $cmd  Whole: %cmd  Before line 1: 0|AA|
 
 COMMANDS
   s/pat/rep/[flags]  Substitute (Rust regex; flags g, i). y/src/dst/ transliterate.
@@ -38,9 +38,9 @@ EXHASH_CELL_USAGE = """\
 Usage: exhash-cell [-h] [--dry-run] [--sw N] <notebook> <cell-id> [commands...]
 
 Apply compact exhash commands to one notebook cell. Put the verified address and
-operation in one argument, for example '3|beef|s/old/new/' or '3|beef|d'.
+operation in one argument, for example '3|7v|s/old/new/' or '3|7v|d'.
 
-Multiline a/i/c text blocks use a command such as '3|beef|c'. The one command
+Multiline a/i/c text blocks use a command such as '3|7v|c'. The one command
 that reads a text block consumes stdin through EOF. Every input line is literal.
 """
 

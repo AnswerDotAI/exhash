@@ -12,19 +12,21 @@ def test_lnhashview_display(tmp_path):
 
 
 
-def test_line_hash_returns_4_hex():
+def test_line_hash_returns_2_base64url():
     h = line_hash("hello")
-    assert len(h) == 4
-    assert all(c in '0123456789abcdef' for c in h)
+    assert len(h) == 2
+    assert all(c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_' for c in h)
 
 def test_line_hash_deterministic():
     assert line_hash("foo") == line_hash("foo")
     assert line_hash("foo") != line_hash("bar")
 
 def test_line_hash_matches_stdlib_crc32():
-    import zlib
+    import base64, zlib
+    from fastcore.tools import line_hash as py_hash
     for s in ["", "hello", "    indented", "café ünïcode", "a|b|c", "x"*300]:
-        assert line_hash(s) == f"{zlib.crc32(s.encode()) & 0xffff:04x}"
+        h = (zlib.crc32(s.encode()) & 0xfff) << 4
+        assert line_hash(s) == py_hash(s) == base64.urlsafe_b64encode(h.to_bytes(2, 'big')).decode()[:2]
 
 def test_lnhash_format():
     addr = lnhash(1, "hello")
@@ -358,7 +360,7 @@ def test_file_exhash_inplace(tmp_path):
 
 def test_file_exhash_inplace_creates_missing_file_from_empty_input(tmp_path):
     f = tmp_path / "new.txt"
-    diff = file_exhash(str(f), ("0|0000|", "a", "hello"), inplace=True)
+    diff = file_exhash(str(f), ("0|AA|", "a", "hello"), inplace=True)
     assert f.read_text() == "hello\n"
     assert f"+{lnhash(1, 'hello')}hello" in diff
 
@@ -406,14 +408,14 @@ def test_file_exhash_call_start_hashes_and_transfer_invalidation(tmp_path):
 
     a.write_text("source\n")
     src = lnhash(1, "source")
-    file_exhash(a, (src, "s", "source", "SOURCE"), (src, "t", f"{b}:0|0000|"), (src, "s", "SOURCE", "COPIED"))
+    file_exhash(a, (src, "s", "source", "SOURCE"), (src, "t", f"{b}:0|AA|"), (src, "s", "SOURCE", "COPIED"))
     assert a.read_text() == "COPIED\n"
     assert b.read_text() == "SOURCE\ndest\n"
 
     a.write_text("source\n")
     b.write_text("dest\n")
     src, dest = lnhash(1, "source"), lnhash(1, "dest")
-    cmds = ((f"{b}:{dest}", "s", "dest", "DEST"), (f"{a}:{src}", "t", f"{b}:0|0000|"), (f"{b}:{dest}", "d"))
+    cmds = ((f"{b}:{dest}", "s", "dest", "DEST"), (f"{a}:{src}", "t", f"{b}:0|AA|"), (f"{b}:{dest}", "d"))
     with pytest.raises(ValueError, match="changed since your view"): file_exhash(a, *cmds)
     assert a.read_text() == "source\n"
     assert b.read_text() == "dest\n"
@@ -422,7 +424,7 @@ def test_file_exhash_copies_to_file_qualified_destination(tmp_path):
     a, b = tmp_path / "a.txt", tmp_path / "b.txt"
     a.write_text("one\ntwo\n")
     b.write_text("alpha\n")
-    cmd = (f"{a}:{lnhash(2, 'two')}", "t", f"{b}:0|0000|")
+    cmd = (f"{a}:{lnhash(2, 'two')}", "t", f"{b}:0|AA|")
     res = file_exhash(str(a), cmd, inplace=False)
     assert res.changed == [str(b)]
     assert res[str(b)]["lines"] == ["two", "alpha"]
@@ -433,7 +435,7 @@ def test_file_exhash_copies_to_file_qualified_destination(tmp_path):
 def test_file_exhash_moves_to_missing_file(tmp_path):
     a, new = tmp_path / "a.txt", tmp_path / "new.txt"
     a.write_text("one\ntwo\n")
-    cmd = (f"{a}:{lnhash(2, 'two')}", "m", f"{new}:0|0000|")
+    cmd = (f"{a}:{lnhash(2, 'two')}", "m", f"{new}:0|AA|")
     diff = file_exhash(str(a), cmd, inplace=True)
     assert a.read_text() == "one\n"
     assert new.read_text() == "two\n"
@@ -446,7 +448,7 @@ def test_file_exhash_writes_nothing_if_later_command_fails(tmp_path):
     a.write_text("foo\n")
     b.write_text("bar\n")
     cmd1 = (f"{a}:{lnhash(1, 'foo')}", "s", "foo", "FOO")
-    cmd2 = (f"{b}:99|ffff|", "d")
+    cmd2 = (f"{b}:99|__|", "d")
     with pytest.raises(ValueError): file_exhash(str(a), cmd1, cmd2, inplace=True)
     assert a.read_text() == "foo\n"
     assert b.read_text() == "bar\n"
@@ -462,7 +464,7 @@ def test_file_exhash_rejects_missing_destination_parent_before_writing_source(tm
     a = tmp_path / "a.txt"
     dest = tmp_path / "missing" / "new.txt"
     a.write_text("one\ntwo\n")
-    cmd = (f"{a}:{lnhash(2, 'two')}", "m", f"{dest}:0|0000|")
+    cmd = (f"{a}:{lnhash(2, 'two')}", "m", f"{dest}:0|AA|")
     with pytest.raises(FileNotFoundError): file_exhash(str(a), cmd, inplace=True)
     assert a.read_text() == "one\ntwo\n"
     assert not dest.exists()
@@ -490,7 +492,7 @@ def test_file_exhash_rejects_cross_file_source_range(tmp_path):
 def test_file_exhash_inplace_no_change_on_error(tmp_path):
     f = tmp_path / "test.txt"
     f.write_text("foo\nbar\n")
-    with pytest.raises(ValueError): file_exhash(str(f), ("99|ffff|", "s", "x", "y"), inplace=True)
+    with pytest.raises(ValueError): file_exhash(str(f), ("99|__|", "s", "x", "y"), inplace=True)
     assert f.read_text() == "foo\nbar\n"
 
 def test_lnhashview_start_end():
@@ -543,7 +545,7 @@ def test_tilde_expansion(tmp_path, monkeypatch):
     assert "foo" in lnhashview_file("~/f.txt")[0]
     file_exhash("~/f.txt", (lnhash(1, "foo"), "s", "foo", "baz"))
     assert (tmp_path / "f.txt").read_text() == "baz\nbar\n"
-    file_exhash("~/f.txt", (r"~/g.txt:0|0000|", "a", "hi"))
+    file_exhash("~/f.txt", (r"~/g.txt:0|AA|", "a", "hi"))
     assert (tmp_path / "g.txt").read_text() == "hi\n"
     nb = dict(cells=[dict(id="abc", cell_type="code", source="x=1\n", metadata={})], metadata={}, nbformat=4, nbformat_minor=5)
     (tmp_path / "nb.ipynb").write_text(json.dumps(nb))
@@ -554,35 +556,35 @@ def test_tilde_expansion(tmp_path, monkeypatch):
 
 def test_missing_path_error_messages(tmp_path):
     with pytest.raises(FileNotFoundError, match=r'parent directory .* does not exist'):
-        file_exhash(str(tmp_path/'nodir'/'new.txt'), ("0|0000|", "a", "hi"))
-    with pytest.raises(FileNotFoundError, match=r'0\|0000\|'): file_exhash(str(tmp_path/'absent.txt'), ("%", "s", "foo", "bar"))
-    with pytest.raises(FileNotFoundError, match='notebook'): cell_exhash(str(tmp_path/'absent.ipynb'), 'ab12', ("1|abcd|", "c", "hi"))
+        file_exhash(str(tmp_path/'nodir'/'new.txt'), ("0|AA|", "a", "hi"))
+    with pytest.raises(FileNotFoundError, match=r'0\|AA\|'): file_exhash(str(tmp_path/'absent.txt'), ("%", "s", "foo", "bar"))
+    with pytest.raises(FileNotFoundError, match='notebook'): cell_exhash(str(tmp_path/'absent.ipynb'), 'ab12', ("1|vN|", "c", "hi"))
 
 def test_unexpanded_ipython_variable_is_named_in_path_errors(tmp_path):
     "An undefined {name}/$name in a %%exhash line reaches us as literal text, so say so instead of blaming the directory"
     for p in ('{impdir}/DEV.md', '$impdir/DEV.md', '${impdir}/DEV.md'):
-        with pytest.raises(FileNotFoundError, match='unexpanded IPython variable'): file_exhash(p, ("0|0000|", "a", "hi"))
+        with pytest.raises(FileNotFoundError, match='unexpanded IPython variable'): file_exhash(p, ("0|AA|", "a", "hi"))
     with pytest.raises(FileNotFoundError, match='unexpanded IPython variable'):
-        cell_exhash('{nbdir}/nb.ipynb', 'ab12', ("1|abcd|", "c", "hi"))
+        cell_exhash('{nbdir}/nb.ipynb', 'ab12', ("1|vN|", "c", "hi"))
     with pytest.raises(FileNotFoundError) as e:   # an ordinary missing path keeps the plain message
-        file_exhash(str(tmp_path/'nodir'/'new.txt'), ("0|0000|", "a", "hi"))
+        file_exhash(str(tmp_path/'nodir'/'new.txt'), ("0|AA|", "a", "hi"))
     assert 'unexpanded IPython variable' not in str(e.value)
 
 def test_truncate_diff():
-    short = "--- a\n+++ a\n+1|abcd|x\n"
+    short = "--- a\n+++ a\n+1|vN|x\n"
     assert truncate_diff(short) == short
     long_line = "x" * 200
-    t = truncate_diff(f"+1|abcd|{long_line}\n")
-    assert t.splitlines()[0] == ("+1|abcd|" + long_line)[:MAXLEN] + "…"
-    assert repr(exhash('', [('0|0000|', 'a', long_line)])).splitlines()[-1] == ('+' + lnhash(1, long_line) + long_line)[:MAXLEN] + '…'
-    many = "\n".join(f"+{i}|abcd|line {i}" for i in range(1, 41)) + "\n"
+    t = truncate_diff(f"+1|vN|{long_line}\n")
+    assert t.splitlines()[0] == ("+1|vN|" + long_line)[:MAXLEN] + "…"
+    assert repr(exhash('', [('0|AA|', 'a', long_line)])).splitlines()[-1] == ('+' + lnhash(1, long_line) + long_line)[:MAXLEN] + '…'
+    many = "\n".join(f"+{i}|vN|line {i}" for i in range(1, 41)) + "\n"
     t = truncate_diff(many)
     lines = t.splitlines()
     assert len(lines) == 16 and lines[-1] == "…25 lines elided…"
     assert lines[:15] == many.splitlines()[:15]
     assert truncate_diff("") == ""
     assert truncate_diff(many, max_lines=40) == many
-    hdr = "--- /some/" + "long/" * 30 + "path.txt\n+1|abcd|x\n"
+    hdr = "--- /some/" + "long/" * 30 + "path.txt\n+1|vN|x\n"
     assert truncate_diff(hdr) == hdr
     r = exhash("\n".join(f"x{i}" for i in range(40)) + "\n", [("%", "s", "x", "y", "g")])
     assert "lines elided…" in repr(r) and "lines elided" not in str(r)
@@ -613,7 +615,7 @@ def test_file_exhash_print_only_returns_bare_view_and_writes_nothing(tmp_path):
     f = tmp_path / "test.txt"
     f.write_text("".join(f"line {i}\n" for i in range(1, 13)))
     out = file_exhash(str(f), (lnhash(2, "line 2"), "p"), (lnhash(11, "line 11"), "p"))
-    assert str(out) == " 2|8767|line 2\n11|2808|line 11\n"   # padded like lnhashview, no tag, no headers
+    assert str(out) == " 2|dn|line 2\n11|gI|line 11\n"   # padded like lnhashview, no tag, no headers
     assert f.read_text() == "".join(f"line {i}\n" for i in range(1, 13))
     whole = file_exhash(str(f), ("%", "p"))
     assert str(whole) == "\n".join(lnhashview_file(str(f))) + "\n"
@@ -638,7 +640,7 @@ def test_file_exhash_printed_rows_are_forced_context(tmp_path):
 def test_file_exhash_printed_marks_follow_later_edits(tmp_path):
     f = tmp_path / "test.txt"
     f.write_text("a\nb\nc\n")
-    res = file_exhash(str(f), (lnhash(3, "c"), "p"), ("0|0000|", "a", "zero"), inplace=False)
+    res = file_exhash(str(f), (lnhash(3, "c"), "p"), ("0|AA|", "a", "zero"), inplace=False)
     assert res[str(f)]["lines"] == ["zero", "a", "b", "c"]
     assert res[str(f)].printed == [4]   # the printed line moved down with the insert
     assert res.printed == [str(f)] and res.changed == [str(f)]

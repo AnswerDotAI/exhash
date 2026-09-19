@@ -124,7 +124,7 @@ class Section(dict):
         "The section at a verified address copied from a listing: the `addr.|...` form a view shows (the root's addr is `.`)"
         addr,_,rest = token.partition('|')
         if not addr.endswith('.') or not rest:
-            raise ValueError(f"Section addresses come from the listing - copy the token, e.g. '1.2.|12|a3f2|' (got {token!r})")
+            raise ValueError(f"Section addresses come from the listing - copy the token, e.g. '1.2.|12|Py|' (got {token!r})")
         node = self.root
         try:
             for k in addr[:-1].split('.') if addr != '.' else []: node = node[int(k)]
@@ -134,8 +134,8 @@ class Section(dict):
 
     def _verify(self, addr, rest):
         "Check an address payload against this section's current heading line; raise if stale"
-        m = re.fullmatch(r'(\d+)\|([0-9a-f]{4})\|.*', rest)
-        if not m: raise ValueError(f"Section addresses come from the listing - copy the token, e.g. '1.2.|12|a3f2|' (got {addr}|{rest})")
+        m = re.fullmatch(r'(\d+)\|([A-Za-z0-9_-]{2})\|.*', rest)
+        if not m: raise ValueError(f"Section addresses come from the listing - copy the token, e.g. '1.2.|12|Py|' (got {addr}|{rest})")
         lineno,h = int(m[1]),m[2]
         head = self.src.splitlines()[0] if self.src else ''
         if lineno != self.start_line or h != _line_hash(head):
@@ -293,8 +293,8 @@ class NbSection(Section):
         return f'{self.addr}.|{self.cell_id}|{_line_hash(lines[0])}|'
 
     def _verify(self, addr, rest):
-        m = re.fullmatch(r'([\w-]+)\|([0-9a-f]{4})\|', rest)
-        if not m: raise ValueError(f"Section addresses come from the listing - copy the token, e.g. '1.2.|ab12cd34|8f3a|' (got {addr}|{rest})")
+        m = re.fullmatch(r'([\w-]+)\|([A-Za-z0-9_-]{2})\|', rest)
+        if not m: raise ValueError(f"Section addresses come from the listing - copy the token, e.g. '1.2.|ab12cd34|86|' (got {addr}|{rest})")
         head = self.src.splitlines()[0] if self.src else ''
         if m[1] != self.cell_id or m[2] != _line_hash(head):
             raise ValueError(f'Stale address for section {addr}: expected {self.cell_id}|{_line_hash(head)}| - re-view and copy a fresh token')
@@ -356,9 +356,9 @@ def open_doc(
 
     Display the tree bare to see its outline. Listing rows are `token title [size] preview`; code previews start with the definition/signature instead of a title. Newlines display as ¶ and links as `[text][n]`.
 
-    Tokens, the idiomatic usage, combine dotted section addresses (root `.`, trailing dot otherwise) and boundary hashes: `1.2.|12|a3f2|,45|b1c3|`. `at()` accepts copied listing tokens, not bare dotted addresses, and verifies the first hash; the boundary pair is an edit-ready range. Live navigation uses `d[1][6]`, `find(title)`, `search(pat)`, and `paths(depth)`. Use `links(pat)` to list links and `open(n)` to open one by number. Opened links record `base`; non-Markdown targets become leaves with text in `.src`.
+    Tokens, the idiomatic usage, combine dotted section addresses (root `.`, trailing dot otherwise) and boundary hashes: `1.2.|12|Py|,45|HD|`. `at()` accepts copied listing tokens, not bare dotted addresses, and verifies the first hash; the boundary pair is an edit-ready range. Live navigation uses `d[1][6]`, `find(title)`, `search(pat)`, and `paths(depth)`. Use `links(pat)` to list links and `open(n)` to open one by number. Opened links record `base`; non-Markdown targets become leaves with text in `.src`.
 
-    `view()` renders links as `[text][n]`; `.src` is raw text. `view(*tokens)` reads multiple sections under `# token` headers; `nums=True` or `lnhashs=True` shows stored lines with line numbers or hash addresses. Notebook tokens contain heading cell IDs (`1.2.|ab12cd34|8f3a|`); hashed views use `cellid:lineno|hash|` for cell edits.
+    `view()` renders links as `[text][n]`; `.src` is raw text. `view(*tokens)` reads multiple sections under `# token` headers; `nums=True` or `lnhashs=True` shows stored lines with line numbers or hash addresses. Notebook tokens contain heading cell IDs (`1.2.|ab12cd34|86|`); hashed views use `cellid:lineno|hash|` for cell edits.
 
     For llms.txt: `toc = open_doc(url)` → `toc.links(topic)` → `page = toc.open(n)` → display `page`. Read `page.view()` when small; otherwise use `page.search(topic)` and `page.view(*tokens)`.
     """

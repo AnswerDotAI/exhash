@@ -56,7 +56,7 @@ def test_addresses():
     assert d.at(d.token) is d                          # the root is ordinary: addr `.`
     with pytest.raises(ValueError, match='listing'): d.at('1.2.2')    # bare addr refused, error teaches
     with pytest.raises(ValueError, match='listing'): d.at('1.2.2.')   # dot but no hash: same refusal
-    bad = f'{sec.addr}.|{sec.start_line}|beef|'
+    bad = f'{sec.addr}.|{sec.start_line}|7v|'
     with pytest.raises(ValueError): d.at(bad)          # wrong hash fails loudly
     with pytest.raises(ValueError): d.at(f'9.9.|{first}')
 
@@ -65,7 +65,7 @@ def test_repr_rows():
     d = open_doc(SAMPLE)
     rows = repr(d).splitlines()
     assert rows[0].startswith('.|1|')                  # root row: ordinary token, whole-doc range
-    r = re.compile(r"^(\d+(?:\.\d+)*\.\|\d+\|[0-9a-f]{4}\|,\d+\|[0-9a-f]{4}\|) (.+) \[\d+[.\w]*\](?: (.*))?$")
+    r = re.compile(r"^(\d+(?:\.\d+)*\.\|\d+\|[A-Za-z0-9_-]{2}\|,\d+\|[A-Za-z0-9_-]{2}\|) (.+) \[\d+[.\w]*\](?: (.*))?$")
     sub = repr(d[1][2]).splitlines()
     m = r.match([x for x in sub if x.startswith('1.2.2.|')][0])
     assert m and m[2] == 'PostCompact'
@@ -288,7 +288,7 @@ def test_nb_outline(tmp_path):
     assert d.at(fetch.token) is fetch
     assert d.at(d.token) is d                          # root: first cell id, whole-notebook section
     with pytest.raises(ValueError, match='listing'): d.at('1.1')
-    with pytest.raises(ValueError): d.at('1.1.|cccc3333|beef|')   # stale heading hash
+    with pytest.raises(ValueError): d.at('1.1.|cccc3333|7v|')   # stale heading hash
     v = fetch.view(lnhashs=True).splitlines()
     assert v[0] == f'cccc3333:1|{line_hash("## Fetching")}|## Fetching'
     assert v[-1].startswith('dddd4444:1|')             # rows are cell-qualified, ready for cell_exhash

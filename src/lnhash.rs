@@ -4,14 +4,18 @@ use crate::EditError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LnHash { pub lineno: usize, pub hash: u16 }
 
-/// Compute the 16-bit lnhash of a line's content.
+const HASH_ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+/// Compute the 12-bit lnhash of a line's content.
 ///
-/// The hash is the low 16 bits of CRC-32 (IEEE) over the UTF-8 line content
-/// (excluding the line ending), matching Python's `zlib.crc32(line) & 0xffff`.
-pub fn line_hash_u16(line: &str) -> u16 { (crc32fast::hash(line.as_bytes()) & 0xffff) as u16 }
+/// The hash is the low 12 bits of CRC-32 (IEEE) over the UTF-8 line content
+/// (excluding the line ending), matching Python's `zlib.crc32(line) & 0xfff`.
+pub fn line_hash_u16(line: &str) -> u16 { (crc32fast::hash(line.as_bytes()) & 0xfff) as u16 }
+
+pub(crate) fn format_hash(hash: u16) -> String { format!("{}{}", HASH_ALPHABET[((hash >> 6) & 63) as usize] as char, HASH_ALPHABET[(hash & 63) as usize] as char) }
 
 /// Format a line address as `lineno|hash|`.
-pub fn format_lnhash(lineno: usize, line: &str) -> String { format!("{}|{:04x}|", lineno, line_hash_u16(line)) }
+pub fn format_lnhash(lineno: usize, line: &str) -> String { format!("{}|{}|", lineno, format_hash(line_hash_u16(line))) }
 
 /// Format lines as `lineno|hash|content`, with line numbers space-padded to align the shown range.
 /// `start` and `end` are 1-based inclusive. Pass `None` for defaults (1 and len).
@@ -26,7 +30,7 @@ pub fn lnhashview(lines: &[&str], start: Option<usize>, end: Option<usize>) -> R
     if s > lines.len() { return Err(EditError::new(format!("start_line {} is beyond EOF (file has {} line(s))", s, lines.len()))); }
     let e = requested_e.min(lines.len());
     let width = e.to_string().len();
-    Ok(lines.iter().enumerate().skip(s - 1).take(e - s + 1).map(|(i, l)| format!("{:>width$}|{:04x}|{}", i + 1, line_hash_u16(l), l, width = width)).collect())
+    Ok(lines.iter().enumerate().skip(s - 1).take(e - s + 1).map(|(i, l)| format!("{:>width$}|{}|{}", i + 1, format_hash(line_hash_u16(l)), l, width = width)).collect())
 }
 
 /// Parse a `lineno|hash|` address.
@@ -50,9 +54,25 @@ pub fn parse_lnhash_prefix(input: &str) -> Result<(LnHash, &str), EditError> {
     let hash_str = it2.next().ok_or_else(|| EditError::new("invalid lnhash: missing hash"))?;
     let suffix = it2.next().ok_or_else(|| EditError::new("invalid lnhash: missing trailing '|' after hash"))?;
 
-    if hash_str.len() != 4 { return Err(EditError::new(format!("invalid lnhash: hash must be 4 hex chars, got {hash_str:?}"))); }
-
-    let hash = u16::from_str_radix(hash_str, 16).map_err(|_| EditError::new(format!("invalid lnhash: bad hash: {hash_str:?}")))?;
+    if hash_str.len() != 2 { return Err(EditError::new(format!("invalid lnhash: hash must be 2 Base64url chars, got {hash_str:?}"))); }
+    let mut hash = 0;
+    for c in hash_str.bytes() {
+        let digit = HASH_ALPHABET.iter().position(|&b| b == c).ok_or_else(|| EditError::new(format!("invalid lnhash: bad hash: {hash_str:?}")))?;
+        hash = (hash << 6) | digit as u16;
+    }
 
     Ok((LnHash { lineno, hash }, suffix))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hash_roundtrip() {
+        for hash in 0..4096 { assert_eq!(parse_lnhash(&format!("1|{}|", format_hash(hash))).unwrap(), LnHash { lineno: 1, hash }); }
+        assert_eq!(format_hash(0), "AA");
+        assert_eq!(format_hash(4095), "__");
+        for bad in ["1|0000|", "1|A|", "1|AAA|", "1|++|", "1|//|", "1|é|", "1|A|A|"] { assert!(parse_lnhash(bad).is_err()); }
+    }
 }

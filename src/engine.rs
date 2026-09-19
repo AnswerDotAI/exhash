@@ -3,7 +3,7 @@ use std::collections::{BTreeSet, HashMap};
 use regex::{Regex, RegexBuilder};
 
 use crate::EditError;
-use crate::lnhash::line_hash_u16;
+use crate::lnhash::{format_hash, format_lnhash, line_hash_u16};
 use crate::parse::{Address, Command, Subcommand, Subst};
 
 impl Subcommand {
@@ -22,7 +22,7 @@ impl Subcommand {
 pub struct EditResult {
     /// Full edited content, split into lines (without trailing `\n`).
     pub lines: Vec<String>,
-    /// lnhash for each line in the edited content (e.g. `"42|a3f2|"`).
+    /// lnhash for each line in the edited content (e.g. `"42|Py|"`).
     pub hashes: Vec<String>,
     /// New-file 1-based line numbers that are new, changed, or reordered.
     pub modified: Vec<usize>,
@@ -47,7 +47,7 @@ impl EditResult {
         let mut out = String::new();
         for n in print_set {
             let text = self.lines[*n - 1].as_str();
-            out.push_str(&format!("{:>width$}|{:04x}|{}\n", n, line_hash_u16(text), text, width = width));
+            out.push_str(&format!("{:>width$}|{}|{}\n", n, format_hash(line_hash_u16(text)), text, width = width));
         }
         out
     }
@@ -62,8 +62,6 @@ impl EditResult {
     /// Non-empty diffs start with `--- original` and `+++ modified` headers, except when nothing
     /// changed and lines were printed: that renders as a bare `lnhashview` of the printed lines.
     pub fn format_diff(&self, original_lines: &[&str], context: usize) -> String {
-        use crate::lnhash::format_lnhash;
-
         let mod_set: BTreeSet<usize> = self.modified.iter().copied().collect();
         let del_set: BTreeSet<usize> = self.deleted.iter().copied().collect();
         let print_set: BTreeSet<usize> = self.printed.iter().copied().collect();
@@ -235,8 +233,8 @@ impl Engine {
     fn verify_lnhash(&self, addr: crate::LnHash, cmd: &Subcommand, allow_call_start: bool) -> Result<(), EditError> {
         if addr.lineno == 0 {
             // Only valid for i/a, enforced by parser.
-            if addr.hash != 0 { return Err(EditError::new("0|0000| must have hash 0000")); }
-            match cmd { Subcommand::Append(_) | Subcommand::Insert(_) => Ok(()), _ => Err(EditError::new("0|0000| is only valid with i or a")) }
+            if addr.hash != 0 { return Err(EditError::new("0|AA| must have hash AA")); }
+            match cmd { Subcommand::Append(_) | Subcommand::Insert(_) => Ok(()), _ => Err(EditError::new("0|AA| is only valid with i or a")) }
         } else { self.verify_lnhash_basic(addr, allow_call_start) }
     }
 
@@ -248,11 +246,11 @@ impl Engine {
         if allow_call_start && self.call_start_hashes.get(&addr.lineno).copied() == Some(addr.hash) { return Ok(()); }
         if allow_call_start && let Some(start) = self.call_start_hashes.get(&addr.lineno) {
             return Err(EditError::new(format!(
-                "stale lnhash at line {}: line was already edited by an earlier command in this call; expected {:04x}, current {:04x}, call-start {:04x}",
-                addr.lineno, addr.hash, actual, start
+                "stale lnhash at line {}: line was already edited by an earlier command in this call; expected {}, current {}, call-start {}",
+                addr.lineno, format_hash(addr.hash), format_hash(actual), format_hash(*start)
             )));
         }
-        Err(EditError::new(format!("stale lnhash at line {}: expected {:04x}, got {:04x} (line changed since your view)", addr.lineno, addr.hash, actual)))
+        Err(EditError::new(format!("stale lnhash at line {}: expected {}, got {} (line changed since your view)", addr.lineno, format_hash(addr.hash), format_hash(actual))))
     }
 
     fn track_command_effect(&mut self, before: &[Line], start: usize, end: usize, sub: &Subcommand) {
@@ -300,7 +298,7 @@ impl Engine {
 
     fn into_result(self) -> EditResult {
         let lines: Vec<String> = self.lines.iter().map(|l| l.text.clone()).collect();
-        let hashes = lines.iter().enumerate().map(|(i, line)| format!("{}|{:04x}|", i + 1, line_hash_u16(line))).collect();
+        let hashes = lines.iter().enumerate().map(|(i, line)| format_lnhash(i + 1, line)).collect();
         let modified = self.lines.iter().enumerate().filter_map(|(i, line)| line.modified.then_some(i + 1)).collect();
         let printed = self.lines.iter().enumerate().filter_map(|(i, line)| line.printed.then_some(i + 1)).collect();
         EditResult {

@@ -10,7 +10,7 @@ pip install exhash
 
 ## lnhash format
 
-We refer to an *lnhash* as a tag of the form `lineno|hash|`, where `hash` is the lower 16 bits of CRC-32 (IEEE) over the line's UTF-8 content, i.e. Python's `zlib.crc32(line) & 0xffff` formatted as 4 hex chars.
+We refer to an *lnhash* as a tag of the form `lineno|hash|`, where `hash` is the low 12 bits of CRC-32 (IEEE) over the line's UTF-8 content, encoded as two Base64url characters (`A–Z`, `a–z`, `0–9`, `-`, `_`), high six bits first.
 
 Address forms:
 
@@ -37,36 +37,36 @@ If `end` is past EOF, `lnhashview` returns through the last available line inste
 
 ```bash
 # Substitute on one line
-exhash file.txt '12|abcd|s/foo/bar/g'
+exhash file.txt '12|vN|s/foo/bar/g'
 
 # Transliterate characters on one line
-exhash file.txt '12|abcd|y/abc/ABC/'
+exhash file.txt '12|vN|y/abc/ABC/'
 
 # Change one line with inline text (spaces after c are literal text)
-exhash file.txt '12|abcd|c    replacement line'
+exhash file.txt '12|vN|c    replacement line'
 
 # Append multiline text (terminated by a single dot)
-exhash file.txt '12|abcd|a' <<'EOF'
+exhash file.txt '12|vN|a' <<'EOF'
 new line 1
 new line 2
 .
 EOF
 
 # Dry-run
-exhash --dry-run file.txt '12|abcd|d'
+exhash --dry-run file.txt '12|vN|d'
 
 # Set shift width for < and >
-exhash --sw 2 file.txt '12|abcd|>1'
+exhash --sw 2 file.txt '12|vN|>1'
 
 # Last line and whole file shorthands (no hash)
 exhash file.txt '$d'
 exhash file.txt '%j'
 
 # Move a line to EOF using $ as the destination
-exhash file.txt '12|abcd|m$'
+exhash file.txt '12|vN|m$'
 
 # Create a missing file by treating it as empty input
-exhash new.txt '0|0000|a' <<'EOF'
+exhash new.txt '0|AA|a' <<'EOF'
 first line
 .
 EOF
@@ -87,15 +87,15 @@ When passing multiple commands, each command's lnhashes are verified immediately
 For CLI multiline `a/i/c` commands, omit inline text and provide the text block on stdin:
 
 ```bash
-printf "new line 1\nnew line 2\n" | exhash file.txt "2|beef|a"
+printf "new line 1\nnew line 2\n" | exhash file.txt "2|7v|a"
 ```
 
-If the file does not exist and the command set is valid on empty input, exhash treats it as an empty file and writes the result. For example, `0|0000|a` can create a new file.
+If the file does not exist and the command set is valid on empty input, exhash treats it as an empty file and writes the result. For example, `0|AA|a` can create a new file.
 
 ### Stdin filter mode
 
 ```bash
-cat file.txt | exhash --stdin - '1|abcd|s/foo/bar/'
+cat file.txt | exhash --stdin - '1|vN|s/foo/bar/'
 ```
 
 In `--stdin` mode, multiline `a/i/c` text blocks are not available.
@@ -107,9 +107,9 @@ In `--stdin` mode, multiline `a/i/c` text blocks are not available.
 ```bash
 lnhashview-cell nbs/00_core.ipynb ab12cd34
 lnhashview-cell nbs/00_core.ipynb ab12cd34,ef56ab78
-exhash-cell nbs/00_core.ipynb ab12cd34 '3|beef|s/old/new/'
-exhash-cell --dry-run nbs/00_core.ipynb ab12cd34 '3|beef|d'
-printf 'replacement line\n' | exhash-cell nbs/00_core.ipynb ab12cd34 '3|beef|c'
+exhash-cell nbs/00_core.ipynb ab12cd34 '3|7v|s/old/new/'
+exhash-cell --dry-run nbs/00_core.ipynb ab12cd34 '3|7v|d'
+printf 'replacement line\n' | exhash-cell nbs/00_core.ipynb ab12cd34 '3|7v|c'
 ```
 
 ### Document outlines
@@ -118,7 +118,7 @@ printf 'replacement line\n' | exhash-cell nbs/00_core.ipynb ab12cd34 '3|beef|c'
 
 ```bash
 exhash-open README.md
-exhash-open README.md '1.2.|21|e675|,101|426c|'
+exhash-open README.md '1.2.|21|Z1|,101|Js|'
 exhash-open README.md --paths --depth 2
 exhash-open README.md --search 'CLI|console'
 exhash-open README.md --lnhashs
@@ -135,7 +135,7 @@ from exhash import exhash, file_exhash, lnhash, lnhashview, lnhashview_file, lin
 
 ```py
 text = "foo\nbar\n"
-view = lnhashview(text)                        # ["1|a1b2|foo", "2|c3d4|bar"]
+view = lnhashview(text)                        # ["1|Gy|foo", "2|PU|bar"]
 view = lnhashview_file("f.py", start=1, end=260) # end past EOF is clamped
 ```
 
@@ -150,7 +150,7 @@ A command is usually `(addr, op)` or `(addr, op, payload)`. `addr` is an lnhash 
 Text fields can contain newlines. That covers multiline `a`/`i`/`c` payloads and substitute pattern/replacement. Commands such as `d`, `m`, and `sort` do not take text.
 
 ```py
-addr = lnhash(1, "foo")  # "1|a1b2|"
+addr = lnhash(1, "foo")  # "1|Gy|"
 res = exhash(text, [(addr, "s", "foo", "baz")])
 print(res["lines"])    # ["baz", "bar"]
 print(res["modified"]) # [1]
@@ -213,12 +213,12 @@ print(res["file.py"].lines)
 print(res.format_diff())    # includes --- file.py / +++ file.py headers
 
 # Missing files are treated as empty only when the command is valid on empty input.
-diff = file_exhash("new.py", ("0|0000|", "a", "print('hi')"))
+diff = file_exhash("new.py", ("0|AA|", "a", "print('hi')"))
 
 # File-qualified addresses can edit or transfer lines across files.
 diff = file_exhash("src/a.py",
-    ("src/a.py:24|8f12|,38|c0de|", "m", "src/b.py:$"),
-    (r"src/a.py:5|91aa|", "s", r"from \.b import old", r"from \.b import helper"))
+    ("src/a.py:24|8S|,38|De|", "m", "src/b.py:$"),
+    (r"src/a.py:5|Gq|", "s", r"from \.b import old", r"from \.b import helper"))
 ```
 
 A file prefix is separated from the address with `:`. Escape literal colons in filenames as `\:` and literal backslashes as `\\`.
@@ -241,14 +241,14 @@ A file prefix is separated from the address with `:`. Escape literal colons in f
 Importing `exhash.skill` under IPython or Jupyter registers the `%%exhash` cell magic - the standard way to apply `a`/`i`/`c` payload commands interactively. The magic line is `%%exhash <path> [<cell_id>] <address> <a|i|c>`; the payload is everything below it, taken verbatim. Nothing in the payload is parsed as Python, so there is no quoting or escaping at all:
 
 ```
-%%exhash notes.txt 2|beef|a
+%%exhash notes.txt 2|7v|a
 new line 1
 new line 2
 ```
 
-- `%%exhash new.py 0|0000| a` creates a missing file.
+- `%%exhash new.py 0|AA| a` creates a missing file.
 - `%%exhash f.py % c` replaces the whole file (`%` needs no hashes). With a cell id, `%%exhash nb.ipynb ab12 % c` replaces that notebook cell's source.
-- `%%exhash f.py 12|a3f2|,15|b1c3| c` replaces just that range, both addresses from one `lnhashview_file` view.
+- `%%exhash f.py 12|Py|,15|HD| c` replaces just that range, both addresses from one `lnhashview_file` view.
 - One trailing newline (the cell terminator) is stripped; to end the payload with a blank line, leave one extra blank line at the bottom.
 - Each magic cell applies one command and returns the diff.
 
@@ -278,9 +278,9 @@ res = exhash(text, [(addr, "s", "foo", "baz")])
 print(res.format_diff())
 # --- original
 # +++ modified
-# -1|a1b2|foo
-# +1|c3d4|baz
-#  2|e5f6|bar
+# -1|Gy|foo
+# +1|PU|baz
+#  2|X2|bar
 ```
 
 All diff strings returned by `format_diff`, `file_exhash`, and `cell_exhash` are fastcore `PrettyString`s, and the result objects' reprs show the diff too - so in IPython, ending a cell with the bare call displays the diff verbatim, no `print` needed.
@@ -290,7 +290,7 @@ All diff strings returned by `format_diff`, `file_exhash`, and `cell_exhash` are
 `open_doc` opens a file (`fname=`, or a `Path` as `src`; recorded for `refresh()` and edits), a URL (an `https?://` str, fetched), or any other str as text, and returns a `Section` tree: Markdown sections from headings, code sections (py, js, ts, tsx, rs, zig, swift) from tree-sitter definitions, and `.ipynb` sections from md-heading cells over cells. The bare repr is a fixed-width outline, one row per section:
 
 ```
-1.6.|56|e96a|,78|eef8| Release [725] Publishing is handled by GitHub Actions in `.github/workflows/ci.yml`…
+1.6.|56|lq|,78|74| Release [725] Publishing is handled by GitHub Actions in `.github/workflows/ci.yml`…
 ```
 
 The leading token is a verified address: the dotted addr (trailing dot; the root's is `.`) fused with the section's `start,end` lnhash boundary pair. `at(token)` navigates with the first hash verified, so a stale copy fails loudly; the boundary pair drops straight into a `file_exhash` range command, so a listing is also an edit address book. `find(title)`, `search(pat)`, `paths(depth)`, and numeric indexing (`d[1][6]`) traverse the live tree; `links(pat)` lists inline links numbered document-wide, and `open(n)` opens link `n` as a new tree (fetched or read relative to `base`). Previews join lines with `¶` and render links as `[text][n]`, so no URL is ever displayed. A markdown row's preview starts under its heading; a code row has no title, and its preview opens with the def line itself, signature included. `view()` returns a section's rendered text the same way (`.src` is the raw source); `view(*tokens)` returns the live sections at those verified addresses, displayed under `# token` headers when more than one; `nums=`/`lnhashs=` switch any view to stored lines with edit-ready addresses. Notebook section tokens carry the heading cell id, and `view(lnhashs=True)` emits `cellid:lineno|hash|` rows ready for `cell_exhash`.

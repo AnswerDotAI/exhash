@@ -122,7 +122,7 @@ def test_inline_change_from_arg(tmp_path):
 
 def test_creates_missing_file_with_zero_append(tmp_path):
     f = tmp_path / "new.txt"
-    out = run([str(f), "0|0000|a"], input="first line\n")
+    out = run([str(f), "0|AA|a"], input="first line\n")
     assert out.returncode == 0
     assert out.stdout == diff(f"{add(1, 'first line')}\n")
     assert f.read_text() == "first line\n"

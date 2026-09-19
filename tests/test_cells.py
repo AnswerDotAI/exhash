@@ -68,7 +68,7 @@ def test_cell_exhash_preview_and_stale(tmp_path):
     res = cell_exhash(p, 'aaaa1111', (lnhash(1, "x=1"), "s", "1", "9"), inplace=False)   # preview
     assert res['lines'] == ['x=9']
     assert json.loads(p.read_text())['cells'][0]['source'] == 'x=1'   # untouched
-    with pytest.raises(ValueError): cell_exhash(p, 'aaaa1111', ("1|dead|", "s", "x", "y"), inplace=True)
+    with pytest.raises(ValueError): cell_exhash(p, 'aaaa1111', ("1|6t|", "s", "x", "y"), inplace=True)
     assert json.loads(p.read_text())['cells'][0]['source'] == 'x=1'   # stale hash leaves file alone
 
 
@@ -94,8 +94,8 @@ def test_exhash_cell_cli_dry_run_then_write(tmp_path, capsys):
 def test_exhash_cell_cli_help(capsys):
     exhash_cell_main(['--help'])
     help_ = capsys.readouterr().err
-    assert "'3|beef|s/old/new/'" in help_
-    assert "'3|beef|c'" in help_
+    assert "'3|7v|s/old/new/'" in help_
+    assert "'3|7v|c'" in help_
     assert 'through EOF' in help_
 
 
@@ -114,12 +114,12 @@ def test_file_cell_exhash_targets(tmp_path):
     mk_nb(nb2, [('cccc3333', 'z=3')])
     f.write_text('start\n')
     # copy a line from one cell into another cell of a different notebook (prefix ids)
-    diff = file_exhash(str(f), (f'{nb1}:aaaa:{lnhash(1, "k = 42")}', 't', f'{nb2}:cccc:0|0000|'))
+    diff = file_exhash(str(f), (f'{nb1}:aaaa:{lnhash(1, "k = 42")}', 't', f'{nb2}:cccc:0|AA|'))
     assert json.loads(nb2.read_text())['cells'][0]['source'] == 'k = 42\nz=3'
     assert f'{nb2}:cccc3333' in diff  # diff labelled with the resolved cell id
     # whole-cell source into a file, and a file line into a cell, in one command set
     file_exhash(str(f), (f'{nb1}:bbbb2222:%', 't', f'{f}:$'),
-        (f'{f}:{lnhash(1, "start")}', 't', f'{nb1}:aaaa1111:0|0000|'))
+        (f'{f}:{lnhash(1, "start")}', 't', f'{nb1}:aaaa1111:0|AA|'))
     assert f.read_text() == 'start\ny=1\n'
     assert json.loads(nb1.read_text())['cells'][0]['source'] == ['start\n', 'k = 42\n', 'print(k)']
     # cut (m) between cells of the same notebook: one write applies both cells
@@ -127,6 +127,6 @@ def test_file_cell_exhash_targets(tmp_path):
     cells = {c['id']: c['source'] for c in json.loads(nb1.read_text())['cells']}
     assert cells['aaaa1111'] == ['k = 42\n', 'print(k)'] and cells['bbbb2222'] == 'y=1\nstart'
     # a range must stay within one target; missing cells raise; stale hashes raise
-    with pytest.raises(ValueError, match='one file or cell'): file_exhash(str(f), (f'{nb1}:aaaa1111:1|0000|,{nb1}:bbbb2222:1|0000|', 'd'))
-    with pytest.raises(KeyError): file_exhash(str(f), (f'{nb1}:zzzz:1|0000|', 'd'))
-    with pytest.raises(ValueError, match='stale'): file_exhash(str(f), (f'{nb1}:aaaa1111:1|beef|', 'd'))
+    with pytest.raises(ValueError, match='one file or cell'): file_exhash(str(f), (f'{nb1}:aaaa1111:1|AA|,{nb1}:bbbb2222:1|AA|', 'd'))
+    with pytest.raises(KeyError): file_exhash(str(f), (f'{nb1}:zzzz:1|AA|', 'd'))
+    with pytest.raises(ValueError, match='stale'): file_exhash(str(f), (f'{nb1}:aaaa1111:1|7v|', 'd'))

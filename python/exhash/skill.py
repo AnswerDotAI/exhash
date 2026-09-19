@@ -4,13 +4,13 @@ Prefer exhash to ad hoc patching, with hashed views when edits may follow. Displ
 
 ## Addresses and calls
 
-Copy addresses only from fresh `lnhashview*` output, `rg(..., lnhashs=True)`, or verified outline views. Never guess line numbers, derive addresses by text search, or compute hashes. Rows are `lineno|hash|text`, optionally space-padded; hashes are four hex characters. Re-view after each edit call or stale-hash error before constructing more commands. Within one call, a single-line address may match current or call-start content; structural edits still shift lines, so apply bottom-to-top.
+Copy addresses only from fresh `lnhashview*` output, `rg(..., lnhashs=True)`, or verified outline views. Never guess line numbers, derive addresses by text search, or compute hashes. Rows are `lineno|hash|text`, optionally space-padded; hashes are two Base64url characters. Re-view after each edit call or stale-hash error before constructing more commands. Within one call, a single-line address may match current or call-start content; structural edits still shift lines, so apply bottom-to-top.
 
-  Single:   12|a3f2|
-  Range:    12|a3f2|,15|b1c3|
+  Single:   12|Py|
+  Range:    12|Py|,15|HD|
   Last:     $ (last line)
   Whole:    % (whole file or cell, same as 1,$; no hashes needed)
-  Special:  0|0000| targets before line 1 (only with a or i)
+  Special:  0|AA| targets before line 1 (only with a or i)
 
 Python APIs take tuples, never compact CLI strings: `file_exhash(path, (addr, "d"), (addr2, "s", pat, repl))`, or `cell_exhash(path, cell_id, *cmds)`. Unqualified addresses use the supplied path/cell. These write and return a diff; `inplace=False` previews an `EditResult`. `exhash` is the in-memory engine; read its function docs for strict substitution matching and result fields. `lnhashview_cells` groups multiple cell views under `# cell <id>` headers.
 
@@ -39,17 +39,17 @@ Use raw triple-quoted strings when composing tuple fields. Text is verbatim: act
 
 Transfer existing lines with `m`/`t`, not by retyping their content. Qualify addresses with `path:` or `path.ipynb:cellid:` (exact or unique cell prefix):
 
-  file_exhash(path, ("src/a.py:10|aaaa|,20|bbbb|", "m", "src/b.py:$"))          # cut a.py lines 10-20, paste at end of b.py
-  file_exhash(path, ("nb.ipynb:ab12cd34:6|830e|", "t", "other.ipynb:9f8e:$"))   # copy one cell line into another notebook's cell
-  file_exhash(path, ("nb.ipynb:ab12cd34:%", "t", "snippets.py:0|0000|"))        # copy a whole cell's source into a new file
+  file_exhash(path, ("src/a.py:10|qq|,20|u7|", "m", "src/b.py:$"))          # cut a.py lines 10-20, paste at end of b.py
+  file_exhash(path, ("nb.ipynb:ab12cd34:6|MO|", "t", "other.ipynb:9f8e:$"))   # copy one cell line into another notebook's cell
+  file_exhash(path, ("nb.ipynb:ab12cd34:%", "t", "snippets.py:0|AA|"))        # copy a whole cell's source into a new file
 
-A range stays within one file/cell. Transfers cannot create cells; use the notebook/dialog structural APIs for whole-cell operations. A `0|0000|` destination can create a file; ordinary creation requires `(r"0|0000|", "a", text)` or `i`.
+A range stays within one file/cell. Transfers cannot create cells; use the notebook/dialog structural APIs for whole-cell operations. A `0|AA|` destination can create a file; ordinary creation requires `(r"0|AA|", "a", text)` or `i`.
 
 For reflow: `j` a range, re-view, then one g-flagged substitution inserts breaks before chosen tokens: `(addr, "s", r", ('foo'|'bar'|'baz')", ",\n    $1", "g")`.
 
 ## IPython magic
 
-Importing this module registers `%%exhash <path> [<cell_id>] <address> <a|i|c>`. Use it for every interactive `a`/`i`/`c`; tuple text blocks are for scripts/tests without magics. Its body is literal (one trailing newline stripped), with no Python quoting. Token count distinguishes file from cell; the shlex-split line requires quoted or escaped spaces in paths. IPython expands `{expr}`/`$var` only on that line, e.g. `%%exhash {path} {cid} % c`. Use `0|0000| a` to create a file, `% c` to replace all, or a verified range plus `c` to replace a region.
+Importing this module registers `%%exhash <path> [<cell_id>] <address> <a|i|c>`. Use it for every interactive `a`/`i`/`c`; tuple text blocks are for scripts/tests without magics. Its body is literal (one trailing newline stripped), with no Python quoting. Token count distinguishes file from cell; the shlex-split line requires quoted or escaped spaces in paths. IPython expands `{expr}`/`$var` only on that line, e.g. `%%exhash {path} {cid} % c`. Use `0|AA| a` to create a file, `% c` to replace all, or a verified range plus `c` to replace a region.
 
 ## Document outlines
 
