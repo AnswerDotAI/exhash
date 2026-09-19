@@ -53,13 +53,7 @@ Importing this module registers `%%exhash <path> [<cell_id>] <address> <a|i|c>`.
 
 ## Document outlines
 
-`open_doc` accepts files (`fname=` or a `Path`, retained for refresh/edit), URLs (`https?://` strings), or held text (other strings). `Section` trees use Markdown headings, tree-sitter definitions (py/js/ts/tsx/rs/zig/swift), or notebook heading cells. Listing rows are `token title [size] preview`; code previews start with the definition/signature instead of a title. Newlines display as ¶ and links as `[text][n]`.
-
-Tokens combine dotted section addresses (root `.`, trailing dot otherwise) and boundary hashes: `1.2.|12|a3f2|,45|b1c3|`. `at()` accepts copied listing tokens, not bare dotted addresses, and verifies the first hash; the boundary pair is an edit-ready range. Live navigation uses `d[1][6]`, `find(title)`, `search(pat)`, `paths(depth)`, `links(pat)`, and `open(n)`. Opened links record `base`; non-Markdown targets become leaves with text in `.src`.
-
-`view()` renders links as `[text][n]`; `.src` is raw text. `view(*tokens)` reads multiple sections under `# token` headers; `nums`/`lnhashs` show stored lines. Notebook tokens contain heading cell IDs (`1.2.|ab12cd34|8f3a|`); hashed views use `cellid:lineno|hash|` for cell edits.
-
-For llms.txt: `toc = open_doc(url)` → `toc.links(topic)` → `page = toc.open(n)` → display `page`; read `page.view()` when small, otherwise `page.search(topic)` and `page.view(*tokens)`.
+Before using `open_doc`, you must read its docstring with `doc(open_doc)` for supported inputs, verified navigation, views, links, and the llms.txt workflow.
 """
 
 from . import exhash, cell_exhash, file_exhash, line_hash, lnhash, lnhashview, lnhashview_cell, lnhashview_cells, lnhashview_file, magic

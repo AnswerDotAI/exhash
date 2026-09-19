@@ -350,7 +350,18 @@ def open_doc(
     rm_fenced=True, # Ignore headings inside fenced code blocks?
     fname:str=None, # File name to open (expands `~`), as an alternative to passing a `Path` as `src`
 ):
-    "Open a document as a `Section` tree: a file (`fname`, or a `Path` in `src`; recorded for `refresh` and edits), a URL (fetched), or text"
+    """Open a file, URL, or text as a `Section` tree for hierarchical reading and verified edit addresses.
+
+    Pass a file with `fname=` or a `Path` as `src` (retained for `refresh()` and edits), a URL as an `https?://` string, or held text as any other string. Trees use Markdown headings, tree-sitter definitions for code files (py/js/ts/tsx/rs/zig/swift), or notebook heading cells.
+
+    Display the tree bare to see its outline. Listing rows are `token title [size] preview`; code previews start with the definition/signature instead of a title. Newlines display as ¶ and links as `[text][n]`.
+
+    Tokens, the idiomatic usage, combine dotted section addresses (root `.`, trailing dot otherwise) and boundary hashes: `1.2.|12|a3f2|,45|b1c3|`. `at()` accepts copied listing tokens, not bare dotted addresses, and verifies the first hash; the boundary pair is an edit-ready range. Live navigation uses `d[1][6]`, `find(title)`, `search(pat)`, and `paths(depth)`. Use `links(pat)` to list links and `open(n)` to open one by number. Opened links record `base`; non-Markdown targets become leaves with text in `.src`.
+
+    `view()` renders links as `[text][n]`; `.src` is raw text. `view(*tokens)` reads multiple sections under `# token` headers; `nums=True` or `lnhashs=True` shows stored lines with line numbers or hash addresses. Notebook tokens contain heading cell IDs (`1.2.|ab12cd34|8f3a|`); hashed views use `cellid:lineno|hash|` for cell edits.
+
+    For llms.txt: `toc = open_doc(url)` → `toc.links(topic)` → `page = toc.open(n)` → display `page`. Read `page.view()` when small; otherwise use `page.search(topic)` and `page.view(*tokens)`.
+    """
     if fname: src = Path(fname)
     if isinstance(src, Path):
         path = src.expanduser()
