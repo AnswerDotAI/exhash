@@ -61,7 +61,12 @@ impl EditResult {
     /// once, as `+`.
     /// Non-empty diffs start with `--- original` and `+++ modified` headers, except when nothing
     /// changed and lines were printed: that renders as a bare `lnhashview` of the printed lines.
-    pub fn format_diff(&self, original_lines: &[&str], context: usize) -> String {
+    pub fn format_diff(&self, original_lines: &[&str], context: usize) -> String { self.format_diff_with_maxlen(original_lines, context, None) }
+
+    /// `format_diff`, capping each row at `maxlen` chars plus a closing `…`.
+    /// A capped row that has a changed counterpart starts shortly before their first difference, so the edit shows.
+    /// A `…` after its lnhash marks the skipped head. Any other capped row keeps its head.
+    pub fn format_diff_with_maxlen(&self, original_lines: &[&str], context: usize, maxlen: Option<usize>) -> String {
         let mod_set: BTreeSet<usize> = self.modified.iter().copied().collect();
         let del_set: BTreeSet<usize> = self.deleted.iter().copied().collect();
         let print_set: BTreeSet<usize> = self.printed.iter().copied().collect();
@@ -134,19 +139,52 @@ impl EditResult {
 
         let mut out = String::from("--- original\n+++ modified\n");
         let mut last: Option<usize> = None;
+        let skips = if maxlen.is_some() { pair_skips(&events) } else { Vec::new() };
         for i in &interesting {
             if let Some(prev) = last
                 && *i > prev + 1
             { out.push_str("---\n"); }
             let (tag, ref hash, text) = events[*i];
-            out.push(tag);
-            out.push_str(hash);
-            out.push_str(text);
+            let prefix = format!("{tag}{hash}");
+            out.push_str(&match maxlen { Some(m) => cap_row(&prefix, text, skips[*i], m), None => prefix + text });
             out.push('\n');
             last = Some(*i);
         }
         out
     }
+}
+
+/// Shared chars kept before the first difference in a capped row that skips its head.
+const DIFF_LEAD: usize = 20;
+
+/// Leading chars that each event's row skips when capped.
+/// A changed run's nth `-` pairs with its nth `+` when their counts match.
+/// A paired row skips to `DIFF_LEAD` chars before the pair's first difference.
+fn pair_skips(events: &[(char, String, &str)]) -> Vec<usize> {
+    let mut skips = vec![0; events.len()];
+    let mut off = 0;
+    for run in events.chunk_by(|a, b| (a.0 == ' ') == (b.0 == ' ')) {
+        let idx = |tag: char| (off..off + run.len()).filter(|&i| events[i].0 == tag).collect::<Vec<_>>();
+        let (old, new) = (idx('-'), idx('+'));
+        if old.len() == new.len() {
+            for (&o, &n) in old.iter().zip(&new) {
+                let same = events[o].2.chars().zip(events[n].2.chars()).take_while(|(a, b)| a == b).count();
+                skips[o] = same.saturating_sub(DIFF_LEAD);
+                skips[n] = skips[o];
+            }
+        }
+        off += run.len();
+    }
+    skips
+}
+
+/// `prefix` then `text`, capped at `maxlen` chars plus a closing `…`.
+/// A capped row drops `skip` leading chars of `text` behind a `…`.
+fn cap_row(prefix: &str, text: &str, skip: usize, maxlen: usize) -> String {
+    let row = format!("{prefix}{text}");
+    if row.chars().count() <= maxlen { return row; }
+    let row = if skip == 0 { row } else { format!("{prefix}…{}", text.chars().skip(skip).collect::<String>()) };
+    if row.chars().count() <= maxlen { row } else { row.chars().take(maxlen).chain(['…']).collect() }
 }
 
 #[derive(Debug, Clone)]

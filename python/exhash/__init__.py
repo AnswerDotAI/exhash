@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 from .exhash import line_hash as _line_hash, lnhash as _lnhash, lnhashview as _lnhashview, exhash as _exhash, edit_buffers as _edit_buffers
-from .exhash import view_file as _view_file, view_cell as _view_cell, view_cells as _view_cells, edit_files as _edit_files, edit_cell as _edit_cell
+from .exhash import view_file as _view_file, view_cell as _view_cell, view_cells as _view_cells, edit_files as _edit_files, edit_cell as _edit_cell, truncate_diff as _truncate_diff
 from fastcore.basics import fail_clean, PrettyString
 
 MAXLEN = 180 # Most characters shown per displayed line
@@ -107,11 +107,15 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
       printed   1-based line numbers explicitly addressed by ``p``
 
     Call ``res.format_diff(context=1)`` for a unified-diff-style summary.
+    ``maxlen=n`` caps each diff row at ``n`` chars plus a closing ``…``.
+    Where a run of changed rows holds as many ``-`` rows as ``+`` rows, the nth ``-`` row pairs with the nth ``+`` row.
+    A capped row of a pair starts 20 chars before the pair's first difference, with ``…`` after its address.
+    Every other capped row keeps its start.
     Non-empty diffs start with ``--- original`` and ``+++ modified`` headers, except a
     ``p``-only result: that renders as a bare ``lnhashview`` of the printed lines, headerless
     and untruncated. Printed lines inside a real diff always show, as context rows.
     NB: ``file_exhash``/``cell_exhash`` with ``inplace=True`` (their default) do not
-    return an EditResult: they return the formatted diff string directly (display-truncated via ``truncate_diff``).
+    return an EditResult: they return the formatted diff string directly (display-truncated via ``format_diff(maxlen=MAXLEN)`` and ``truncate_diff``).
 
     Examples::
 
@@ -146,8 +150,8 @@ class FileEditResult:
         if key in {"lines", "hashes", "original_lines", "printed"}: return getattr(self, key)
         raise KeyError(key)
 
-    def format_diff(self, context=1):
-        diff = str(self._result.format_diff(context))
+    def format_diff(self, context=1, maxlen=None):
+        diff = str(self._result.format_diff(context, maxlen))
         if self.changed: diff = diff.replace('--- original\n+++ modified\n', f'--- {self.path}\n+++ {self.path}\n', 1)
         return PrettyString(diff)
 
@@ -155,7 +159,7 @@ class FileEditResult:
 
     def __repr__(self):
         view_only = self.printed and not self.changed
-        diff = self.format_diff() if view_only else truncate_diff(self.format_diff())
+        diff = self.format_diff() if view_only else truncate_diff(self.format_diff(maxlen=MAXLEN))
         if self.changed: note = ''
         elif self.printed: note = f', {len(self.printed)} printed, no changes'
         else: note = ', no changes'
@@ -181,7 +185,7 @@ class FileSetEditResult:
         out = []
         for p in shown:
             r = self.files[p]
-            d = str(r.format_diff(context))
+            d = str(r.format_diff(context, MAXLEN if trunc else None))
             if r.changed: out.append(truncate_diff(d) if trunc else d)
             else: out.append((f'{r.header}\n' if len(shown) > 1 else '') + d)
         return ''.join(out)
@@ -213,18 +217,14 @@ def _write_lines(path, lines): Path(path).write_text(_text_from_lines(lines))
 def truncate_diff(
     s:str, # Formatted diff text
     max_lines:int=15, # Max lines to keep before eliding the rest
-    maxlen:int=MAXLEN, # Max chars per line; longer lines are cut and end with an ellipsis (``---``/``+++`` file headers exempt)
 )->str:
-    "Truncate diff text for display: cap line length and count, appending an elided-lines marker."
-    lines = s.splitlines()
-    out = [l if len(l)<=maxlen or l.startswith(('--- ','+++ ')) else l[:maxlen]+'…' for l in lines[:max_lines]]
-    if len(lines)>max_lines: out.append(f'…{len(lines)-max_lines} lines elided…')
-    return '\n'.join(out)+'\n' if out else ''
+    "Truncate diff text for display: cap the line count, appending an elided-lines marker."
+    return _truncate_diff(s, max_lines)
 
 
 def _diff_out(res):
     'Formatted output for an EditResult: a print-only result is a view, so it is never truncated.'
-    diff = res.format_diff()
+    diff = res.format_diff(maxlen=MAXLEN)
     if res['printed'] and not res['modified'] and not res['deleted']: return PrettyString(diff)
     return PrettyString(truncate_diff(diff))
 
@@ -254,7 +254,7 @@ def file_exhash(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
 
     By default (``inplace=True``) write changed files only after every command
     succeeds and return the combined diff string (display-truncated via
-    ``truncate_diff``); if any command fails, write nothing. Lines addressed by ``p``
+    ``format_diff(maxlen=MAXLEN)`` and ``truncate_diff``); if any command fails, write nothing. Lines addressed by ``p``
     are reported too: a ``p``-only call writes nothing and returns those lines as a bare,
     untruncated ``lnhashview``, and printed rows in a target that also changed ride in its
     diff as context. With more than one reported target, each printed-only group is headed
@@ -291,7 +291,7 @@ def cell_exhash(path:str, cell_id:str, *cmds:tuple, sw:int=4, inplace:bool=True)
     By default (``inplace=True``) write the edited source back when the source actually
     changed (preserving the cell's original str-or-list-of-lines form; the notebook
     re-serializes in Jupyter's JSON layout) and return the diff string (display-truncated via
-    ``truncate_diff``); if any command fails, write nothing. A ``p``-only call writes nothing and
+    ``format_diff(maxlen=MAXLEN)`` and ``truncate_diff``); if any command fails, write nothing. A ``p``-only call writes nothing and
     returns the printed lines as a bare, untruncated ``lnhashview``. Pass
     ``inplace=False`` to preview instead: the EditResult is returned without touching the file.
     """

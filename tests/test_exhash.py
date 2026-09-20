@@ -574,8 +574,6 @@ def test_truncate_diff():
     short = "--- a\n+++ a\n+1|vN|x\n"
     assert truncate_diff(short) == short
     long_line = "x" * 200
-    t = truncate_diff(f"+1|vN|{long_line}\n")
-    assert t.splitlines()[0] == ("+1|vN|" + long_line)[:MAXLEN] + "…"
     assert repr(exhash('', [('0|AA|', 'a', long_line)])).splitlines()[-1] == ('+' + lnhash(1, long_line) + long_line)[:MAXLEN] + '…'
     many = "\n".join(f"+{i}|vN|line {i}" for i in range(1, 41)) + "\n"
     t = truncate_diff(many)
@@ -584,10 +582,24 @@ def test_truncate_diff():
     assert lines[:15] == many.splitlines()[:15]
     assert truncate_diff("") == ""
     assert truncate_diff(many, max_lines=40) == many
-    hdr = "--- /some/" + "long/" * 30 + "path.txt\n+1|vN|x\n"
-    assert truncate_diff(hdr) == hdr
     r = exhash("\n".join(f"x{i}" for i in range(40)) + "\n", [("%", "s", "x", "y", "g")])
     assert "lines elided…" in repr(r) and "lines elided" not in str(r)
+
+def test_format_diff_maxlen():
+    "Capped rows of a changed pair start just before their first difference, so the edit stays visible."
+    long = 'word '*60 + 'TARGET ' + 'tail '*30
+    text = f'first\n{long}\nlast\n'
+    addr = lnhash(2, long)
+    for cmd in [(addr, 's', 'TARGET', 'CHANGED'), (addr, 'c', long.replace('TARGET', 'CHANGED'))]:
+        res = exhash(text, [cmd])
+        assert '-' + addr + long in res.format_diff().splitlines()       # uncapped by default
+        rows = {l[0]: l for l in res.format_diff(maxlen=MAXLEN).splitlines()[2:]}
+        assert rows['-'].startswith('-' + addr + '…') and 'TARGET' in rows['-']
+        assert rows['+'].startswith('+' + lnhash(2, res.lines[1]) + '…') and 'CHANGED' in rows['+']
+        assert all(len(rows[t]) == MAXLEN+1 and rows[t].endswith('…') for t in '+-')
+        assert 'TARGET' in repr(res) and 'CHANGED' in repr(res)
+    rows = exhash(text, [(addr, 's', 'word', 'WORD')]).format_diff(maxlen=MAXLEN).splitlines()
+    assert ('+' + lnhash(2, 'WORD' + long[4:]) + 'WORD word') in rows[4]  # a change near the start keeps the line's head
 
 def test_exhash_substitute_unknown_group_fails():
     "Unknown/invalid $refs in a replacement fail loudly instead of silently substituting nothing."

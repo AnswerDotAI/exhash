@@ -65,6 +65,7 @@ Python `file_exhash` and `cell_exhash` are thin adapters over this core.
 The Rust `notebook_text` export supplies the same sorted, one-space-indented JSON serialization to embedding callers.
 File views and `file_exhash` normalize CR, CRLF, and LF line endings on read. Unicode separators remain line content, and Python result wrappers use the Rust engine's original lines so no-op detection and diffs agree. No-op file edits leave the original bytes untouched.
 `lnhashview` range requests clamp `end` past EOF to the last available line, while invalid `start` values still error.
+`EditResult::format_diff_with_maxlen` caps diff rows and chooses where a capped row of a changed pair starts. The Python reprs and the `file_exhash`/`cell_exhash` return values call it with `MAXLEN`. Python `truncate_diff` wraps the Rust line-count cap that `EditResult.__repr__` also uses.
 
 ## Release
 

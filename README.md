@@ -283,6 +283,8 @@ print(res.format_diff())
 #  2|X2|bar
 ```
 
+`format_diff(maxlen=n)` caps each diff row at `n` chars plus a closing `…`. Where a run of changed rows holds as many `-` rows as `+` rows, the nth `-` row pairs with the nth `+` row. A capped row of a pair starts 20 chars before the pair's first difference, with `…` after its address. Every other capped row keeps its start. The result reprs and the diffs that `file_exhash` and `cell_exhash` return use `maxlen=180`. `truncate_diff` then keeps their first 15 lines.
+
 All diff strings returned by `format_diff`, `file_exhash`, and `cell_exhash` are fastcore `PrettyString`s, and the result objects' reprs show the diff too - so in IPython, ending a cell with the bare call displays the diff verbatim, no `print` needed.
 
 ## Document outlines

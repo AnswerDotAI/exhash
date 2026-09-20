@@ -36,7 +36,7 @@ struct EditResultPy {
 }
 
 impl EditResultPy {
-    fn diff_text(&self, context: usize) -> String {
+    fn diff_text(&self, context: usize, maxlen: Option<usize>) -> String {
         let original_lines: Vec<&str> = self.original_text.lines().collect();
         let result = crate::EditResult {
             lines: self.lines.clone(),
@@ -46,7 +46,7 @@ impl EditResultPy {
             origins: self.origins.clone(),
             printed: self.printed.clone(),
         };
-        result.format_diff(&original_lines, context)
+        result.format_diff_with_maxlen(&original_lines, context, maxlen)
     }
 }
 
@@ -67,16 +67,16 @@ impl EditResultPy {
     #[getter]
     fn original_lines(&self) -> Vec<&str> { self.original_text.lines().collect() }
 
-    #[pyo3(signature = (context=1))]
-    fn format_diff(&self, py: Python<'_>, context: usize) -> PyResult<Py<PyAny>> { pretty_string(py, self.diff_text(context)) }
+    #[pyo3(signature = (context=1, maxlen=None))]
+    fn format_diff(&self, py: Python<'_>, context: usize, maxlen: Option<usize>) -> PyResult<Py<PyAny>> { pretty_string(py, self.diff_text(context, maxlen)) }
 
-    fn __str__(&self) -> String { self.diff_text(1) }
+    fn __str__(&self) -> String { self.diff_text(1, None) }
 
     fn __repr__(&self) -> String {
         // A print-only result is a view, not a diff: never truncate it.
         let bare = self.modified.is_empty() && self.deleted.is_empty() && !self.printed.is_empty();
-        let full = self.diff_text(1);
-        let diff = if bare { full } else { truncate_diff(&full, 15, 180) };
+        let full = self.diff_text(1, Some(180));
+        let diff = if bare { full } else { truncate_diff(&full, 15) };
         if diff.is_empty() { format!("EditResult({} lines, no changes)", self.lines.len()) } else if bare { format!("EditResult({} lines, {} printed, no changes)\n{}", self.lines.len(), self.printed.len(), diff) } else { format!("EditResult({} lines, {} modified, {} deleted)\n{}", self.lines.len(), self.modified.len(), self.deleted.len(), diff) }
     }
 
@@ -93,17 +93,13 @@ impl EditResultPy {
     }
 }
 
-fn truncate_diff(s: &str, max_lines: usize, maxlen: usize) -> String {
+#[pyfunction]
+fn truncate_diff(s: &str, max_lines: usize) -> String {
     let lines: Vec<&str> = s.lines().collect();
     let mut out: Vec<String> = lines
         .iter()
         .take(max_lines)
-        .map(|l| {
-            if l.chars().count() <= maxlen { (*l).to_string() } else {
-                let cut: String = l.chars().take(maxlen).collect();
-                format!("{cut}…")
-            }
-        })
+        .map(|l| l.to_string())
         .collect();
     if lines.len() > max_lines { out.push(format!("…{} lines elided…", lines.len() - max_lines)); }
     if out.is_empty() { String::new() } else { out.join("\n") + "\n" }
@@ -288,6 +284,7 @@ fn exhash(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(exhash_argv, m)?)?;
     m.add_function(wrap_pyfunction!(md_scan, m)?)?;
     m.add_function(wrap_pyfunction!(code_scan, m)?)?;
+    m.add_function(wrap_pyfunction!(truncate_diff, m)?)?;
     Ok(())
 }
 
