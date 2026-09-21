@@ -14,7 +14,7 @@ Copy addresses only from fresh `lnhashview*` output, `rg(..., lnhashs=True)`, or
 
 Python APIs take tuples, never compact CLI strings: `file_exhash(path, (addr, "d"), (addr2, "s", pat, repl))`, or `cell_exhash(path, cell_id, *cmds)`. Unqualified addresses use the supplied path/cell. These write and return a diff; `inplace=False` previews an `EditResult`. `exhash` is the in-memory engine; read its function docs for strict substitution matching and result fields. `lnhashview_cells` groups multiple cell views under `# cell <id>` headers.
 
-Use raw triple-quoted strings when composing tuple fields. Text is verbatim: actual newlines split lines, while two-character `\n` stays literal. An `a`/`i`/`c` block is one field; an initial newline inserts an initial blank line. In IPython, use the magic below for these blocks instead.
+Use raw triple-quoted strings for tuple fields, with line breaks written directly. `\n` inserts a backslash and `n`. An `a`/`i`/`c` block is one field; an initial newline inserts an initial blank line. In IPython, use the magic below for these blocks instead.
 
 ## Tuple command reference
   (addr, "s", pat, repl[, flags]) Substitute using Rust regex. Replacement groups: $1/$0/${name}; unknown groups fail, \1 stays literal, $$ means literal $, ${name}text disambiguates adjacent text. Flags: g=all, i=case-insensitive. Literal newlines, slashes, and backslashes work. Prefer c for $-heavy text to avoid template parsing.
@@ -33,7 +33,13 @@ Use raw triple-quoted strings when composing tuple fields. Text is verbatim: act
   (addr, "y", source, dest) Transliterate `source` chars to `dest` (equal counts required)
 
 
-`p`-only calls write nothing and return untruncated verified rows without diff headers or tags: `("%", "p")` reads all, several `(addr, "p")` commands read scattered lines, and `(addr, "g", pat, ("p",))` is scoped grep. In mixed edit/view calls, printed lines become diff context even far from edited hunks.
+`p`-only calls write nothing. They return untruncated verified rows without diff headers or tags.
+
+- `("%", "p")`: all lines.
+- Multiple `(addr, "p")` commands: scattered lines.
+- `(addr, "g", pat, ("p",))`: lines matching `pat` within `addr`.
+
+In mixed edit/view calls, printed lines become diff context even far from edited hunks.
 
 ## Transfers
 
@@ -49,7 +55,7 @@ For reflow: `j` a range, re-view, then one g-flagged substitution inserts breaks
 
 ## IPython magic
 
-Importing this module registers `%%exhash <path> [<cell_id>] <address> <a|i|c>`. Use it for every interactive `a`/`i`/`c`; tuple text blocks are for scripts/tests without magics. Its body is literal (one trailing newline stripped), with no Python quoting. Token count distinguishes file from cell; the shlex-split line requires quoted or escaped spaces in paths. IPython expands `{expr}`/`$var` only on that line, e.g. `%%exhash {path} {cid} % c`. Use `0|AA| a` to create a file, `% c` to replace all, or a verified range plus `c` to replace a region.
+Importing this module registers `%%exhash <path> [<cell_id>] <address> <a|i|c>`. Use it for every interactive `a`/`i`/`c`; tuple text blocks are for scripts/tests without magics. Write unquoted cell text. The magic strips one trailing newline. Token count distinguishes file from cell; the shlex-split line requires quoted or escaped spaces in paths. IPython expands `{expr}`/`$var` only on that line, e.g. `%%exhash {path} {cid} % c`. Use `0|AA| a` to create a file, `% c` to replace all, or a verified range plus `c` to replace a region.
 
 ## Document outlines
 
