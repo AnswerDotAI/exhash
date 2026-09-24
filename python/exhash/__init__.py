@@ -1,12 +1,10 @@
 "Hash-verified line-addressed text editing. See `exhash.skill` for the workflow guide: view with `lnhashview_*` first, then edit with addresses taken from that view."
 
-import re
 from pathlib import Path
-from .exhash import line_hash as _line_hash, lnhash as _lnhash, lnhashview as _lnhashview, exhash as _exhash, edit_buffers as _edit_buffers
-from .exhash import view_file as _view_file, view_cell as _view_cell, view_cells as _view_cells, edit_files as _edit_files, edit_cell as _edit_cell, truncate_diff as _truncate_diff
+from .exhash import line_hash as _line_hash, lnhash as _lnhash, lnhashview as _lnhashview, exhash as _exhash
+from .exhash import view_file as _view_file, view_cell as _view_cell, view_cells as _view_cells
+from .exhash import edit_files as _edit_files, edit_cell as _edit_cell, truncate_diff as _truncate_diff, render as _render_edits, MAXLEN
 from fastcore.basics import fail_clean, PrettyString
-
-MAXLEN = 180 # Most characters shown per displayed line
 
 stdexcs = (ValueError, OSError, KeyError)
 
@@ -111,11 +109,14 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
     Where a run of changed rows holds as many ``-`` rows as ``+`` rows, the nth ``-`` row pairs with the nth ``+`` row.
     A capped row of a pair starts 20 chars before the pair's first difference, with ``…`` after its address.
     Every other capped row keeps its start.
-    Non-empty diffs start with ``--- original`` and ``+++ modified`` headers, except a
-    ``p``-only result: that renders as a bare ``lnhashview`` of the printed lines, headerless
-    and untruncated. Printed lines inside a real diff always show, as context rows.
+    Non-empty diffs start with ``--- original`` and ``+++ modified`` headers.
+    A result that changed nothing has an empty diff.
+    Lines addressed by ``p`` are not part of the diff.
+    ``res.format_printed()`` returns them as a bare ``lnhashview``, never capped or truncated.
+    ``str(res)`` and the repr show the diff, then a ``# printed`` header, then the printed lines.
+    With no diff, they show the printed lines alone.
     NB: ``file_exhash``/``cell_exhash`` with ``inplace=True`` (their default) do not
-    return an EditResult: they return the formatted diff string directly (display-truncated via ``format_diff(maxlen=MAXLEN)`` and ``truncate_diff``).
+    return an EditResult: they return that output as a string, with the diff display-truncated via ``format_diff(maxlen=MAXLEN)`` and ``truncate_diff``.
 
     Examples::
 
@@ -131,39 +132,31 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
 
 class FileEditResult:
     'Edited state for one file.'
-    def __init__(self, path, original_lines, result, cell=None):
-        self.path = _norm_path(path)
-        self.original_lines = list(original_lines)
+    def __init__(self, result):
+        self.path, self.cell = result.path, result.cell
+        self.original_lines = list(result.original_lines)
         self.lines = list(result.lines)
         self.hashes = list(result.hashes)
         self.printed = list(result.printed)
-        self.cell = cell
         self._result = result
 
     @property
     def changed(self): return self.original_lines != self.lines
 
-    @property
-    def header(self): return f'# cell {self.cell}' if self.cell else f'# file {self.path}'
-
     def __getitem__(self, key):
         if key in {"lines", "hashes", "original_lines", "printed"}: return getattr(self, key)
         raise KeyError(key)
 
-    def format_diff(self, context=1, maxlen=None):
-        diff = str(self._result.format_diff(context, maxlen))
-        if self.changed: diff = diff.replace('--- original\n+++ modified\n', f'--- {self.path}\n+++ {self.path}\n', 1)
-        return PrettyString(diff)
+    def format_diff(self, context=1, maxlen=None): return self._result.format_diff(context, maxlen)
 
-    def __str__(self): return str(self.format_diff())
+    def format_printed(self): return self._result.format_printed()
+
+    def __str__(self): return str(self._result)
 
     def __repr__(self):
-        view_only = self.printed and not self.changed
-        diff = self.format_diff() if view_only else truncate_diff(self.format_diff(maxlen=MAXLEN))
-        if self.changed: note = ''
-        elif self.printed: note = f', {len(self.printed)} printed, no changes'
-        else: note = ', no changes'
-        return f'FileEditResult({self.path}: {len(self.lines)} lines{note})' + (f'\n{diff}' if diff else '')
+        note = (f', {len(self.printed)} printed' if self.printed else '') + ('' if self.changed else ', no changes')
+        report = str(self._result.report(trunc=True))
+        return f'FileEditResult({self.path}: {len(self.lines)} lines{note})' + (f'\n{report}' if report else '')
 
 
 class FileSetEditResult:
@@ -176,42 +169,21 @@ class FileSetEditResult:
 
     def __getitem__(self, path): return self.files[_norm_path(path)]
 
-    @property
-    def _shown(self): return [p for p, r in self.files.items() if r.changed or r.printed]
+    def _render(self, context=1, trunc=False): return _render_edits([r._result for r in self.files.values()], context, trunc)
 
-    def _render(self, context=1, trunc=False):
-        'Diffs for changed targets, then bare views for printed-only ones, headed when several targets show.'
-        shown = self._shown
-        out = []
-        for p in shown:
-            r = self.files[p]
-            d = str(r.format_diff(context, MAXLEN if trunc else None))
-            if r.changed: out.append(truncate_diff(d) if trunc else d)
-            else: out.append((f'{r.header}\n' if len(shown) > 1 else '') + d)
-        return ''.join(out)
+    def format_diff(self, context=1): return PrettyString(''.join(str(self.files[p].format_diff(context)) for p in self.changed))
 
-    def format_diff(self, context=1): return PrettyString(self._render(context))
+    def _trunc_report(self): return PrettyString(self._render(1, trunc=True))
 
-    def _trunc_diff(self): return PrettyString(self._render(1, trunc=True))
-
-    def __str__(self): return str(self.format_diff())
+    def __str__(self): return self._render()
 
     def __repr__(self):
-        diff = self._trunc_diff()
+        diff = self._trunc_report()
         counts = f'{len(self.changed)} changed' + (f', {len(self.printed)} printed' if self.printed else '')
         return f'FileSetEditResult({len(self.files)} files, {counts})' + (f'\n{diff}' if diff else '')
 
 
-_ADDR_RE = re.compile(r'(?:\$|%|\d+\|[A-Za-z0-9_-]{2}\|)')
-
-
 def _norm_path(path): return str(Path(path).expanduser())
-
-
-def _text_from_lines(lines): return '\n'.join(lines) + ('\n' if lines else '')
-
-
-def _write_lines(path, lines): Path(path).write_text(_text_from_lines(lines))
 
 
 def truncate_diff(
@@ -223,10 +195,8 @@ def truncate_diff(
 
 
 def _diff_out(res):
-    'Formatted output for an EditResult: a print-only result is a view, so it is never truncated.'
-    diff = res.format_diff(maxlen=MAXLEN)
-    if res['printed'] and not res['modified'] and not res['deleted']: return PrettyString(diff)
-    return PrettyString(truncate_diff(diff))
+    'Display output for an EditResult: its capped, truncated diff, then its printed lines in full.'
+    return res.report(trunc=True) or PrettyString('none: No changes.')
 
 
 
@@ -252,20 +222,20 @@ def file_exhash(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
     ``m``/``t`` destination); cells are never created: a cell target must
     already exist, or the command raises ``KeyError``.
 
-    By default (``inplace=True``) write changed files only after every command
-    succeeds and return the combined diff string (display-truncated via
-    ``format_diff(maxlen=MAXLEN)`` and ``truncate_diff``); if any command fails, write nothing. Lines addressed by ``p``
-    are reported too: a ``p``-only call writes nothing and returns those lines as a bare,
-    untruncated ``lnhashview``, and printed rows in a target that also changed ride in its
-    diff as context. With more than one reported target, each printed-only group is headed
-    by ``# file <path>`` or ``# cell <id>``. Pass ``inplace=False`` to preview instead: a
-    ``FileSetEditResult`` is returned with ``files``, ``changed``, ``default_path``,
+    By default (``inplace=True``) write changed files only after every command succeeds.
+    If any command fails, write nothing.
+    Return each target's diff (rows capped at 180 characters and at most 15 lines, via ``format_diff(maxlen=MAXLEN)`` and ``truncate_diff``), then its lines addressed by ``p`` under a ``# printed`` header.
+    Printed lines are never capped or truncated.
+    A ``p``-only call writes nothing and returns the printed lines as a bare ``lnhashview``.
+    A call that changes and prints nothing returns ``none: No changes.``
+    With more than one reported target, each target with only printed lines is headed by ``# file <path>`` or ``# cell <id>``.
+    Pass ``inplace=False`` to preview instead: a ``FileSetEditResult`` is returned with ``files``, ``changed``, ``printed``, ``default_path``,
     ``res[path]`` (cell targets under ``'path:cellid'``), and ``res.format_diff(context=1)``.
     '''
     native = _edit_files(str(path), _normalize_cmds(cmds), sw=sw, inplace=inplace)
-    files = {key: FileEditResult(key, result.original_lines, result, cell=cell) for key, cell, result in native}
+    files = {r.path: FileEditResult(r) for r in native}
     result = FileSetEditResult(files, _norm_path(path))
-    return result._trunc_diff() if inplace else result
+    return PrettyString(result._trunc_report() or 'none: No changes.') if inplace else result
 
 
 @fail_clean(*stdexcs)
@@ -290,10 +260,11 @@ def cell_exhash(path:str, cell_id:str, *cmds:tuple, sw:int=4, inplace:bool=True)
 
     By default (``inplace=True``) write the edited source back when the source actually
     changed (preserving the cell's original str-or-list-of-lines form; the notebook
-    re-serializes in Jupyter's JSON layout) and return the diff string (display-truncated via
-    ``format_diff(maxlen=MAXLEN)`` and ``truncate_diff``); if any command fails, write nothing. A ``p``-only call writes nothing and
-    returns the printed lines as a bare, untruncated ``lnhashview``. Pass
-    ``inplace=False`` to preview instead: the EditResult is returned without touching the file.
+    re-serializes in Jupyter's JSON layout). If any command fails, write nothing.
+    Return the diff (rows capped at 180 characters and at most 15 lines, via ``format_diff(maxlen=MAXLEN)`` and ``truncate_diff``), then the lines addressed by ``p`` under a ``# printed`` header.
+    A ``p``-only call writes nothing and returns the printed lines as a bare, untruncated ``lnhashview``.
+    A call that changes and prints nothing returns ``none: No changes.``
+    Pass ``inplace=False`` to preview instead: the EditResult is returned without touching the file.
     """
     res = _edit_cell(str(path), cell_id, _normalize_cmds(cmds), sw=sw, inplace=inplace)
     return _diff_out(res) if inplace else res

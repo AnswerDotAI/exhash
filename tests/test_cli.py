@@ -102,6 +102,15 @@ def test_move_to_last_line_destination(tmp_path):
     assert add(3, "a") in out.stdout
     assert f.read_text() == "b\nc\na\n"
 
+def test_print_takes_bare_line_numbers(tmp_path):
+    f = tmp_path / "f.txt"
+    f.write_text("a\nb\nc")  # no final newline: a call that changes nothing must leave the bytes alone
+    out = run([str(f), "2,3p"])
+    assert out.returncode == 0
+    assert out.stdout == f"{lnhash(2, 'b')}b\n{lnhash(3, 'c')}c\n"
+    assert run([str(f), "2d"]).returncode != 0
+    assert f.read_text() == "a\nb\nc"
+
 def test_multiline_append_from_stdin(tmp_path):
     f = tmp_path / "f.txt"
     f.write_text("a\n")

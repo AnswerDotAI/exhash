@@ -3,8 +3,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use pyo3::exceptions::{PyRuntimeError, PyUserWarning, PyValueError};
 use pyo3::prelude::*;
 
-use crate::commands::{buffer_command_from_fields, command_from_fields};
-use crate::{BufferCommand, Command, CommandField, EditError, Subcommand};
+use crate::commands::command_from_fields;
+use crate::{Command, CommandField, Subcommand};
 
 /// Run a panic-prone pure-Rust step, converting any panic into a clean
 /// `RuntimeError` instead of surfacing pyo3's `BaseException`-derived
@@ -19,6 +19,11 @@ fn pretty_string(py: Python<'_>, s: String) -> PyResult<Py<PyAny>> { Ok(py.impor
 #[pyclass(skip_from_py_object)]
 #[derive(Clone)]
 struct EditResultPy {
+    /// The resolved target of a result from `edit_files`; None for text, cell and CLI results
+    #[pyo3(get)]
+    path: Option<String>,
+    #[pyo3(get)]
+    cell: Option<String>,
     #[pyo3(get)]
     lines: Vec<String>,
     #[pyo3(get)]
@@ -36,22 +41,41 @@ struct EditResultPy {
 }
 
 impl EditResultPy {
-    fn diff_text(&self, context: usize, maxlen: Option<usize>) -> String {
-        let original_lines: Vec<&str> = self.original_text.lines().collect();
-        let result = crate::EditResult {
+    fn result(&self) -> crate::EditResult {
+        crate::EditResult {
             lines: self.lines.clone(),
             hashes: self.hashes.clone(),
             modified: self.modified.clone(),
             deleted: self.deleted.clone(),
             origins: self.origins.clone(),
             printed: self.printed.clone(),
-        };
-        result.format_diff_with_maxlen(&original_lines, context, maxlen)
+        }
+    }
+
+    /// The target-aware form of a result from `edit_files`; text, cell and CLI results have no path.
+    fn file_edit(&self) -> Option<crate::FileEdit> {
+        self.path.clone().map(|path| crate::FileEdit { path, cell: self.cell.clone(), original_text: self.original_text.clone(), result: self.result() })
+    }
+
+    fn diff_text(&self, context: usize, maxlen: Option<usize>) -> String {
+        match self.file_edit() {
+            Some(f) => f.format_diff_with_maxlen(context, maxlen),
+            None => self.result().format_diff_with_maxlen(&self.original_text.lines().collect::<Vec<_>>(), context, maxlen),
+        }
+    }
+
+    fn report_text(&self, context: usize, trunc: bool) -> String {
+        match self.file_edit() {
+            Some(f) => f.report(context, trunc),
+            None => self.result().report(&self.original_text.lines().collect::<Vec<_>>(), context, trunc),
+        }
     }
 }
 
-fn edit_result_py(original_text: String, result: crate::EditResult) -> EditResultPy {
+fn edit_result_py(path: Option<String>, cell: Option<String>, original_text: String, result: crate::EditResult) -> EditResultPy {
     EditResultPy {
+        path,
+        cell,
         lines: result.lines,
         hashes: result.hashes,
         modified: result.modified,
@@ -70,14 +94,22 @@ impl EditResultPy {
     #[pyo3(signature = (context=1, maxlen=None))]
     fn format_diff(&self, py: Python<'_>, context: usize, maxlen: Option<usize>) -> PyResult<Py<PyAny>> { pretty_string(py, self.diff_text(context, maxlen)) }
 
-    fn __str__(&self) -> String { self.diff_text(1, None) }
+    fn format_printed(&self, py: Python<'_>) -> PyResult<Py<PyAny>> { pretty_string(py, self.result().format_printed()) }
+
+    /// The diff, then the printed lines under a `# printed` header; `trunc` caps it for display.
+    #[pyo3(signature = (context=1, trunc=false))]
+    fn report(&self, py: Python<'_>, context: usize, trunc: bool) -> PyResult<Py<PyAny>> { pretty_string(py, self.report_text(context, trunc)) }
+
+    fn __str__(&self) -> String { self.report_text(1, false) }
 
     fn __repr__(&self) -> String {
-        // A print-only result is a view, not a diff: never truncate it.
-        let bare = self.modified.is_empty() && self.deleted.is_empty() && !self.printed.is_empty();
-        let full = self.diff_text(1, Some(180));
-        let diff = if bare { full } else { truncate_diff(&full, 15) };
-        if diff.is_empty() { format!("EditResult({} lines, no changes)", self.lines.len()) } else if bare { format!("EditResult({} lines, {} printed, no changes)\n{}", self.lines.len(), self.printed.len(), diff) } else { format!("EditResult({} lines, {} modified, {} deleted)\n{}", self.lines.len(), self.modified.len(), self.deleted.len(), diff) }
+        let changed = !self.diff_text(1, None).is_empty();
+        let mut note = if changed { format!(", {} modified, {} deleted", self.modified.len(), self.deleted.len()) } else { String::new() };
+        if !self.printed.is_empty() { note += &format!(", {} printed", self.printed.len()); }
+        if !changed { note += ", no changes"; }
+        let body = self.report_text(1, true);
+        let body = if body.is_empty() { body } else { format!("\n{body}") };
+        format!("EditResult({} lines{note}){body}", self.lines.len())
     }
 
     fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<Py<PyAny>> {
@@ -94,16 +126,7 @@ impl EditResultPy {
 }
 
 #[pyfunction]
-fn truncate_diff(s: &str, max_lines: usize) -> String {
-    let lines: Vec<&str> = s.lines().collect();
-    let mut out: Vec<String> = lines
-        .iter()
-        .take(max_lines)
-        .map(|l| l.to_string())
-        .collect();
-    if lines.len() > max_lines { out.push(format!("…{} lines elided…", lines.len() - max_lines)); }
-    if out.is_empty() { String::new() } else { out.join("\n") + "\n" }
-}
+fn truncate_diff(s: &str, max_lines: usize) -> String { crate::truncate_diff(s, max_lines) }
 
 #[pyfunction]
 fn line_hash(line: &str) -> String { crate::lnhash::format_hash(crate::line_hash_u16(line)) }
@@ -162,29 +185,7 @@ fn py_exhash(py: Python<'_>, text: &str, cmds: Vec<Vec<PyField>>, sw: usize) -> 
     .map_err(|e| PyValueError::new_err(e.to_string()))?;
     warn_on_ex_style_dot_terminators(py, &parsed)?;
     let res = guard("applying edits", || crate::edit_text_with_sw(text, &parsed, sw))?.map_err(|e| PyValueError::new_err(e.to_string()))?;
-    Ok(edit_result_py(text.to_string(), res))
-}
-
-#[pyfunction]
-#[pyo3(signature = (buffers, commands, sw=4))]
-fn edit_buffers(
-    py: Python<'_>,
-    buffers: Vec<(String, String)>,
-    commands: Vec<(String, Vec<PyField>, Option<String>)>,
-    sw: usize,
-) -> PyResult<Vec<(String, EditResultPy)>> {
-    let parsed = guard("parsing buffer commands", || {
-        commands
-            .into_iter()
-            .map(|(target, fields, destination)| {
-                Ok(BufferCommand { target, command: buffer_command_from_fields(&fields.iter().map(PyField::native).collect::<Vec<_>>())?, destination })
-            })
-            .collect::<Result<Vec<_>, EditError>>()
-    })?
-    .map_err(|e| PyValueError::new_err(e.to_string()))?;
-    warn_on_ex_style_dot_terminators(py, parsed.iter().map(|command| &command.command))?;
-    let results = guard("applying buffer edits", || crate::edit_buffers_with_sw(buffers, parsed, sw))?.map_err(|e| PyValueError::new_err(e.to_string()))?;
-    Ok(results.into_iter().map(|result| (result.target, edit_result_py(result.original_text, result.result))).collect())
+    Ok(edit_result_py(None, None, text.to_string(), res))
 }
 
 #[pyfunction]
@@ -193,7 +194,7 @@ fn exhash_argv(text: &str, cmds: Vec<String>, text_block: &str, sw: usize) -> Py
     let mut stream = std::io::Cursor::new(text_block.as_bytes());
     let parsed = guard("parsing commands", || crate::parse_commands_from_args(&cmds, &mut stream))?.map_err(|e| PyValueError::new_err(e.to_string()))?;
     let res = guard("applying edits", || crate::edit_text_with_sw(text, &parsed, sw))?.map_err(|e| PyValueError::new_err(e.to_string()))?;
-    Ok(edit_result_py(text.to_string(), res))
+    Ok(edit_result_py(None, None, text.to_string(), res))
 }
 
 fn file_error(error: crate::FileError) -> PyErr {
@@ -221,7 +222,7 @@ fn view_cells(path: &str, cell_ids: Vec<String>, start: Option<usize>, end: Opti
 }
 #[pyfunction]
 #[pyo3(signature = (path, commands, sw=4, inplace=true))]
-fn edit_files(py: Python<'_>, path: &str, commands: Vec<Vec<PyField>>, sw: usize, inplace: bool) -> PyResult<Vec<(String, Option<String>, EditResultPy)>> {
+fn edit_files(py: Python<'_>, path: &str, commands: Vec<Vec<PyField>>, sw: usize, inplace: bool) -> PyResult<Vec<EditResultPy>> {
     let commands: Vec<Vec<_>> = commands.iter().map(|c| c.iter().map(PyField::native).collect()).collect();
     // Warnings are Python presentation; qualified address parsing lives in Rust.
     let warning_commands = commands
@@ -236,7 +237,15 @@ fn edit_files(py: Python<'_>, path: &str, commands: Vec<Vec<PyField>>, sw: usize
         .collect::<Vec<_>>();
     warn_on_ex_style_dot_terminators(py, &warning_commands)?;
     let results = guard("editing files", || crate::edit_files(path, &commands, sw, inplace))?.map_err(file_error)?;
-    Ok(results.into_iter().map(|r| (r.path, r.cell, edit_result_py(r.original_text, r.result))).collect())
+    Ok(results.into_iter().map(|r| edit_result_py(Some(r.path), r.cell, r.original_text, r.result)).collect())
+}
+
+/// Each shown target's report, as `str(FileSetEditResult)` shows it. `results` must come from `edit_files`.
+#[pyfunction]
+#[pyo3(signature = (results, context=1, trunc=false))]
+fn render(results: Vec<PyRef<'_, EditResultPy>>, context: usize, trunc: bool) -> PyResult<String> {
+    let edits = results.iter().map(|r| r.file_edit().ok_or_else(|| PyValueError::new_err("render takes results from edit_files"))).collect::<PyResult<Vec<_>>>()?;
+    Ok(crate::render(&edits, context, trunc))
 }
 #[pyfunction]
 #[pyo3(signature = (path, cell_id, commands, sw=4, inplace=true))]
@@ -248,7 +257,7 @@ fn edit_cell(py: Python<'_>, path: &str, cell_id: &str, commands: Vec<Vec<PyFiel
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     warn_on_ex_style_dot_terminators(py, &parsed)?;
     let r = guard("editing a cell", || crate::edit_cell(path, cell_id, &parsed, sw, inplace))?.map_err(file_error)?;
-    Ok(edit_result_py(r.original_text, r.result))
+    Ok(edit_result_py(None, None, r.original_text, r.result))
 }
 #[pyfunction]
 #[pyo3(signature = (path, cell_id, cmds, text_block="", sw=4, inplace=true))]
@@ -256,14 +265,14 @@ fn edit_cell_argv(path: &str, cell_id: &str, cmds: Vec<String>, text_block: &str
     let parsed = crate::parse_commands_from_args(&cmds, &mut std::io::Cursor::new(text_block.as_bytes())).map_err(|e| PyValueError::new_err(e.to_string()))?;
     let r = guard("editing a cell", || crate::files::edit_cell_with_writer(path, cell_id, &parsed, sw, inplace, crate::files::atomic_write))?
         .map_err(file_error)?;
-    Ok(edit_result_py(r.original_text, r.result))
+    Ok(edit_result_py(None, None, r.original_text, r.result))
 }
 
 #[pyfunction]
 #[pyo3(signature = (path, cmds, text_block="", sw=4, inplace=true))]
 fn edit_file_argv(path: &str, cmds: Vec<String>, text_block: &str, sw: usize, inplace: bool) -> PyResult<EditResultPy> {
     let r = guard("editing a file", || crate::edit_file_argv(path, &cmds, text_block, sw, inplace))?.map_err(file_error)?;
-    Ok(edit_result_py(r.original_text, r.result))
+    Ok(edit_result_py(None, None, r.original_text, r.result))
 }
 
 #[pymodule]
@@ -280,11 +289,12 @@ fn exhash(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lnhash, m)?)?;
     m.add_function(wrap_pyfunction!(lnhashview, m)?)?;
     m.add_function(wrap_pyfunction!(py_exhash, m)?)?;
-    m.add_function(wrap_pyfunction!(edit_buffers, m)?)?;
     m.add_function(wrap_pyfunction!(exhash_argv, m)?)?;
     m.add_function(wrap_pyfunction!(md_scan, m)?)?;
     m.add_function(wrap_pyfunction!(code_scan, m)?)?;
     m.add_function(wrap_pyfunction!(truncate_diff, m)?)?;
+    m.add_function(wrap_pyfunction!(render, m)?)?;
+    m.add("MAXLEN", crate::MAXLEN)?;
     Ok(())
 }
 

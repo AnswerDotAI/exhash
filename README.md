@@ -17,6 +17,7 @@ Address forms:
 - `lineno|hash|`: hash-verified address
 - `$`: last line (no hash)
 - `%`: whole file (`1,$`, no hashes)
+- `lineno`: line number with no hash. Only `p` accepts it, including as the subcommand of `g`, `g!`, or `v`.
 
 ## CLI
 
@@ -61,6 +62,9 @@ exhash --sw 2 file.txt '12|vN|>1'
 # Last line and whole file shorthands (no hash)
 exhash file.txt '$d'
 exhash file.txt '%j'
+
+# Print lines 12 to 20: p accepts line numbers with no hashes
+exhash file.txt '12,20p'
 
 # Move a line to EOF using $ as the destination
 exhash file.txt '12|vN|m$'
@@ -230,7 +234,8 @@ A file prefix is separated from the address with `:`. Escape literal colons in f
 - `res.printed`: paths with lines addressed by `p` (`res[path].printed` gives the line numbers)
 - `res.default_path`: the default path passed to `file_exhash`
 - `res[path]`: shorthand for `res.files[path]`
-- `res.format_diff(context=1)`: combined diff with `--- path` / `+++ path` headers, plus a bare view of any printed-only target (headed by `# file <path>` / `# cell <id>` when several targets show)
+- `res.format_diff(context=1)`: combined diff of the changed targets, with `--- path` / `+++ path` headers. It never includes printed lines.
+- `str(res)`: each target's diff, followed by its printed lines (see [EditResult](#editresult))
 
 ### Notebook cells
 
@@ -269,7 +274,7 @@ The package registers `exhash.skill` as a pyskill exposing the primary Python AP
 - `origins`: for each output line, the 1-based original line number (None if inserted)
 - `printed`: 1-based line numbers explicitly addressed by `p`
 
-`res.format_diff(context=1)` always includes printed lines: as context rows inside a diff, or - when nothing changed - as a bare `lnhashview` of just those lines, with no diff headers. `file_exhash`/`cell_exhash` follow the same rule, so a `p`-only call writes nothing and returns that view untruncated; with more than one target reported, printed-only groups are headed by `# file <path>` or `# cell <id>`.
+Lines addressed by `p` are not part of the diff. `res.format_printed()` returns them as a bare `lnhashview` with no headers. It never caps or truncates its rows. `str(res)` and the repr show the diff, then a `# printed` header, then the printed lines. A result that changed nothing shows the printed lines alone, with no header. `file_exhash` and `cell_exhash` return the same output. A `p`-only call writes nothing and returns the bare view. A call that changes and prints nothing returns `none: No changes.`, as `fastcore`'s editors do. When more than one target is reported, a target with only printed lines is headed by `# file <path>` or `# cell <id>`.
 
 `res.format_diff(context=1)` returns a unified-diff-style summary showing only changed lines with context:
 

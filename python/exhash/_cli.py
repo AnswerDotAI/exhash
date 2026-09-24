@@ -16,6 +16,7 @@ ADDRESSING
   Commands use lnhash addresses: lineno|hash| where hash is a 2-char Base64url
   content hash. Use `lnhashview file.txt` to get addresses. Single: 12|Py|cmd
   Range: 12|Py|,15|HD|cmd  Last: $cmd  Whole: %cmd  Before line 1: 0|AA|
+  Print needs no hashes: 12p  12,15p
 
 COMMANDS
   s/pat/rep/[flags]  Substitute (Rust regex; flags g, i). y/src/dst/ transliterate.
@@ -103,8 +104,7 @@ def exhash_main(argv=None):
     text_block = sys.stdin.read() if (not sys.stdin.isatty() or any(_needs_text_block(c) for c in cmds)) else ""
     try: res = _edit_file_argv(file, cmds, text_block, sw, not dry_run)
     except (ValueError, OSError) as e: _die(f"error: {e}", 2)
-    diff = res.format_diff(1)
-    if diff: sys.stdout.write(diff)
+    sys.stdout.write(str(res))
 
 
 def lnhashview_main(argv=None):
@@ -162,7 +162,7 @@ def exhash_cell_main(argv=None):
     text_block = sys.stdin.read() if any(_needs_text_block(c) for c in cmds) else ""
     try: res = _edit_cell_argv(file, cell_id, cmds, text_block, sw, not dry_run)
     except Exception as e: _die(f"error: {e}", 2)
-    if (diff := res.format_diff(1)): sys.stdout.write(diff)
+    sys.stdout.write(str(res))
 
 
 def _open_doc(src):

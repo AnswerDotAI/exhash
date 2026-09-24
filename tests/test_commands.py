@@ -33,49 +33,60 @@ def test_print_reports_printed_not_modified():
     assert res["printed"] == [2]
     assert res["modified"] == []
 
-def test_print_only_diff_is_a_bare_lnhashview():
+def test_print_only_result_is_a_bare_lnhashview():
     text = "".join(f"line {i}\n" for i in range(1, 13))
     lines = text.splitlines()
     res = exhash(text, [(lnhash(2, lines[1]), "p"), (lnhash(11, lines[10]), "p")])
     # line numbers pad to the width of the largest printed number, exactly like lnhashview
-    assert res.format_diff() == " 2|dn|line 2\n11|gI|line 11\n"
+    assert res.format_printed() == " 2|dn|line 2\n11|gI|line 11\n"
+    assert res.format_diff() == ""
+    assert str(res) == res.format_printed()
 
 def test_whole_file_print_equals_lnhashview():
     text = "".join(f"line {i}\n" for i in range(1, 13))
     res = exhash(text, [("%", "p")])
-    assert res.format_diff() == "\n".join(lnhashview(text)) + "\n"
+    assert res.format_printed() == "\n".join(lnhashview(text)) + "\n"
 
-def test_printed_lines_are_forced_context_in_a_real_diff():
-    text = "".join(f"line {i}\n" for i in range(1, 13))
-    lines = text.splitlines()
-    res = exhash(text, [(lnhash(11, lines[10]), "p"), (lnhash(2, lines[1]), "s", "line 2", "LINE TWO")])
-    assert res["printed"] == [11]
-    out = res.format_diff().splitlines()
-    assert "-2|dn|line 2" in out
-    assert "+2|qE|LINE TWO" in out
-    assert out[-1] == " 11|gI|line 11"
-    assert "---" in out[1:]
+def test_printed_lines_follow_the_diff_in_full():
+    long = "x" * 300
+    text = "".join(f"line {i}\n" for i in range(1, 13)) + long + "\n"
+    res = exhash(text, [(lnhash(13, long), "p"), (lnhash(2, "line 2"), "s", "line 2", "LINE TWO")])
+    assert res["printed"] == [13]
+    assert long not in res.format_diff()
+    diff, printed = repr(res).split("# printed\n")
+    assert "+2|qE|LINE TWO" in diff.splitlines()
+    assert printed == f"{lnhash(13, long)}{long}\n"
 
-def test_edited_and_printed_line_shows_once_as_added():
+def test_edited_and_printed_line_shows_in_both_parts():
     text = "a\nb\n"
     res = exhash(text, [(lnhash(2, "b"), "p"), (lnhash(2, "b"), "s", "b", "B")])
     assert res["printed"] == [2]
     assert res["modified"] == [2]
-    rows = [l for l in res.format_diff().splitlines() if l.endswith("B")]
-    assert rows == ["+" + lnhash(2, "B") + "B"]
+    diff, printed = str(res).split("# printed\n")
+    assert "+" + lnhash(2, "B") + "B" in diff.splitlines()
+    assert printed == lnhash(2, "B") + "B\n"
 
 def test_global_print_emits_a_row_per_match():
     text = "alpha\nTODO one\nbeta\nTODO two\ngamma\n"
     res = exhash(text, [("%", "g", "TODO", ("p",))])
     assert res["printed"] == [2, 4]
     assert res["modified"] == []
-    assert res.format_diff() == f"{lnhash(2, 'TODO one')}TODO one\n{lnhash(4, 'TODO two')}TODO two\n"
+    assert res.format_printed() == f"{lnhash(2, 'TODO one')}TODO one\n{lnhash(4, 'TODO two')}TODO two\n"
 
 def test_printed_marks_travel_with_moved_lines():
     text = "a\nb\nc\n"
     res = exhash(text, [(lnhash(1, "a"), "p"), (lnhash(1, "a"), "m", lnhash(3, "c"))])
     assert res["lines"] == ["b", "c", "a"]
     assert res["printed"] == [3]
+
+def test_print_takes_bare_line_numbers():
+    text = "a\nb\nc\nd\n"
+    res = exhash(text, [("2,3", "p"), (f"{lnhash(1, 'a')},1", "p"), ("4", "g", "d", ("p",))])
+    assert res["printed"] == [1, 2, 3, 4]
+    # a command that can change the file still needs hashes, including m/t destinations
+    for cmd in (("2", "d"), ("2,3", "s", "b", "B"), ("1,4", "g", "b", ("d",)), (lnhash(1, "a"), "m", "3")):
+        with pytest.raises(ValueError, match="has no hash|needs a hash"): exhash(text, [cmd])
+    with pytest.raises(ValueError, match="out of range"): exhash(text, [("9", "p")])
 
 def test_indent_and_dedent():
     text = "a\n    b\n"
@@ -92,8 +103,7 @@ def test_call_start_hashes_for_stacked_single_line_commands():
     assert exhash(text, [(addr, "c", "changed"), (addr, "s", "changed", "CHANGED")])["lines"] == ["CHANGED", "next"]
 
     with pytest.raises(ValueError, match="changed since your view"): exhash(text, [(addr, "d"), (addr, "s", "abc", "ABC")])
-    with pytest.raises(ValueError, match="already edited by an earlier command"):
-        exhash(text, [(addr, "s", "abc", "ABC"), ("1|I0|", "d")])
+    with pytest.raises(ValueError, match="already edited by an earlier command"): exhash(text, [(addr, "s", "abc", "ABC"), ("1|I0|", "d")])
     end = lnhash(2, "next")
     with pytest.raises(ValueError, match="stale lnhash"): exhash(text, [(f"{addr},{end}", "s", "a", "A"), (f"{addr},{end}", "s", "b", "B")])
     edited = exhash(text, [(addr, "s", "abc", "ABC")])

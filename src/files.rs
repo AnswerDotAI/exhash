@@ -68,7 +68,8 @@ fn unescape(path: &str) -> String {
     out
 }
 fn address(input: &str, default: &Target) -> Result<(Target, String, String)> {
-    static ADDR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(?:\$|%|\d+\|[A-Za-z0-9_-]{2}\|)").unwrap());
+    // A bare line number must end the field or precede `,`. Otherwise a cell ID such as `9f8e` would read as line 9.
+    static ADDR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(?:(\$|%|\d+\|[A-Za-z0-9_-]{2}\|)|(\d+)(?:,|$))").unwrap());
     static CELL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(.*\.ipynb):([A-Za-z0-9_-]+)$").unwrap());
     let input = input.trim_start();
     let mut target = default.clone();
@@ -92,7 +93,7 @@ fn address(input: &str, default: &Target) -> Result<(Target, String, String)> {
             break;
         }
     }
-    let m = ADDR.find(rest).ok_or_else(|| invalid(format!("expected exhash address near {:?}", input.chars().take(40).collect::<String>())))?;
+    let m = ADDR.captures(rest).and_then(|c| c.get(1).or(c.get(2))).ok_or_else(|| invalid(format!("expected exhash address near {:?}", input.chars().take(40).collect::<String>())))?;
     Ok((target, m.as_str().into(), rest[m.end()..].into()))
 }
 
@@ -177,10 +178,29 @@ pub struct FileEdit {
 }
 impl FileEdit {
     pub fn changed(&self) -> bool { self.original_text.lines().ne(self.result.lines.iter().map(String::as_str)) }
-    pub fn format_diff(&self, context: usize) -> String {
-        let diff = self.result.format_diff(&self.original_text.lines().collect::<Vec<_>>(), context);
-        if self.changed() { diff.replacen("--- original\n+++ modified\n", &format!("--- {}\n+++ {}\n", self.path, self.path), 1) } else { diff }
+    fn original_lines(&self) -> Vec<&str> { self.original_text.lines().collect() }
+    /// `text` with the diff's `original`/`modified` headers replaced by this target's path.
+    fn named(&self, text: String) -> String { text.replacen("--- original\n+++ modified\n", &format!("--- {0}\n+++ {0}\n", self.path), 1) }
+    pub fn format_diff(&self, context: usize) -> String { self.format_diff_with_maxlen(context, None) }
+    pub fn format_diff_with_maxlen(&self, context: usize, maxlen: Option<usize>) -> String {
+        self.named(self.result.format_diff_with_maxlen(&self.original_lines(), context, maxlen))
     }
+    /// `# cell <id>` for a cell target, else `# file <path>`.
+    pub fn header(&self) -> String { self.cell.as_ref().map_or_else(|| format!("# file {}", self.path), |id| format!("# cell {id}")) }
+    /// `EditResult::report` with this target's path in the diff headers.
+    pub fn report(&self, context: usize, trunc: bool) -> String { self.named(self.result.report(&self.original_lines(), context, trunc)) }
+}
+
+/// Each changed or printing target's `report`, in order. A printed-only target gets its `header` when several targets show.
+pub fn render(edits: &[FileEdit], context: usize, trunc: bool) -> String {
+    let shown: Vec<_> = edits.iter().filter(|e| e.changed() || !e.result.printed.is_empty()).collect();
+    shown
+        .iter()
+        .map(|e| {
+            let report = e.report(context, trunc);
+            if e.changed() || shown.len() == 1 { report } else { format!("{}\n{report}", e.header()) }
+        })
+        .collect()
 }
 struct Buffer { target: Target, text: String, cell_index: Option<usize> }
 #[derive(Default)]
@@ -324,8 +344,9 @@ pub fn edit_file_argv(path: &str, args: &[String], text_block: &str, sw: usize, 
     if text.contains('\0') { return Err(invalid("binary file rejected (NUL byte found)")); }
     let commands = crate::parse_commands_from_args(args, &mut io::Cursor::new(text_block.as_bytes()))?;
     let result = edit_text_with_sw(&text, &commands, sw)?;
-    if inplace { atomic_write(&path, output_text(&result.lines, true).as_bytes())?; }
-    Ok(FileEdit { path, cell: None, original_text: text, result })
+    let edit = FileEdit { path, cell: None, original_text: text, result };
+    if inplace && edit.changed() { atomic_write(&edit.path, output_text(&edit.result.lines, true).as_bytes())?; }
+    Ok(edit)
 }
 
 #[cfg(test)]

@@ -10,6 +10,8 @@ pub enum Address {
     LastLine,
     /// `%` (whole file; shorthand for `1,$`)
     WholeFile,
+    /// A line number with no hash. Only print commands accept it, because they change nothing.
+    Line(usize),
 }
 
 /// A fully parsed command, including any multiline text blocks.
@@ -39,6 +41,11 @@ pub enum Subcommand {
     Dedent { levels: usize },
     Sort,
     Print,
+}
+
+impl Subcommand {
+    /// Does this command only print lines, so that its addresses need no hash?
+    fn only_prints(&self) -> bool { match self { Self::Print => true, Self::Global { cmd, .. } => cmd.only_prints(), _ => false } }
 }
 
 #[derive(Debug, Clone)]
@@ -141,6 +148,10 @@ fn build_command(addr1: Address, addr2: Option<Address>, has_comma: bool, cmd: S
         && (a2.lineno == 0 || matches!(addr1, Address::LnHash(LnHash { lineno: 0, .. })))
     { return Err(EditError::new("0|AA| is not allowed in ranges")); }
 
+    if let Some(n) = [Some(addr1), addr2].into_iter().flatten().find_map(|a| if let Address::Line(n) = a { Some(n) } else { None })
+        && !cmd.only_prints()
+    { return Err(EditError::new(format!("line {n} has no hash: only p accepts a bare line number (use lineno|hash| from a fresh view)"))); }
+
     Ok(Command { addr1, addr2, has_comma, cmd })
 }
 
@@ -148,6 +159,11 @@ fn parse_address_prefix(input: &str) -> Result<(Address, &str), EditError> {
     let input = input.trim_start();
     if let Some(rest) = input.strip_prefix('$') { return Ok((Address::LastLine, rest)); }
     if let Some(rest) = input.strip_prefix('%') { return Ok((Address::WholeFile, rest)); }
+    let digits = input.len() - input.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+    if digits > 0 && !input[digits..].starts_with('|') {
+        let n = input[..digits].parse().map_err(|_| EditError::new(format!("bad line number: {:?}", &input[..digits])))?;
+        return Ok((Address::Line(n), &input[digits..]));
+    }
     let (lh, rest) = parse_lnhash_prefix(input)?;
     Ok((Address::LnHash(lh), rest))
 }
@@ -163,6 +179,7 @@ fn parse_destination_address_inner(input: &str, op: char, allow_zero: bool) -> R
         Address::LnHash(LnHash { lineno: 0, hash }) if hash != 0 => Err(EditError::new("0|AA| must have hash AA")),
         Address::LnHash(LnHash { lineno: 0, .. }) if !allow_zero => Err(EditError::new(format!("destination 0|AA| is not allowed for {op}"))),
         Address::WholeFile => Err(EditError::new(format!("destination % is not allowed for {op}"))),
+        Address::Line(n) => Err(EditError::new(format!("destination {n} for {op} needs a hash (lineno|hash|)"))),
         _ => Ok(addr),
     }
 }

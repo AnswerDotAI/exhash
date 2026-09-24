@@ -345,7 +345,7 @@ def test_file_exhash_unicode_separator_noop(tmp_path, separator):
     assert result.changed == []
     assert result[f].original_lines == result[f].lines == [text[:-1]]
     assert result.format_diff() == ''
-    assert file_exhash(f) == ''
+    assert file_exhash(f) == "none: No changes."
     assert f.read_text() == text
 
 def test_file_exhash_inplace(tmp_path):
@@ -639,14 +639,16 @@ def test_file_exhash_print_bypasses_truncation(tmp_path):
     assert len(str(file_exhash(str(f), ("%", "p"))).splitlines()) == 40
 
 
-def test_file_exhash_printed_rows_are_forced_context(tmp_path):
+def test_file_exhash_prints_full_lines_after_the_diff(tmp_path):
     f = tmp_path / "test.txt"
-    f.write_text("".join(f"line {i}\n" for i in range(1, 13)))
-    out = str(file_exhash(str(f), (lnhash(11, "line 11"), "p"), (lnhash(2, "line 2"), "s", "line 2", "LINE TWO")))
-    assert f"-{lnhash(2, 'line 2')}line 2" in out
-    assert f"+{lnhash(2, 'LINE TWO')}LINE TWO" in out
-    assert out.splitlines()[-1] == f" {lnhash(11, 'line 11')}line 11"
-    assert f.read_text().startswith("line 1\nLINE TWO\n")
+    long = "x" * 300
+    f.write_text(f"short\n{long}\n")
+    out = str(file_exhash(str(f), (lnhash(1, "short"), "s", "short", "SHORT"), (lnhash(2, long), "p")))
+    diff, printed = out.split("# printed\n")
+    assert f"+{lnhash(1, 'SHORT')}SHORT" in diff.splitlines()
+    assert long not in diff
+    assert printed == f"{lnhash(2, long)}{long}\n"
+    assert f.read_text() == f"SHORT\n{long}\n"
 
 
 def test_file_exhash_printed_marks_follow_later_edits(tmp_path):
@@ -678,5 +680,18 @@ def test_cell_exhash_print_only_returns_bare_view_and_writes_nothing(tmp_path):
     out = cell_exhash(str(p), "abc123", (lnhash(2, "y = 2"), "p"))
     assert str(out) == "\n".join(lnhashview_cell(str(p), "abc123", 2, 2)) + "\n"
     assert p.read_text() == before
+    assert cell_exhash(str(p), "abc123") == "none: No changes."
     grouped = str(file_exhash(str(p), (f"{p}:abc123:{lnhash(3, 'z = 3')}", "p"), (f"{p}:def456:{lnhash(1, 'a = 10')}", "p")))
     assert grouped == f"# cell abc123\n{lnhash(3, 'z = 3')}z = 3\n# cell def456\n{lnhash(1, 'a = 10')}a = 10\n"
+
+
+def test_file_exhash_print_takes_bare_line_numbers_in_qualified_addresses(tmp_path):
+    import json
+    nb = dict(cells=[dict(id="9f8e", cell_type="code", source="x = 1\ny = 2\nz = 3", metadata={})], metadata={}, nbformat=4, nbformat_minor=5)
+    p = tmp_path / "nb.ipynb"
+    p.write_text(json.dumps(nb))
+    a = tmp_path / "a.txt"
+    a.write_text("alpha\nbeta\n")
+    # the cell ID starts with a digit, so `9` must not be read as the address
+    out = str(file_exhash(str(a), ("2", "p"), (f"{p}:9f8e:2,3", "p")))
+    assert out == f"# file {a}\n{lnhash(2, 'beta')}beta\n# cell 9f8e\n{lnhash(2, 'y = 2')}y = 2\n{lnhash(3, 'z = 3')}z = 3\n"

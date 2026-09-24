@@ -38,29 +38,50 @@ pub struct BufferCommand { pub target: String, pub command: Command, pub destina
 
 pub struct BufferEditResult { pub target: String, pub original_text: String, pub result: EditResult }
 
+/// Most characters shown per displayed diff row when a report is truncated for display.
+pub const MAXLEN: usize = 180;
+/// Most diff lines shown when a report is truncated for display.
+pub const MAX_DIFF_LINES: usize = 15;
+
+/// `diff`, then `printed` under a `# printed` header. Either one alone shows bare.
+pub fn with_printed(diff: String, printed: String) -> String { if diff.is_empty() || printed.is_empty() { diff + &printed } else { format!("{diff}# printed\n{printed}") } }
+
+/// Cap `s` at `max_lines` lines, appending an elided-lines marker.
+pub fn truncate_diff(s: &str, max_lines: usize) -> String {
+    let lines: Vec<&str> = s.lines().collect();
+    let mut out: Vec<String> = lines.iter().take(max_lines).map(|l| l.to_string()).collect();
+    if lines.len() > max_lines { out.push(format!("…{} lines elided…", lines.len() - max_lines)); }
+    if out.is_empty() { String::new() } else { out.join("\n") + "\n" }
+}
+
 impl EditResult {
-    /// Render printed lines as a bare `lnhashview`: no tag, no headers, line numbers
-    /// space-padded to the width of the largest printed line number.
-    fn printed_view(&self, print_set: &BTreeSet<usize>) -> String {
-        let last = match print_set.iter().next_back() { Some(n) => *n, None => return String::new() };
-        let width = last.to_string().len();
-        let mut out = String::new();
-        for n in print_set {
-            let text = self.lines[*n - 1].as_str();
-            out.push_str(&format!("{:>width$}|{}|{}\n", n, format_hash(line_hash_u16(text)), text, width = width));
-        }
-        out
+    /// The diff, then the printed lines under a `# printed` header. Either one alone shows bare.
+    /// `trunc` caps diff rows at `MAXLEN` characters and the diff at `MAX_DIFF_LINES` lines, for display.
+    pub fn report(&self, original_lines: &[&str], context: usize, trunc: bool) -> String {
+        let diff = self.format_diff_with_maxlen(original_lines, context, trunc.then_some(MAXLEN));
+        with_printed(if trunc { truncate_diff(&diff, MAX_DIFF_LINES) } else { diff }, self.format_printed())
+    }
+
+    /// Render the lines addressed by `p` as a bare `lnhashview`, with no tags or headers.
+    /// Line numbers are space-padded to the width of the largest one. Rows are never capped.
+    pub fn format_printed(&self) -> String {
+        let width = self.printed.last().map_or(0, |n| n.to_string().len());
+        self.printed
+            .iter()
+            .map(|&n| {
+                let text = self.lines[n - 1].as_str();
+                format!("{n:>width$}|{}|{text}\n", format_hash(line_hash_u16(text)))
+            })
+            .collect()
     }
 
     /// Format a unified-diff-style summary of changes.
     ///
     /// Non-header lines are prefixed with ` ` (context), `+` (added/modified), or `-` (deleted),
     /// followed by the lnhash and content. `context` controls how many unchanged lines
-    /// surround each hunk (default 1). Lines addressed by `p` are always included, as context
-    /// rows even where no hunk is near them; a line that is both modified and printed appears
-    /// once, as `+`.
-    /// Non-empty diffs start with `--- original` and `+++ modified` headers, except when nothing
-    /// changed and lines were printed: that renders as a bare `lnhashview` of the printed lines.
+    /// surround each hunk (default 1). Non-empty diffs start with `--- original` and `+++ modified`
+    /// headers. A result that changed nothing gives an empty string. Lines addressed by `p` are
+    /// not part of the diff. `format_printed` renders them.
     pub fn format_diff(&self, original_lines: &[&str], context: usize) -> String { self.format_diff_with_maxlen(original_lines, context, None) }
 
     /// `format_diff`, capping each row at `maxlen` chars plus a closing `…`.
@@ -69,17 +90,13 @@ impl EditResult {
     pub fn format_diff_with_maxlen(&self, original_lines: &[&str], context: usize, maxlen: Option<usize>) -> String {
         let mod_set: BTreeSet<usize> = self.modified.iter().copied().collect();
         let del_set: BTreeSet<usize> = self.deleted.iter().copied().collect();
-        let print_set: BTreeSet<usize> = self.printed.iter().copied().collect();
 
-        if self.lines.len() == original_lines.len() && self.lines.iter().zip(original_lines).all(|(new, old)| new == old) {
-            return self.printed_view(&print_set);
-        }
-        if mod_set.is_empty() && del_set.is_empty() { return self.printed_view(&print_set); }
+        if self.lines.len() == original_lines.len() && self.lines.iter().zip(original_lines).all(|(new, old)| new == old) { return String::new(); }
+        if mod_set.is_empty() && del_set.is_empty() { return String::new(); }
 
         // Build interleaved sequence of (tag, lnhash, text) where tag is ' ', '+', '-'
         // Walk new lines, inserting deleted old lines at the right positions.
         let mut events: Vec<(char, String, &str)> = Vec::new();
-        let mut forced: Vec<usize> = Vec::new();
         let mut next_old = 1usize; // next original line we expect
 
         for (new_idx, line) in self.lines.iter().enumerate() {
@@ -105,11 +122,7 @@ impl EditResult {
                     if old_line != line.as_str() { events.push(('-', format_lnhash(orig, old_line), old_line)); }
                 }
                 events.push(('+', self.hashes[new_idx].clone(), line.as_str()));
-            } else {
-                // Printed lines are context rows, force-included below.
-                if print_set.contains(&new_lineno) { forced.push(events.len()); }
-                events.push((' ', self.hashes[new_idx].clone(), line.as_str()));
-            }
+            } else { events.push((' ', self.hashes[new_idx].clone(), line.as_str())); }
         }
 
         // Emit any remaining deleted lines at the end
@@ -123,7 +136,7 @@ impl EditResult {
         }
 
         // Now group into hunks with context
-        let mut interesting: BTreeSet<usize> = events
+        let interesting: BTreeSet<usize> = events
             .iter()
             .enumerate()
             .filter(|(_, (tag, _, _))| *tag != ' ')
@@ -133,7 +146,6 @@ impl EditResult {
                 start..=end
             })
             .collect();
-        interesting.extend(forced);
 
         if interesting.is_empty() { return String::new(); }
 
@@ -255,7 +267,7 @@ impl Engine {
         match addr {
             Address::LnHash(lh) => self.verify_lnhash(lh, cmd, allow_call_start),
             Address::LastLine => self.resolve_last_line().map(|_| ()),
-            Address::WholeFile => Ok(()),
+            Address::WholeFile | Address::Line(_) => Ok(()),
         }
     }
 
@@ -265,6 +277,7 @@ impl Engine {
             Address::LnHash(lh) => self.verify_lnhash_basic(lh, true),
             Address::LastLine => self.resolve_last_line().map(|_| ()),
             Address::WholeFile => Err(EditError::new("destination % is not allowed")),
+            Address::Line(n) => Err(EditError::new(format!("destination {n} needs a hash (lineno|hash|)"))),
         }
     }
 
@@ -363,6 +376,7 @@ impl Engine {
     fn resolve_address_lineno(&self, addr: Address) -> Result<usize, EditError> {
         match addr {
             Address::LnHash(a) => Ok(a.lineno),
+            Address::Line(n) => Ok(n),
             Address::LastLine => self.resolve_last_line(),
             Address::WholeFile => Err(EditError::new("% is only allowed as the first address")),
         }
@@ -371,6 +385,7 @@ impl Engine {
     fn resolve_destination_lineno(&self, dest: Address) -> Result<usize, EditError> {
         match dest {
             Address::LnHash(lh) => Ok(lh.lineno),
+            Address::Line(n) => Ok(n),
             Address::LastLine => self.resolve_last_line(),
             Address::WholeFile => Err(EditError::new("destination % is not allowed")),
         }

@@ -9,9 +9,14 @@ def exhash_magic(line, cell):
 
     Usage: %%exhash <path> [<cell_id>] <address> <a|i|c>
     The line is shlex-split: quote a path containing spaces ("My File.md") or
-    escape them (My\ File.md). The payload is the rest of the cell, taken verbatim
-    except that one trailing newline is stripped. With <cell_id>, edits that
-    notebook cell via cell_exhash."""
+    escape them (My\ File.md). IPython expands `{expr}` and `$var` on this line
+    only, as in `%%exhash {path} {cid} % c`. The payload is the rest of the cell,
+    taken verbatim except that one trailing newline is stripped. With <cell_id>,
+    edits that notebook cell via cell_exhash.
+
+      %%exhash f.py 0|AA| a            create f.py
+      %%exhash f.py % c                replace the whole file
+      %%exhash f.py 12|Py|,15|HD| c    replace lines 12 to 15"""
     from . import file_exhash, cell_exhash
     args = shlex.split(line)
     if len(args) not in (3,4): raise ValueError('usage: %%exhash <path> [<cell_id>] <address> <a|i|c>')
