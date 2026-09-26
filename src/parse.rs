@@ -73,7 +73,8 @@ pub fn parse_commands_from_args(args: &[String], stdin: &mut impl BufRead) -> Re
     Ok(out)
 }
 
-pub fn split_text_payload(text: &str) -> Vec<String> { text.split('\n').map(|line| line.strip_suffix('\r').unwrap_or(line).to_string()).collect() }
+/// Split an `a`/`i`/`c` payload into lines. A trailing newline ends the last line, as in stdin text blocks.
+pub fn split_text_payload(text: &str) -> Vec<String> { text.lines().map(|line| line.strip_suffix('\r').unwrap_or(line).to_string()).collect() }
 
 /// Parse commands from an ex-style script string.
 ///

@@ -46,11 +46,10 @@ exhash file.txt '12|vN|y/abc/ABC/'
 # Change one line with inline text (spaces after c are literal text)
 exhash file.txt '12|vN|c    replacement line'
 
-# Append multiline text (terminated by a single dot)
+# Append multiline text from stdin (read through EOF; every line is literal)
 exhash file.txt '12|vN|a' <<'EOF'
 new line 1
 new line 2
-.
 EOF
 
 # Dry-run
@@ -72,7 +71,6 @@ exhash file.txt '12|vN|m$'
 # Create a missing file by treating it as empty input
 exhash new.txt '0|AA|a' <<'EOF'
 first line
-.
 EOF
 ```
 
@@ -151,7 +149,7 @@ view = lnhashview_file("f.py", start=1, end=260) # end past EOF is clamped
 
 A command is usually `(addr, op)` or `(addr, op, payload)`. `addr` is an lnhash address string from `lnhash(...)`/`lnhashview(...)`; put ranges in that same string, e.g. `f"{a1},{a2}"`. Substitute uses `(addr, "s", pattern, replacement[, flags])`, so patterns and replacements can contain `/` without delimiter escaping.
 
-Text fields can contain newlines. That covers multiline `a`/`i`/`c` payloads and substitute pattern/replacement. Commands such as `d`, `m`, and `sort` do not take text.
+Text fields can contain newlines. That covers multiline `a`/`i`/`c` payloads and substitute pattern/replacement. In `a`/`i`/`c` payloads a trailing newline ends the last line, as in CLI stdin blocks: `"x"` and `"x\n"` both insert one line, `"x\n\n"` inserts `x` and then a blank line, and an empty payload is no lines, so `c` with `""` deletes the addressed lines. Commands such as `d`, `m`, and `sort` do not take text.
 
 ```py
 addr = lnhash(1, "foo")  # "1|Gy|"
@@ -254,7 +252,7 @@ new line 2
 - `%%exhash new.py 0|AA| a` creates a missing file.
 - `%%exhash f.py % c` replaces the whole file (`%` needs no hashes). With a cell id, `%%exhash nb.ipynb ab12 % c` replaces that notebook cell's source.
 - `%%exhash f.py 12|Py|,15|HD| c` replaces just that range, both addresses from one `lnhashview_file` view.
-- One trailing newline (the cell terminator) is stripped; to end the payload with a blank line, leave one extra blank line at the bottom.
+- A trailing newline ends the last line, as in every `a`/`i`/`c` payload; to end the payload with a blank line, leave an empty line at the bottom of the cell.
 - Each magic cell applies one command and returns the diff.
 
 Tuple `a`/`i`/`c` payloads (as in the examples above) remain for scripts and tests, where magics don't exist. Interactively, prefer the magic: a Python string layer invites quoting mistakes.

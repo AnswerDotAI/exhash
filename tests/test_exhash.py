@@ -270,8 +270,9 @@ def test_exhash_rechecks_hash_before_each_command():
 def test_exhash_append_trailing_newline():
     text = "a\nb\n"
     addr = lnhash(1, "a")
-    res = exhash(text, [(addr, "a", "x\n")])
-    assert res["lines"] == ["a", "x", "", "b"]
+    assert exhash(text, [(addr, "a", "x\n")])["lines"] == ["a", "x", "b"]
+    assert exhash(text, [(addr, "a", "x\n\n")])["lines"] == ["a", "x", "", "b"]
+    assert exhash(text, [(addr, "c", "")])["lines"] == ["b"]
 
 def test_exhash_multiline_non_text_cmd_raises():
     text = "a\nb\n"
