@@ -29,13 +29,15 @@ In IPython, use the `%%exhash` magic (registered on import; syntax and examples:
 
 ## Commands
 
-  (addr, "s", pat, repl[, flags])  Rust regex; groups $1/$0/${name}, ${1}x before a name char; $$ = literal $; \1 stays literal. Flags g=all, i=case-insensitive. Fails if nothing matches (except inside g) or on an unknown group. Literal newlines, slashes, and backslashes work. Prefer c for $-heavy text.
+  (addr, "s", pat, repl[, flags])  fancy-regex; replacement groups $1/$0/${name}, ${1}x before a name char; $$ = literal $; \1 in replacements stays literal. Flags g=all, i=case-insensitive. Fails if nothing matches (except inside g) or on an unknown group. Literal newlines, slashes, and backslashes work. Prefer c for $-heavy text.
   (addr, "a"|"i"|"c", text)        append after, insert before, change
   (addr, "d"|"j"|"sort"|"p")       delete; join (a range joins all its lines); sort; print rows, changing nothing
   (addr, "m"|"t", dest)            move/copy after dest
   (addr, ">"|"<"[, n])             indent/dedent n levels (default 1, 4 spaces each)
   (addr, "y", source, dest)        transliterate chars (equal counts)
   (addr, "g"|"g!"|"v", pat, sub)   run sub, an address-free tuple such as ("d",) or ("s", "foo", "bar", "g"), on each addressed line matching pat (g!/v: not matching); globals cannot nest
+
+Patterns in `s` and `g`/`g!`/`v` support lookbehind (`(?<=...)`, `(?<!...)`), lookahead (`(?=...)`, `(?!...)`), and backreferences (`\1`). Matching errors, including exceeding the default backtracking limit, abort the entire call without writing files.
 
 ## Viewing with `p`
 

@@ -74,15 +74,15 @@ first line
 EOF
 ```
 
-Substitute uses Rust regex syntax:
+Substitute and global commands use [`fancy-regex`](https://docs.rs/fancy-regex/latest/fancy_regex/) syntax, including lookbehind (`(?<=...)`, `(?<!...)`), lookahead (`(?=...)`, `(?!...)`), and pattern backreferences (`\1`):
 
-- Pattern syntax is from [`regex`](https://docs.rs/regex/latest/regex/)
-- Replacement syntax is from [`regex::Replacer`](https://docs.rs/regex/latest/regex/struct.Regex.html#method.replace), e.g. `$1`, `$0`, `${name}`
+- Replacement syntax uses `$1`, `$0`, `${name}`, and `$$` for a literal dollar sign; `\1` in a replacement stays literal. See [`fancy_regex::Regex::try_replacen`](https://docs.rs/fancy-regex/latest/fancy_regex/struct.Regex.html#method.try_replacen).
 - `\/` escapes the command delimiter in pattern/replacement
 - Custom delimiters: `s`, `y`, `g`, `g!`, and `v` all accept any non-alphanumeric char as delimiter instead of `/`, e.g. `s@pat@rep@`, `g@pat@cmd`. Each command in a combo picks its own delimiter independently: `g@a/b@s/old/new/`
 - For example, `s///` accepts newlines in pattern/replacement; replacement newlines split one line into multiple lines.
 - Transliteration uses `y/src/dst/` and requires source/destination to have equal character counts
 - A substitute whose pattern matches nothing in its addressed range fails (nothing is written), so a typo cannot silently no-op; substitutes running inside `g`/`g!`/`v` payloads stay lenient, since not every selected line need match
+- Matching errors, including exceeding the engine's default backtracking limit, abort the command set before any files are written
 
 When passing multiple commands, each command's lnhashes are verified immediately before it runs. A single-line address may match either the line's current hash or its call-start hash, so commands can stack on one line. Range addresses remain strict, and structural changes invalidate call-start records at and below their topmost affected line.
 

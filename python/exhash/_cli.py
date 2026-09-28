@@ -19,7 +19,7 @@ ADDRESSING
   Print needs no hashes: 12p  12,15p
 
 COMMANDS
-  s/pat/rep/[flags]  Substitute (Rust regex; flags g, i). y/src/dst/ transliterate.
+  s/pat/rep/[flags]  Substitute (fancy-regex, with lookaround; flags g, i). y/src/dst/ transliterate.
   d delete   a/i/c append/insert/change (inline text, or one text block read
   from stdin through EOF)   j join   m/t move/copy to dest   >/< indent/dedent
   sort   p print   g/pat/cmd, g!/pat/cmd, v/pat/cmd global

@@ -19,6 +19,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["arbitrary_precision"] }
 tempfile = "3"
 regex = "1.7.1"
+fancy-regex = "0.19.2"
 pyo3 = { version = ">=0.28", optional = true }
 tree-sitter = "0.26.12"
 tree-sitter-python = "0.25.0"

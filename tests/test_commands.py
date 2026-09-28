@@ -4,10 +4,11 @@ import pytest
 from exhash import exhash, lnhash, lnhashview, file_exhash
 
 
-def test_global_delete():
+@pytest.mark.parametrize("pattern", ["TODO", r"(?<=TODO )\w+"])
+def test_global_delete(pattern):
     text = "keep\nTODO one\nTODO two\nkeep2\n"
     a1, a4 = lnhash(1, "keep"), lnhash(4, "keep2")
-    res = exhash(text, [(f"{a1},{a4}", "g", "TODO", ("d",))])
+    res = exhash(text, [(f"{a1},{a4}", "g", pattern, ("d",))])
     assert res["lines"] == ["keep", "keep2"]
     assert res["deleted"] == [2, 3]
 
@@ -152,6 +153,27 @@ def test_substitute_global_case_insensitive():
     res = exhash("Foo foo\n", [(lnhash(1, "Foo foo"), "s", "foo", "bar", "gi")])
     assert res["lines"] == ["bar bar"]
     assert res["modified"] == [1]
+
+
+@pytest.mark.parametrize("text,pattern,replacement,flags,expected", [
+    ("preFoo preFoo foo", r"(?<=pre)(?P<word>foo)", "[${word}]", "gi", ["pre[Foo] pre[Foo] foo"]),
+    ("foobar barfoo bar", r"(?<!foo)bar(?!foo)", "X", "g", ["foobar barfoo X"]),
+    ("foo foo bar", r"\b(\w+)\s+\1\b", "$1", "", ["foo bar"]),
+    ("αx αx", r"(?<=α)", "!", "g", ["α!x α!x"]),
+    ("pre\nfoo\nbar", "(?<=pre\n)foo(?=\nbar)", "X", "", ["pre", "X", "bar"]),
+])
+def test_substitute_fancy_patterns(text, pattern, replacement, flags, expected):
+    assert exhash(text, [("%", "s", pattern, replacement, flags)])["lines"] == expected
+
+
+def test_regex_errors_do_not_write(tmp_path):
+    path, text, pattern = tmp_path/"f.txt", "x " + "ab"*28 + "\n", r"(?i:(a|b|ab)*(?>c))"
+    path.write_text(text)
+    cmds = [("%", "s", f"x|{pattern}", "$0!", "g"), ("%", "s", f"x|{pattern}", "\n", "g"), ("%", "g", pattern, ("d",))]
+    for cmd in cmds:
+        with pytest.raises(ValueError, match="regex match failed.*backtrack"):
+            file_exhash(path, ("%", "a", "pending edit"), cmd)
+        assert path.read_text() == text
 
 
 def test_raw_command_strings_are_rejected():

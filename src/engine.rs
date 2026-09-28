@@ -1,6 +1,6 @@
 use std::collections::{BTreeSet, HashMap};
 
-use regex::{Regex, RegexBuilder};
+use fancy_regex::{Regex, RegexBuilder};
 
 use crate::EditError;
 use crate::lnhash::{format_hash, format_lnhash, line_hash_u16};
@@ -450,10 +450,9 @@ impl Engine {
         if multiline {
             // Join range into single string, apply substitute, split back
             let joined: String = (s_idx..=e_idx).map(|i| self.lines[i].text.as_str()).collect::<Vec<_>>().join("\n");
-            if !re.is_match(&joined) { return Ok(false); }
+            if !re.is_match(&joined).map_err(match_error)? { return Ok(false); }
             matched = true;
-            let result =
-                if s.global { re.replace_all(&joined, s.replacement.as_str()).to_string() } else { re.replace(&joined, s.replacement.as_str()).to_string() };
+            let result = re.try_replacen(&joined, if s.global { 0 } else { 1 }, s.replacement.as_str()).map_err(match_error)?.into_owned();
             if result == joined { return Ok(true); }
             let new_lines: Vec<String> = result.split('\n').map(|s| s.to_string()).collect();
             let origins: Vec<Option<usize>> = (s_idx..=e_idx).map(|i| self.lines[i].origin).collect();
@@ -475,10 +474,9 @@ impl Engine {
         else {
             for idx in s_idx..=e_idx {
                 let old = self.lines[idx].text.clone();
-                if !re.is_match(&old) { continue; }
+                if !re.is_match(&old).map_err(match_error)? { continue; }
                 matched = true;
-                let new =
-                    if s.global { re.replace_all(&old, s.replacement.as_str()).to_string() } else { re.replace(&old, s.replacement.as_str()).to_string() };
+                let new = re.try_replacen(&old, if s.global { 0 } else { 1 }, s.replacement.as_str()).map_err(match_error)?.into_owned();
                 if new != old {
                     self.lines[idx].text = new;
                     self.lines[idx].modified = true;
@@ -671,7 +669,7 @@ impl Engine {
         for l in &mut self.lines { l.global_mark = false; }
 
         for idx in s..=e {
-            let m = re.is_match(&self.lines[idx].text);
+            let m = re.is_match(&self.lines[idx].text).map_err(match_error)?;
             self.lines[idx].global_mark = if invert { !m } else { m };
         }
 
@@ -756,8 +754,10 @@ pub fn edit_buffers_with_sw(buffers: Vec<(String, String)>, commands: Vec<Buffer
 }
 
 fn build_regex(pattern: &str, case_insensitive: bool) -> Result<Regex, EditError> {
-    if case_insensitive { RegexBuilder::new(pattern).case_insensitive(true).build().map_err(|e| EditError::new(format!("invalid regex: {e}"))) } else { Regex::new(pattern).map_err(|e| EditError::new(format!("invalid regex: {e}"))) }
+    RegexBuilder::new(pattern).case_insensitive(case_insensitive).build().map_err(|e| EditError::new(format!("invalid regex: {e}")))
 }
+
+fn match_error(err: fancy_regex::Error) -> EditError { EditError::new(format!("regex match failed: {err}")) }
 
 fn is_name_byte(b: u8) -> bool { b == b'_' || b.is_ascii_alphanumeric() }
 
