@@ -46,12 +46,33 @@ pub const MAX_DIFF_LINES: usize = 15;
 /// `diff`, then `printed` under a `# printed` header. Either one alone shows bare.
 pub fn with_printed(diff: String, printed: String) -> String { if diff.is_empty() || printed.is_empty() { diff + &printed } else { format!("{diff}# printed\n{printed}") } }
 
-/// Cap `s` at `max_lines` lines, appending an elided-lines marker.
+/// Keep up to `max_lines` diff rows, sharing each changed block's budget between removals and additions. Mark omitted runs in place.
 pub fn truncate_diff(s: &str, max_lines: usize) -> String {
     let lines: Vec<&str> = s.lines().collect();
-    let mut out: Vec<String> = lines.iter().take(max_lines).map(|l| l.to_string()).collect();
-    if lines.len() > max_lines { out.push(format!("…{} lines elided…", lines.len() - max_lines)); }
-    if out.is_empty() { String::new() } else { out.join("\n") + "\n" }
+    let changed = |s: &str| matches!(s.as_bytes(), [b'-' | b'+', b'0'..=b'9', ..]);
+    let mut keep = BTreeSet::new();
+    let mut offset = 0;
+    for run in lines.chunk_by(|a, b| changed(a) == changed(b)) {
+        if keep.len() == max_lines { break; }
+        let remaining = max_lines - keep.len();
+        if changed(run[0]) {
+            let old: Vec<_> = (offset..offset + run.len()).filter(|&i| lines[i].starts_with('-')).collect();
+            let new: Vec<_> = (offset..offset + run.len()).filter(|&i| lines[i].starts_with('+')).collect();
+            keep.extend((0..old.len().max(new.len())).flat_map(|i| [old.get(i), new.get(i)]).flatten().copied().take(remaining));
+        } else { keep.extend((offset..offset + run.len()).take(remaining)); }
+        offset += run.len();
+    }
+    let mut out = String::new();
+    let mut next = 0;
+    for i in keep.into_iter().chain([lines.len()]) {
+        if i > next { out.push_str(&format!("…{} lines elided…\n", i - next)); }
+        if i < lines.len() {
+            out.push_str(lines[i]);
+            out.push('\n');
+        }
+        next = i + 1;
+    }
+    out
 }
 
 impl EditResult {
@@ -134,6 +155,9 @@ impl EditResult {
             }
             next_old += 1;
         }
+
+        // Keep each changed block in source order, with all removals before additions.
+        for run in events.chunk_by_mut(|a, b| (a.0 == ' ') == (b.0 == ' ')) { run.sort_by_key(|e| e.0 == '+'); }
 
         // Now group into hunks with context
         let interesting: BTreeSet<usize> = events

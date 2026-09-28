@@ -244,6 +244,16 @@ def test_exhash_format_diff_no_changes():
     assert res.format_diff() == ""
 
 
+def test_diff_groups_contiguous_changes():
+    text = "a\nb\nkeep\nc\nd\n"
+    res = exhash(text, [("%", "g", "^[a-d]$", (">",))])
+    rows = res.format_diff().splitlines()[2:]
+    assert [r[0] for r in rows] == list("--++ --++")
+    assert [r.split("|", 2)[2] for r in rows] == ["a", "b", "    a", "    b", "keep", "c", "d", "    c", "    d"]
+    res = exhash("a\nb\n", [("%", "c", "x\ny\nz")])
+    assert [r[0] for r in res.format_diff().splitlines()[2:]] == list("--+++")
+
+
 def test_exhash_view():
     text = "foo\nbar\n"
     res = exhash(text, [])
@@ -585,6 +595,9 @@ def test_truncate_diff():
     assert truncate_diff(many, max_lines=40) == many
     r = exhash("\n".join(f"x{i}" for i in range(40)) + "\n", [("%", "s", "x", "y", "g")])
     assert "lines elided…" in repr(r) and "lines elided" not in str(r)
+    full = r.format_diff().splitlines()
+    assert truncate_diff(r.format_diff()).splitlines() == full[:9] + ["…33 lines elided…"] + full[42:48] + ["…34 lines elided…"]
+    assert truncate_diff(many, max_lines=0) == "…40 lines elided…\n"
 
 def test_format_diff_maxlen():
     "Capped rows of a changed pair start just before their first difference, so the edit stays visible."

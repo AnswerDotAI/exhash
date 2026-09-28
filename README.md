@@ -274,7 +274,7 @@ The package registers `exhash.skill` as a pyskill exposing the primary Python AP
 
 Lines addressed by `p` are not part of the diff. `res.format_printed()` returns them as a bare `lnhashview` with no headers. It never caps or truncates its rows. `str(res)` and the repr show the diff, then a `# printed` header, then the printed lines. A result that changed nothing shows the printed lines alone, with no header. `file_exhash` and `cell_exhash` return the same output. A `p`-only call writes nothing and returns the bare view. A call that changes and prints nothing returns `none: No changes.`, as `fastcore`'s editors do. When more than one target is reported, a target with only printed lines is headed by `# file <path>` or `# cell <id>`.
 
-`res.format_diff(context=1)` returns a unified-diff-style summary showing only changed lines with context:
+`res.format_diff(context=1)` returns a unified-diff-style summary showing only changed lines with context. Each contiguous changed block shows all removed lines before all added lines:
 
 ```py
 res = exhash(text, [(addr, "s", "foo", "baz")])
@@ -286,7 +286,7 @@ print(res.format_diff())
 #  2|X2|bar
 ```
 
-`format_diff(maxlen=n)` caps each diff row at `n` chars plus a closing `…`. Where a run of changed rows holds as many `-` rows as `+` rows, the nth `-` row pairs with the nth `+` row. A capped row of a pair starts 20 chars before the pair's first difference, with `…` after its address. Every other capped row keeps its start. The result reprs and the diffs that `file_exhash` and `cell_exhash` return use `maxlen=180`. `truncate_diff` then keeps their first 15 lines.
+`format_diff(maxlen=n)` caps each diff row at `n` chars plus a closing `…`. Where a run of changed rows holds as many `-` rows as `+` rows, the nth `-` row pairs with the nth `+` row. A capped row of a pair starts 20 chars before the pair's first difference, with `…` after its address. Every other capped row keeps its start. The result reprs and the diffs that `file_exhash` and `cell_exhash` return use `maxlen=180`. `truncate_diff` then keeps up to 15 diff lines, sharing each changed block's remaining budget between removals and additions. Elision markers appear at each omitted run, in addition to those 15 lines.
 
 All diff strings returned by `format_diff`, `file_exhash`, and `cell_exhash` are fastcore `PrettyString`s, and the result objects' reprs show the diff too - so in IPython, ending a cell with the bare call displays the diff verbatim, no `print` needed.
 

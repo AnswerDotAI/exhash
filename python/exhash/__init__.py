@@ -105,6 +105,7 @@ def exhash(text:str, cmds:list[tuple], sw:int=4):
       printed   1-based line numbers explicitly addressed by ``p``
 
     Call ``res.format_diff(context=1)`` for a unified-diff-style summary.
+    Each contiguous changed block shows all removed lines before all added lines.
     ``maxlen=n`` caps each diff row at ``n`` chars plus a closing ``…``.
     Where a run of changed rows holds as many ``-`` rows as ``+`` rows, the nth ``-`` row pairs with the nth ``+`` row.
     A capped row of a pair starts 20 chars before the pair's first difference, with ``…`` after its address.
@@ -188,9 +189,9 @@ def _norm_path(path): return str(Path(path).expanduser())
 
 def truncate_diff(
     s:str, # Formatted diff text
-    max_lines:int=15, # Max lines to keep before eliding the rest
+    max_lines:int=15, # Max diff rows to keep, excluding elision markers
 )->str:
-    "Truncate diff text for display: cap the line count, appending an elided-lines marker."
+    "Cap diff rows, sharing each changed block's budget between removals and additions and marking omitted runs in place."
     return _truncate_diff(s, max_lines)
 
 
