@@ -1,7 +1,7 @@
 //! exhash — Verified Line-Addressed File Editor
 //!
 //! Shared text/file/notebook editing and command parsing for Rust embedders and
-//! the Python APIs/CLIs. Python bindings are optional (`python` feature).
+//! the Python APIs/CLIs. Python bindings live in the separate `exhash-py` crate.
 
 mod commands;
 mod engine;
@@ -10,13 +10,10 @@ mod lnhash;
 mod outline;
 mod parse;
 
-#[cfg(feature = "python")]
-mod python;
-
 pub use commands::{CommandField, command_from_fields};
 pub use engine::{BufferCommand, BufferEditResult, EditResult, MAX_DIFF_LINES, MAXLEN, with_printed, truncate_diff, edit_buffers_with_sw, edit_text, edit_text_with_sw};
 pub use files::*;
-pub use lnhash::{LnHash, format_lnhash, line_hash_u16, lnhashview, parse_lnhash};
+pub use lnhash::{LnHash, format_hash, format_lnhash, line_hash_u16, lnhashview, parse_lnhash};
 pub use outline::{HeadingRow, LinkRow, scan_code, scan_md};
 pub use parse::{Address, Command, Subcommand, parse_commands_from_args, parse_commands_from_script};
 

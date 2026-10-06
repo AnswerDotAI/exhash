@@ -1,6 +1,7 @@
 "Hierarchical document outlines: `Section` trees with verified `addr.|lnhash` addresses, links by number, and `open_doc`."
 
 import json, re
+from collections import Counter
 from pathlib import Path
 from fastcore.basics import store_attr, humanize, PrettyString
 from .exhash import md_scan as _md_scan, code_scan as _code_scan
@@ -222,11 +223,15 @@ class Section(dict):
         return '\n'.join(f'{self.start_line+i}: {l}' for i,l in enumerate(lines))
 
     def __repr__(self):
-        "Own row, then up to two heading levels below, as an orientation view"
+        "Own row, then the sections below down to the second level that holds more than one section, as an orientation view"
         seg = lambda a: a.count('.')+1 if a else 0
-        base = seg(self.addr)
-        rows = [n for n in self._walk() if 1 <= seg(n.addr)-base <= 2]
-        return repr(Sections([self, *rows]))
+        base,nodes = seg(self.addr),list(self._walk())
+        sizes = Counter(seg(n.addr)-base for n in nodes)
+        depth,counted = 0,0
+        for depth in sorted(sizes):
+            counted += sizes[depth] > 1
+            if counted == 2: break
+        return repr(Sections([self, *(n for n in nodes if seg(n.addr)-base <= depth)]))
     def _repr_pretty_(self, p, cycle): p.text('...' if cycle else repr(self))
 
 
@@ -352,13 +357,15 @@ def open_doc(
 ):
     """Open a file, URL, or text as a `Section` tree for hierarchical reading and verified edit addresses.
 
+    Always open a file with `open_doc` before you read or search it, and always first display the result bare to see its outline: the bare object as the cell's last expression, with no `paths()`, slicing or `print`. Then read the sections you need with `view`, passing tokens copied from the listing, several in one call. Index into a large section, as in `d[1][3]`, to see its own outline. `d.search(pat)` finds a pattern within the file and gives the section token of each hit. Use `rg` for searches across files.
+
     Pass a file with `fname=` or a `Path` as `src` (retained for `refresh()` and edits), a URL as an `https?://` string, or held text as any other string. Trees use Markdown headings, tree-sitter definitions for code files (py/js/ts/tsx/rs/zig/swift), or notebook heading cells.
 
-    Display the tree bare to see its outline. Listing rows are `token title [size] preview`; code previews start with the definition/signature instead of a title. Newlines display as ¶ and links as `[text][n]`.
+    Listing rows are `token title [size] preview`; code previews start with the definition/signature instead of a title. Newlines display as ¶ and links as `[text][n]`.
 
-    Tokens, the idiomatic usage, combine dotted section addresses (root `.`, trailing dot otherwise) and boundary hashes: `1.2.|12|Py|,45|HD|`. `at()` accepts copied listing tokens, not bare dotted addresses, and verifies the first hash; the boundary pair is an edit-ready range. Live navigation uses `d[1][6]`, `find(title)`, `search(pat)`, and `paths(depth)`. Use `links(pat)` to list links and `open(n)` to open one by number. Opened links record `base`; non-Markdown targets become leaves with text in `.src`.
+    Tokens, the idiomatic usage, combine dotted section addresses (root `.`, trailing dot otherwise) and boundary hashes: `1.2.|12|Py|,45|HD|`. `at()` accepts copied listing tokens, not bare dotted addresses, and verifies the first hash; the boundary pair is an edit-ready range. `find(title)` finds a section by title, and `paths(depth)` lists sections down to a depth. Use `links(pat)` to list links and `open(n)` to open one by number. Opened links record `base`; non-Markdown targets become leaves with text in `.src`.
 
-    `view()` renders links as `[text][n]`; `.src` is raw text. `view(*tokens)` reads multiple sections under `# token` headers; `nums=True` or `lnhashs=True` shows stored lines with line numbers or hash addresses. Notebook tokens contain heading cell IDs (`1.2.|ab12cd34|86|`); hashed views use `cellid:lineno|hash|` for cell edits.
+    `view()` renders links as `[text][n]`; `.src` is raw text. `view(*tokens)` puts each section under a `# token` header. `nums=True` or `lnhashs=True` shows stored lines with line numbers or hash addresses. Notebook tokens contain heading cell IDs (`1.2.|ab12cd34|86|`); hashed views use `cellid:lineno|hash|` for cell edits.
 
     For llms.txt: `toc = open_doc(url)` → `toc.links(topic)` → `page = toc.open(n)` → display `page`. Read `page.view()` when small; otherwise use `page.search(topic)` and `page.view(*tokens)`.
     """

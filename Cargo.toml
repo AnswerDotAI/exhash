@@ -1,7 +1,15 @@
-[package]
-name = "exhash"
+[workspace]
+members = ["py"]
+default-members = [".", "py"]
+
+[workspace.package]
 version = "0.4.19"
 edition = "2024"
+
+[package]
+name = "exhash"
+version.workspace = true
+edition.workspace = true
 rust-version = "1.91"
 license = "Apache-2.0"
 description = "Verified line-addressed file editor using lnhash addresses"
@@ -11,7 +19,6 @@ documentation = "https://github.com/AnswerDotAI/exhash"
 
 [lib]
 name = "exhash"
-crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 crc32fast = "1"
@@ -20,7 +27,6 @@ serde_json = { version = "1", features = ["arbitrary_precision"] }
 tempfile = "3"
 regex = "1.7.1"
 fancy-regex = "0.19.2"
-pyo3 = { version = ">=0.28", optional = true }
 tree-sitter = "0.26.12"
 tree-sitter-python = "0.25.0"
 tree-sitter-javascript = "0.25.0"
@@ -29,18 +35,20 @@ tree-sitter-rust = "0.24.2"
 tree-sitter-zig = "1.1.2"
 tree-sitter-swift = "0.7.3"
 
-[features]
-python = ["dep:pyo3"]
-extension-module = ["python", "pyo3/extension-module"]
-
 [lints.clippy]
 too_many_arguments = "allow"
+
+[profile.test]
+inherits = "release"
 
 [profile.release]
 lto = false
 codegen-units = 16
 
 [profile.release.package.exhash]
+incremental = true
+
+[profile.release.package.exhash-py]
 incremental = true
 
 [profile.dist]
@@ -51,4 +59,7 @@ codegen-units = 1
 strip = true
 
 [profile.dist.package.exhash]
+incremental = false
+
+[profile.dist.package.exhash-py]
 incremental = false

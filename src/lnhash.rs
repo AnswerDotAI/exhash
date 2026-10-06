@@ -12,7 +12,7 @@ const HASH_ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrs
 /// (excluding the line ending), matching Python's `zlib.crc32(line) & 0xfff`.
 pub fn line_hash_u16(line: &str) -> u16 { (crc32fast::hash(line.as_bytes()) & 0xfff) as u16 }
 
-pub(crate) fn format_hash(hash: u16) -> String { format!("{}{}", HASH_ALPHABET[((hash >> 6) & 63) as usize] as char, HASH_ALPHABET[(hash & 63) as usize] as char) }
+pub fn format_hash(hash: u16) -> String { format!("{}{}", HASH_ALPHABET[((hash >> 6) & 63) as usize] as char, HASH_ALPHABET[(hash & 63) as usize] as char) }
 
 /// Format a line address as `lineno|hash|`.
 pub fn format_lnhash(lineno: usize, line: &str) -> String { format!("{}|{}|", lineno, format_hash(line_hash_u16(line))) }

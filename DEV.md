@@ -17,7 +17,7 @@ src/
   parse.rs        compact command parsing (script and args modes)
   commands.rs     shared structured command fields/parser
   files.rs        file/cell paths, notebook JSON, views, edit/write orchestration, per-target reports
-  python.rs       PyO3 bindings (incl. exhash_argv used by the CLI)
+py/src/lib.rs     PyO3 bindings (incl. exhash_argv used by the CLI)
 python/exhash/
   __init__.py     Python validation and result wrappers
   _cli.py         exhash/lnhashview console-script entry points
@@ -33,7 +33,7 @@ tests/
 For local development, build and install the extension:
 
 ```bash
-maturin develop
+cargo develop
 ```
 
 `ship-rs-build` builds the distributable wheel. The `exhash` and `lnhashview` commands are Python console scripts (`python/exhash/_cli.py`) over the extension; there are no separate Rust binaries.
@@ -44,9 +44,7 @@ maturin develop
 pytest -q
 ```
 
-The existing Python API/CLI regression suite exercises the shared Rust file/cell
-implementation. `cargo test` additionally tests the Rust API with no Python feature.
-`cargo check --no-default-features` verifies embedding without PyO3.
+The Python API/CLI suite exercises the shared Rust file/cell implementation. Bare `cargo test` shares the ordinary library build with `cargo develop`. The published `exhash` crate has no PyO3 dependency; the unpublished `exhash-py` crate in `py/` builds the extension. Use `cargo check -p exhash` to check the core alone.
 
 ## Hash verification timing
 
@@ -81,7 +79,7 @@ Release flow is: release first, then bump.
 pytest -q
 ```
 
-2. Confirm the release version in `Cargo.toml` (`[package].version`). `pyproject.toml` gets the Python package version from Cargo via `dynamic = ["version"]`.
+2. Confirm the release version in `Cargo.toml` (`[workspace.package].version`). `pyproject.toml` gets the Python package version from Cargo via `dynamic = ["version"]`.
 
 3. Release:
 

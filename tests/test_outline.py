@@ -65,6 +65,7 @@ def test_repr_rows():
     d = open_doc(SAMPLE)
     rows = repr(d).splitlines()
     assert rows[0].startswith('.|1|')                  # root row: ordinary token, whole-doc range
+    assert [x.split('|')[0] for x in rows] == ['.', '1.', '1.1.', '1.2.', '1.2.1.', '1.2.2.']  # the lone H1 doesn't count as a level
     r = re.compile(r"^(\d+(?:\.\d+)*\.\|\d+\|[A-Za-z0-9_-]{2}\|,\d+\|[A-Za-z0-9_-]{2}\|) (.+) \[\d+[.\w]*\](?: (.*))?$")
     sub = repr(d[1][2]).splitlines()
     m = r.match([x for x in sub if x.startswith('1.2.2.|')][0])

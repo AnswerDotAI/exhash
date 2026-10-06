@@ -1,0 +1,16 @@
+[package]
+name = "exhash-py"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+test = false
+
+[dependencies]
+exhash = { path = ".." }
+pyo3 = { version = ">=0.28", features = ["extension-module"] }
+
+[build-dependencies]
+pyo3-build-config = "0.29"

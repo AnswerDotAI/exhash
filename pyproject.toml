@@ -17,7 +17,7 @@ classifiers = [
 dependencies = ["fastcore>=2.2.29", "httpx>=0.28.1"]
 
 [project.optional-dependencies]
-dev = ["fastship>=0.0.11", "maturin>=1.0,<2.0", "pytest"]
+dev = ["fastws-cli>=0.0.20", "fastship>=0.0.11", "maturin>=1.0,<2.0", "pytest"]
 
 [project.urls]
 Homepage = "https://github.com/AnswerDotAI/exhash"
@@ -37,12 +37,12 @@ exhash = "exhash.skill"
 exhash = "exhash"
 
 [tool.maturin]
-features = ["extension-module"]
+manifest-path = "py/Cargo.toml"
 python-source = "python"
 module-name = "exhash.exhash"
 
 [tool.uv]
-cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = ".git/fastws-cargo-key" }]
+cache-keys = [{ file = "pyproject.toml" }, { file = "Cargo.toml" }, { file = "py/Cargo.toml" }]
 
 [tool.pytest.ini_options]
 markers = ["slow: live-network tests, run explicitly with -m slow"]

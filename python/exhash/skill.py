@@ -1,6 +1,6 @@
 r"""Read, navigate, and edit files and notebook cells using hash-verified addresses. Use for precise text edits, transfers between files or cells, reading large files, and hierarchical navigation of Markdown, code, notebooks, and linked documentation.
 
-Prefer exhash to ad hoc patching. Read large markdown and code files with `open_doc`.
+Prefer exhash to ad hoc patching. You MUST open a file with `open_doc` before reading or searching it, and always first display the result bare. `doc(open_doc)` gives the workflow.
 
 ## Edit loop
 
