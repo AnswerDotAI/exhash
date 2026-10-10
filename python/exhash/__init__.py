@@ -55,6 +55,7 @@ def _normalize_subcmd(op, parts):
         if parts: raise ValueError(f"{op!r} tuple takes no payload")
         return (op,)
     if len(parts) > 1: raise ValueError(f"{op!r} tuple accepts at most one payload field")
+    if op in ('a', 'i', 'c') and not parts: raise ValueError(f"{op!r} tuple must be (addr, {op!r}, text)")
     payload = parts[0] if parts else ''
     if op in '><' and isinstance(payload, int): payload = str(payload)
     if not isinstance(payload, str): raise TypeError("tuple command payload must be a string")

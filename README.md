@@ -149,7 +149,7 @@ view = lnhashview_file("f.py", start=1, end=260) # end past EOF is clamped
 
 A command is usually `(addr, op)` or `(addr, op, payload)`. `addr` is an lnhash address string from `lnhash(...)`/`lnhashview(...)`; put ranges in that same string, e.g. `f"{a1},{a2}"`. Substitute uses `(addr, "s", pattern, replacement[, flags])`, so patterns and replacements can contain `/` without delimiter escaping.
 
-Text fields can contain newlines. That covers multiline `a`/`i`/`c` payloads and substitute pattern/replacement. In `a`/`i`/`c` payloads a trailing newline ends the last line, as in CLI stdin blocks: `"x"` and `"x\n"` both insert one line, `"x\n\n"` inserts `x` and then a blank line, and an empty payload is no lines, so `c` with `""` deletes the addressed lines. Commands such as `d`, `m`, and `sort` do not take text.
+Text fields can contain newlines. That covers multiline `a`/`i`/`c` payloads and substitute pattern/replacement. An `a`/`i`/`c` payload splits into lines at each newline: `"x\ny"` gives two lines, `"x\n"` gives `x` and then a blank line, and `""` gives one blank line. Commands such as `d`, `m`, and `sort` do not take text.
 
 ```py
 addr = lnhash(1, "foo")  # "1|Gy|"
@@ -252,7 +252,7 @@ new line 2
 - `%%exhash new.py 0|AA| a` creates a missing file.
 - `%%exhash f.py % c` replaces the whole file (`%` needs no hashes). With a cell id, `%%exhash nb.ipynb ab12 % c` replaces that notebook cell's source.
 - `%%exhash f.py 12|Py|,15|HD| c` replaces just that range, both addresses from one `lnhashview_file` view.
-- A trailing newline ends the last line, as in every `a`/`i`/`c` payload; to end the payload with a blank line, leave an empty line at the bottom of the cell.
+- The payload has one line for each line of the cell.
 - Each magic cell applies one command and returns the diff.
 
 Tuple `a`/`i`/`c` payloads (as in the examples above) remain for scripts and tests, where magics don't exist. Interactively, prefer the magic: a Python string layer invites quoting mistakes.

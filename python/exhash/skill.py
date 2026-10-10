@@ -25,7 +25,7 @@ Commands run in order. A single-line address may match current or call-start con
 
 ## Text payloads
 
-In IPython, use the `%%exhash` magic (registered on import; syntax and examples: `doc(exhash.magic.exhash_magic)`) for every interactive `a`/`i`/`c`: the cell body is the unquoted text. Scripts/tests: one tuple field, a raw triple-quoted string with literal line breaks; an initial newline inserts an initial blank line.
+In IPython, use the `%%exhash` magic (registered on import; syntax and examples: `doc(exhash.magic.exhash_magic)`) for every interactive `a`/`i`/`c`: the cell body is the unquoted text, one payload line for each cell line. Scripts/tests: one tuple field, a raw triple-quoted string with literal line breaks. A tuple payload splits into lines at each newline: `"x\n"` gives `x` and then a blank line, and `""` gives one blank line.
 
 ## Commands
 

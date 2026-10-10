@@ -43,6 +43,16 @@ def test_inplace_transliterate(tmp_path):
     assert out.stdout == diff(f"{dele(1, 'abc')}\n{add(1, 'ABC')}\n{ctx(2, 'cab')}\n")
     assert f.read_text() == "ABC\ncab\n"
 
+def test_delimited_fields(tmp_path):
+    f = tmp_path / "f.txt"
+    f.write_text("a/b 12\n")
+    out = run([str(f), f"{lnhash(1, 'a/b 12')}s/a\\/b \\d+/x/"])  # only the escaped delimiter loses its backslash
+    assert out.returncode == 0, out.stderr
+    assert f.read_text() == "x\n"
+    run([str(f), f"{lnhash(1, 'x')}y/x/y"])  # the last field needs no closing delimiter
+    assert f.read_text() == "y\n"
+    assert run([str(f), f"{lnhash(1, 'y')}s/y"]).returncode != 0  # an unterminated pattern fails
+
 def test_dry_run_does_not_write(tmp_path):
     f = tmp_path / "f.txt"
     f.write_text("foo\nbar\n")

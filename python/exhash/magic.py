@@ -8,25 +8,18 @@ def exhash_magic(line, cell):
     r"""Apply one exhash a/i/c command with the cell body as its payload.
 
     Usage: %%exhash <path> [<cell_id>] <address> <a|i|c>
-    The line is shlex-split: quote a path containing spaces ("My File.md") or
-    escape them (My\ File.md). IPython expands `{expr}` and `$var` on this line
-    only, as in `%%exhash {path} {cid} % c`. The payload is the rest of the cell,
-    taken verbatim. A trailing newline ends the last line, so to end the payload
-    with a blank line, leave an empty line at the bottom of the cell. With
-    <cell_id>, edits that notebook cell via cell_exhash.
+    The line is shlex-split: quote a path containing spaces ("My File.md") or escape them (My\ File.md). IPython expands `{expr}` and `$var` on this line only, as in `%%exhash {path} {cid} % c`. The payload is the rest of the cell, taken verbatim, with one line for each line of the cell. With <cell_id>, edits that notebook cell via cell_exhash.
 
       %%exhash f.py 0|AA| a            create f.py
       %%exhash f.py % c                replace the whole file
-      %%exhash f.py 12|Py|,15|HD| c    replace lines 12 to 15
+      %%exhash f.py 12|Py|,15|HD| c    replace lines 12 to 15"""
 
-    A cell body of `x\n` appends `x`; a body of `x\n\n` appends `x` and then a
-    blank line."""
     from . import file_exhash, cell_exhash
     args = shlex.split(line)
     if len(args) not in (3,4): raise ValueError('usage: %%exhash <path> [<cell_id>] <address> <a|i|c>')
     *target, addr, cmd = args
     if cmd not in ('a','i','c'): raise ValueError(f'command must be a, i, or c; got {cmd!r}')
-    command = (addr, cmd, cell)
+    command = (addr, cmd, cell.removesuffix('\n'))
     return cell_exhash(*target, command) if len(target)==2 else file_exhash(target[0], command)
 
 def load_ipython_extension(ipython): ipython.register_magic_function(exhash_magic, 'cell', 'exhash')

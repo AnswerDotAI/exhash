@@ -6,7 +6,7 @@ from exhash.magic import exhash_magic
 def test_exhash_magic(tmp_path):
     p = str(tmp_path / "f.py")
     payload = "x = '''one'''\ny = \"\"\"two\"\"\"\nz = r'\\n raw'"
-    exhash_magic(f"{p} 0|AA| a", payload + "\n")  # cell arrives with a trailing newline, which ends the last line
+    exhash_magic(f"{p} 0|AA| a", payload + "\n")  # IPython ends a cell body with a newline
     assert Path(p).read_text() == payload + "\n"
     res = exhash_magic(f"{p} {lnhash(2, 'y = \"\"\"two\"\"\"')} c", "y = 2\n")
     assert "y = 2" in str(res)

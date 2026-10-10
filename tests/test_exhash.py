@@ -277,12 +277,13 @@ def test_exhash_rechecks_hash_before_each_command():
     a2, a3 = lnhash(2, "b"), lnhash(3, "c")
     with pytest.raises(ValueError, match="stale"): exhash(text, [(a2, "i", "x"), (a3, "d")])
 
-def test_exhash_append_trailing_newline():
+def test_exhash_payload_splits_at_each_newline():
     text = "a\nb\n"
     addr = lnhash(1, "a")
-    assert exhash(text, [(addr, "a", "x\n")])["lines"] == ["a", "x", "b"]
-    assert exhash(text, [(addr, "a", "x\n\n")])["lines"] == ["a", "x", "", "b"]
-    assert exhash(text, [(addr, "c", "")])["lines"] == ["b"]
+    assert exhash(text, [(addr, "a", "")])["lines"] == ["a", "", "b"]
+    assert exhash(text, [(addr, "a", "x\n")])["lines"] == ["a", "x", "", "b"]
+    assert exhash(text, [(addr, "c", "")])["lines"] == ["", "b"]
+    with pytest.raises(ValueError): exhash(text, [(addr, "a")])
 
 def test_exhash_multiline_non_text_cmd_raises():
     text = "a\nb\n"

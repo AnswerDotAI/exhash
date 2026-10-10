@@ -73,8 +73,8 @@ pub fn parse_commands_from_args(args: &[String], stdin: &mut impl BufRead) -> Re
     Ok(out)
 }
 
-/// Split an `a`/`i`/`c` payload into lines. A trailing newline ends the last line, as in stdin text blocks.
-pub fn split_text_payload(text: &str) -> Vec<String> { text.lines().map(|line| line.strip_suffix('\r').unwrap_or(line).to_string()).collect() }
+/// Split an `a`/`i`/`c` payload into lines at each newline.
+pub fn split_text_payload(text: &str) -> Vec<String> { text.split('\n').map(|line| line.strip_suffix('\r').unwrap_or(line).to_string()).collect() }
 
 /// Parse commands from an ex-style script string.
 ///
@@ -249,7 +249,7 @@ where
 fn parse_text_command<'a, F>(rest: &'a str, read_text: &mut F) -> Result<(Vec<String>, &'a str), EditError>
 where
     F: FnMut() -> Result<Vec<String>, EditError>,
-{ if rest.is_empty() { Ok((read_text()?, "")) } else if rest.contains('\n') { Ok((split_text_payload(rest), "")) } else { Ok((vec![rest.to_string()], "")) } }
+{ if rest.is_empty() { Ok((read_text()?, "")) } else { Ok((split_text_payload(rest), "")) } }
 
 pub fn parse_optional_usize(s: &str) -> Result<usize, EditError> {
     let s = s.trim();
@@ -278,9 +278,9 @@ fn parse_substitute(rest: &str) -> Result<(Subst, &str), EditError> {
     if delim.is_alphanumeric() || delim == '\\' { return Err(EditError::new("substitute delimiter must not be alphanumeric or backslash")); }
 
     let (pat, after_pat) = parse_delimited(rest, delim)?;
-    let (rep, after_rep) = scan_to_delim(after_pat, delim)?;
+    let (rep, after_rep) = scan_to_delim(after_pat, delim);
 
-    Ok((subst_from_parts(pat, rep, after_rep)?, ""))
+    Ok((subst_from_parts(pat, rep, after_rep.unwrap_or(""))?, ""))
 }
 
 /// Validate substitute fields and flags (shared by the compact and tuple forms).
@@ -303,9 +303,9 @@ fn parse_transliterate(rest: &str) -> Result<((String, String), &str), EditError
     if delim.is_alphanumeric() || delim == '\\' { return Err(EditError::new("transliterate delimiter must not be alphanumeric or backslash")); }
 
     let (source, after_source) = parse_delimited(rest, delim)?;
-    let (dest, trailing) = scan_to_delim(after_source, delim)?;
+    let (dest, trailing) = scan_to_delim(after_source, delim);
 
-    Ok((translit_from_parts(source, dest)?, trailing))
+    Ok((translit_from_parts(source, dest)?, trailing.unwrap_or("")))
 }
 
 /// Validate transliterate source/dest fields (shared by the compact and tuple forms).
@@ -316,70 +316,34 @@ pub fn translit_from_parts(source: String, dest: String) -> Result<(String, Stri
     Ok((source, dest))
 }
 
-/// Parse a `/.../` delimited string from the start of `input`.
-///
-/// Returns (decoded, rest_after_closing_delim).
+/// Parse a delimited field from the start of `input`, which begins with `delim`. Returns the field and the rest after its closing `delim`.
 fn parse_delimited(input: &str, delim: char) -> Result<(String, &str), EditError> {
-    let mut chars = input.chars();
-    let first = chars.next().ok_or_else(|| EditError::new("missing delimiter"))?;
-    if first != delim { return Err(EditError::new("missing delimiter")); }
-
-    let mut out = String::new();
-    let mut escaped = false;
-    let mut consumed = 1; // delim
-
-    for ch in chars {
-        consumed += ch.len_utf8();
-        if escaped {
-            if ch == delim { out.push(ch); }
-            else {
-                out.push('\\');
-                out.push(ch);
-            }
-            escaped = false;
-            continue;
-        }
-        if ch == '\\' {
-            escaped = true;
-            continue;
-        }
-        if ch == delim {
-            let rest = &input[consumed..];
-            return Ok((out, rest));
-        }
-        out.push(ch);
+    let rest = input.strip_prefix(delim).ok_or_else(|| EditError::new("missing delimiter"))?;
+    match scan_to_delim(rest, delim) {
+        (field, Some(rest)) => Ok((field, rest)),
+        (_, None) => Err(EditError::new("unterminated delimited string")),
     }
-
-    Err(EditError::new("unterminated delimited string"))
 }
 
-/// Scan for the next unescaped `delim`, returning (content, rest_after_delim).
-/// Unlike `parse_delimited`, does not expect a leading delimiter.
-/// If no delimiter is found, returns all remaining input as content (allows optional trailing delim).
-fn scan_to_delim(input: &str, delim: char) -> Result<(String, &str), EditError> {
+/// Scan `input` up to the next unescaped `delim`. Returns the field and the rest after the closing `delim`. The rest is `None` when the field has no closing `delim`. A backslash escapes only `delim`.
+fn scan_to_delim(input: &str, delim: char) -> (String, Option<&str>) {
     let mut out = String::new();
     let mut escaped = false;
-    let mut consumed = 0;
-    for ch in input.chars() {
-        consumed += ch.len_utf8();
+    for (i, ch) in input.char_indices() {
         if escaped {
-            if ch == delim { out.push(ch); }
-            else {
-                out.push('\\');
-                out.push(ch);
-            }
+            if ch != delim { out.push('\\'); }
+            out.push(ch);
             escaped = false;
-            continue;
-        }
-        if ch == '\\' {
+        } else if ch == '\\' {
             escaped = true;
-            continue;
+        } else if ch == delim {
+            return (out, Some(&input[i + ch.len_utf8()..]));
+        } else {
+            out.push(ch);
         }
-        if ch == delim { return Ok((out, &input[consumed..])); }
-        out.push(ch);
     }
     if escaped { out.push('\\'); }
-    Ok((out, ""))
+    (out, None)
 }
 
 fn read_text_block_from_bufread(stdin: &mut impl BufRead) -> Result<Vec<String>, EditError> {
