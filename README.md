@@ -116,11 +116,11 @@ printf 'replacement line\n' | exhash-cell nbs/00_core.ipynb ab12cd34 '3|7v|c'
 
 ### Document outlines
 
-`exhash-open` opens Markdown, source code, notebooks, URLs, or stdin as a verified section tree. Its default output is the immediate outline; copy a displayed token back to read that section:
+`exhash-open` opens Markdown, source code, notebooks, URLs, or stdin as a verified section tree. Its default output is the immediate outline; pass the section number and first line address that start a row to read that section:
 
 ```bash
 exhash-open README.md
-exhash-open README.md '1.2.|21|Z1|,101|Js|'
+exhash-open README.md '1.2.|21|Z1|'
 exhash-open README.md --paths --depth 2
 exhash-open README.md --search 'CLI|console'
 exhash-open README.md --lnhashs
@@ -298,7 +298,7 @@ All diff strings returned by `format_diff`, `file_exhash`, and `cell_exhash` are
 1.6.|56|lq|,78|74| Release [725] Publishing is handled by GitHub Actions in `.github/workflows/ci.yml`…
 ```
 
-The leading token is a verified address: the dotted addr (trailing dot; the root's is `.`) fused with the section's `start,end` lnhash boundary pair. `at(token)` navigates with the first hash verified, so a stale copy fails loudly; the boundary pair drops straight into a `file_exhash` range command, so a listing is also an edit address book. `find(title)`, `search(pat)`, `paths(depth)`, and numeric indexing (`d[1][6]`) traverse the live tree; `links(pat)` lists inline links numbered document-wide, and `open(n)` opens link `n` as a new tree (fetched or read relative to `base`). Previews join lines with `¶` and render links as `[text][n]`, so no URL is ever displayed. A markdown row's preview starts under its heading; a code row has no title, and its preview opens with the def line itself, signature included. `view()` returns a section's rendered text the same way (`.src` is the raw source); `view(*tokens)` returns the live sections at those verified addresses, displayed under `# token` headers when more than one; `nums=`/`lnhashs=` switch any view to stored lines with edit-ready addresses. Notebook section tokens carry the heading cell id, and `view(lnhashs=True)` emits `cellid:lineno|hash|` rows ready for `cell_exhash`.
+The leading token is a verified address: the dotted addr (trailing dot; the root's is `.`) followed by the addresses of the section's first and last lines. `at()` and `view()` need only the first part, such as `1.2.|12|Py|`, and fail if that line's hash is stale. The whole token is a `file_exhash` range for the section. `find(title)`, `search(pat)`, `paths(depth)`, and numeric indexing (`d[1][6]`) traverse the live tree; `links(pat)` lists inline links numbered document-wide, and `open(n)` opens link `n` as a new tree (fetched or read relative to `base`). Previews join lines with `¶` and render links as `[text][n]`, so no URL is ever displayed. A markdown row's preview starts under its heading; a code row has no title, and its preview opens with the def line itself, signature included. `view()` returns a section's rendered text the same way (`.src` is the raw source); `view(*tokens)` returns the live sections at those verified addresses, displayed under `# token` headers when more than one; `nums=`/`lnhashs=` switch any view to stored lines with edit-ready addresses. Notebook section tokens carry the heading cell id, and `view(lnhashs=True)` emits `cellid:lineno|hash|` rows ready for `cell_exhash`.
 
 `search(pat)` returns one hit per matching source line, not one row per section. Each 180-character row shows the containing section's verified token, the matching line's hash address, and a preview starting at that line and continuing across newlines as `¶`, up to the section's end. Section tokens repeat when several lines in the same section match: copy the section token to `view()` to read the whole section, or use the line address to edit the hit. Notebook line addresses include the cell ID. Each hit exposes `.section`, `.address`, and `.preview`; slicing the results preserves their display format.
 
