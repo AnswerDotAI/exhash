@@ -11,7 +11,9 @@ mod outline;
 mod parse;
 
 pub use commands::{CommandField, command_from_fields};
-pub use engine::{BufferCommand, BufferEditResult, EditResult, MAX_DIFF_LINES, MAXLEN, with_printed, truncate_diff, edit_buffers_with_sw, edit_text, edit_text_with_sw};
+pub use engine::{
+    BufferCommand, BufferEditResult, EditResult, MAX_DIFF_LINES, MAXLEN, edit_buffers_with_sw, edit_text, edit_text_with_sw, truncate_diff, with_printed,
+};
 pub use files::*;
 pub use lnhash::{LnHash, format_hash, format_lnhash, line_hash_u16, lnhashview, parse_lnhash};
 pub use outline::{HeadingRow, LinkRow, scan_code, scan_md};

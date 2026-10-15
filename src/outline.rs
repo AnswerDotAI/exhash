@@ -11,22 +11,11 @@ static LINK_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[([^\]]*)\]\(([
 /// One ATX heading: level, title, and the span of its section.
 /// Lines are 1-based; `end_line` is the last non-blank line before the next
 /// heading of the same or a higher level.
-pub struct HeadingRow {
-    pub level: usize,
-    pub title: String,
-    pub start_line: usize,
-    pub end_line: usize,
-}
+pub struct HeadingRow { pub level: usize, pub title: String, pub start_line: usize, pub end_line: usize }
 
 /// One inline link (images excluded), numbered in document reading order.
 /// `tail` is the rest of the line after the link, up to the next link.
-pub struct LinkRow {
-    pub n: usize,
-    pub txt: String,
-    pub url: String,
-    pub tail: String,
-    pub line: usize,
-}
+pub struct LinkRow { pub n: usize, pub txt: String, pub url: String, pub tail: String, pub line: usize }
 
 fn clean_tail(tail: &str) -> String { tail.trim().trim_start_matches(':').trim().to_string() }
 
@@ -45,29 +34,22 @@ pub fn scan_md(text: &str, rm_fenced: bool) -> (Vec<HeadingRow>, Vec<LinkRow>) {
         }
         if fence.is_some() && rm_fenced { continue; }
         if let Some(m) = HEADING_RE.captures(line) { headings.push((m[1].len(), m[2].to_string(), i)); }
-        let ms: Vec<regex::Captures> = LINK_RE
-            .captures_iter(line)
-            .filter(|c| {
-                let start = c.get(0).unwrap().start();
-                start == 0 || line.as_bytes()[start - 1] != b'!'
-            })
-            .collect();
+        let ms: Vec<regex::Captures> = LINK_RE.captures_iter(line).filter(|c| {
+            let start = c.get(0).unwrap().start();
+            start == 0 || line.as_bytes()[start - 1] != b'!'
+        }).collect();
         for (j, m) in ms.iter().enumerate() {
             let end = m.get(0).unwrap().end();
             let tail_end = ms.get(j + 1).map(|nm| nm.get(0).unwrap().start()).unwrap_or(line.len());
             links.push(LinkRow { n: links.len() + 1, txt: m[1].to_string(), url: m[2].to_string(), tail: clean_tail(&line[end..tail_end]), line: i + 1 });
         }
     }
-    let rows = headings
-        .iter()
-        .enumerate()
-        .map(|(i, (level, title, start))| {
-            let end_excl = headings[i + 1..].iter().find(|(l, _, _)| l <= level).map(|(_, _, s)| *s).unwrap_or(lines.len());
-            let mut end = end_excl;
-            while end > *start + 1 && lines[end - 1].trim().is_empty() { end -= 1; }
-            HeadingRow { level: *level, title: title.clone(), start_line: start + 1, end_line: end }
-        })
-        .collect();
+    let rows = headings.iter().enumerate().map(|(i, (level, title, start))| {
+        let end_excl = headings[i + 1..].iter().find(|(l, _, _)| l <= level).map(|(_, _, s)| *s).unwrap_or(lines.len());
+        let mut end = end_excl;
+        while end > *start + 1 && lines[end - 1].trim().is_empty() { end -= 1; }
+        HeadingRow { level: *level, title: title.clone(), start_line: start + 1, end_line: end }
+    }).collect();
     (rows, links)
 }
 
@@ -75,14 +57,9 @@ use tree_sitter::{Language, Node, Parser};
 
 fn lang_of(name: &str) -> Option<Language> {
     Some(match name {
-        "python" => tree_sitter_python::LANGUAGE.into(),
-        "javascript" => tree_sitter_javascript::LANGUAGE.into(),
-        "typescript" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-        "tsx" => tree_sitter_typescript::LANGUAGE_TSX.into(),
-        "rust" => tree_sitter_rust::LANGUAGE.into(),
-        "zig" => tree_sitter_zig::LANGUAGE.into(),
-        "swift" => tree_sitter_swift::LANGUAGE.into(),
-        _ => return None,
+        "python" => tree_sitter_python::LANGUAGE.into(), "javascript" => tree_sitter_javascript::LANGUAGE.into(),
+        "typescript" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), "tsx" => tree_sitter_typescript::LANGUAGE_TSX.into(),
+        "rust" => tree_sitter_rust::LANGUAGE.into(), "zig" => tree_sitter_zig::LANGUAGE.into(), "swift" => tree_sitter_swift::LANGUAGE.into(), _ => return None
     })
 }
 
@@ -90,14 +67,8 @@ fn section_kinds(lang: &str) -> &'static [&'static str] {
     match lang {
         "python" => &["function_definition", "class_definition"],
         "javascript" | "typescript" | "tsx" => &[
-            "function_declaration",
-            "generator_function_declaration",
-            "class_declaration",
-            "abstract_class_declaration",
-            "method_definition",
-            "interface_declaration",
-            "type_alias_declaration",
-            "enum_declaration",
+            "function_declaration", "generator_function_declaration", "class_declaration", "abstract_class_declaration", "method_definition",
+            "interface_declaration", "type_alias_declaration", "enum_declaration",
         ],
         "rust" => &["function_item", "struct_item", "enum_item", "trait_item", "impl_item", "mod_item", "union_item"],
         "zig" => &["function_declaration", "test_declaration"],
@@ -123,10 +94,7 @@ fn section_of(node: Node, src: &[u8], lang: &str) -> Option<(String, usize, usiz
     if !section_kinds(lang).contains(&kind) { return None; }
     if lang == "zig" && kind == "test_declaration" {
         let mut cursor = node.walk();
-        let title = node
-            .named_children(&mut cursor)
-            .find(|c| c.kind() == "string")
-            .map(|s| format!("test {}", node_text(s, src)))
+        let title = node.named_children(&mut cursor).find(|c| c.kind() == "string").map(|s| format!("test {}", node_text(s, src)))
             .unwrap_or_else(|| "test".to_string());
         return Some((title, start, end));
     }

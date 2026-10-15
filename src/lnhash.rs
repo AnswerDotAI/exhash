@@ -30,7 +30,8 @@ pub fn lnhashview(lines: &[&str], start: Option<usize>, end: Option<usize>) -> R
     if s > lines.len() { return Err(EditError::new(format!("start_line {} is beyond EOF (file has {} line(s))", s, lines.len()))); }
     let e = requested_e.min(lines.len());
     let width = e.to_string().len();
-    Ok(lines.iter().enumerate().skip(s - 1).take(e - s + 1).map(|(i, l)| format!("{:>width$}|{}|{}", i + 1, format_hash(line_hash_u16(l)), l, width = width)).collect())
+    Ok(lines.iter().enumerate().skip(s - 1).take(e - s + 1).map(|(i, l)| format!("{:>width$}|{}|{}", i + 1, format_hash(line_hash_u16(l)), l, width = width))
+        .collect())
 }
 
 /// Parse a `lineno|hash|` address.

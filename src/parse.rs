@@ -16,12 +16,7 @@ pub enum Address {
 
 /// A fully parsed command, including any multiline text blocks.
 #[derive(Debug, Clone)]
-pub struct Command {
-    pub addr1: Address,
-    pub addr2: Option<Address>,
-    pub has_comma: bool,
-    pub cmd: Subcommand,
-}
+pub struct Command { pub addr1: Address, pub addr2: Option<Address>, pub has_comma: bool, pub cmd: Subcommand }
 
 /// A command operation.
 #[derive(Debug, Clone)]
@@ -49,12 +44,7 @@ impl Subcommand {
 }
 
 #[derive(Debug, Clone)]
-pub struct Subst {
-    pub pattern: String,
-    pub replacement: String,
-    pub global: bool,
-    pub case_insensitive: bool,
-}
+pub struct Subst { pub pattern: String, pub replacement: String, pub global: bool, pub case_insensitive: bool }
 
 /// Parse commands from CLI argv, reading one multiline text block from `stdin` through EOF.
 ///
@@ -94,10 +84,7 @@ pub fn parse_commands_from_script(script: &str) -> Result<Vec<Command>, EditErro
     Ok(out)
 }
 
-fn parse_command_with_text<F>(line: &str, mut read_text: F) -> Result<Command, EditError>
-where
-    F: FnMut() -> Result<Vec<String>, EditError>,
-{
+fn parse_command_with_text<F>(line: &str, mut read_text: F) -> Result<Command, EditError> where F: FnMut() -> Result<Vec<String>, EditError> {
     let (addr1, addr2, has_comma, rest) = parse_addresses(line)?;
     let rest = rest.trim_start();
     if rest.is_empty() { return Err(EditError::new("missing command")); }
@@ -138,20 +125,18 @@ fn build_command(addr1: Address, addr2: Option<Address>, has_comma: bool, cmd: S
     if matches!(addr2, Some(Address::WholeFile)) { return Err(EditError::new("% is only allowed as a standalone address")); }
 
     // Enforce 0|AA| rules.
-    if let Address::LnHash(a1) = addr1
-        && a1.lineno == 0
-    {
+    if let Address::LnHash(a1) = addr1 && a1.lineno == 0 {
         if a1.hash != 0 { return Err(EditError::new("0|AA| must have hash AA")); }
         if has_comma || addr2.is_some() { return Err(EditError::new("0|AA| is not allowed in ranges")); }
         match cmd { Subcommand::Append(_) | Subcommand::Insert(_) => {} _ => return Err(EditError::new("0|AA| is only allowed with i or a")) }
     }
-    if let Some(Address::LnHash(a2)) = addr2
-        && (a2.lineno == 0 || matches!(addr1, Address::LnHash(LnHash { lineno: 0, .. })))
-    { return Err(EditError::new("0|AA| is not allowed in ranges")); }
+    if let Some(Address::LnHash(a2)) = addr2 && (a2.lineno == 0 || matches!(addr1, Address::LnHash(LnHash { lineno: 0, .. }))) {
+        return Err(EditError::new("0|AA| is not allowed in ranges"));
+    }
 
-    if let Some(n) = [Some(addr1), addr2].into_iter().flatten().find_map(|a| if let Address::Line(n) = a { Some(n) } else { None })
-        && !cmd.only_prints()
-    { return Err(EditError::new(format!("line {n} has no hash: only p accepts a bare line number (use lineno|hash| from a fresh view)"))); }
+    if let Some(n) = [Some(addr1), addr2].into_iter().flatten().find_map(|a| if let Address::Line(n) = a { Some(n) } else { None }) && !cmd.only_prints() {
+        return Err(EditError::new(format!("line {n} has no hash: only p accepts a bare line number (use lineno|hash| from a fresh view)")));
+    }
 
     Ok(Command { addr1, addr2, has_comma, cmd })
 }
@@ -180,15 +165,12 @@ fn parse_destination_address_inner(input: &str, op: char, allow_zero: bool) -> R
         Address::LnHash(LnHash { lineno: 0, hash }) if hash != 0 => Err(EditError::new("0|AA| must have hash AA")),
         Address::LnHash(LnHash { lineno: 0, .. }) if !allow_zero => Err(EditError::new(format!("destination 0|AA| is not allowed for {op}"))),
         Address::WholeFile => Err(EditError::new(format!("destination % is not allowed for {op}"))),
-        Address::Line(n) => Err(EditError::new(format!("destination {n} for {op} needs a hash (lineno|hash|)"))),
-        _ => Ok(addr),
+        Address::Line(n) => Err(EditError::new(format!("destination {n} for {op} needs a hash (lineno|hash|)"))), _ => Ok(addr)
     }
 }
 
-fn parse_subcommand_with_text<'a, F>(input: &'a str, read_text: &mut F) -> Result<(Subcommand, &'a str), EditError>
-where
-    F: FnMut() -> Result<Vec<String>, EditError>,
-{
+fn parse_subcommand_with_text<'a, F>(input: &'a str, read_text: &mut F) -> Result<(Subcommand, &'a str), EditError> where
+    F: FnMut() -> Result<Vec<String>, EditError> {
     let s = input.trim_start();
     if let Some(trailing) = s.strip_prefix("sort") { return Ok((Subcommand::Sort, trailing)); }
 
@@ -203,26 +185,14 @@ where
         'd' => Ok((Subcommand::Delete, rest)),
         'p' => Ok((Subcommand::Print, rest)),
         'j' => Ok((Subcommand::Join, rest)),
-        's' => {
-            let (subst, trailing) = parse_substitute(rest)?;
-            Ok((Subcommand::Substitute(subst), trailing))
-        }
+        's' => { let (subst, trailing) = parse_substitute(rest)?; Ok((Subcommand::Substitute(subst), trailing)) }
         'y' => {
             let ((source, dest), trailing) = parse_transliterate(rest)?;
             Ok((Subcommand::Transliterate { source, dest }, trailing))
         }
-        'a' => {
-            let (text, trailing) = parse_text_command(rest, read_text)?;
-            Ok((Subcommand::Append(text), trailing))
-        }
-        'i' => {
-            let (text, trailing) = parse_text_command(rest, read_text)?;
-            Ok((Subcommand::Insert(text), trailing))
-        }
-        'c' => {
-            let (text, trailing) = parse_text_command(rest, read_text)?;
-            Ok((Subcommand::Change(text), trailing))
-        }
+        'a' => { let (text, trailing) = parse_text_command(rest, read_text)?; Ok((Subcommand::Append(text), trailing)) }
+        'i' => { let (text, trailing) = parse_text_command(rest, read_text)?; Ok((Subcommand::Insert(text), trailing)) }
+        'c' => { let (text, trailing) = parse_text_command(rest, read_text)?; Ok((Subcommand::Change(text), trailing)) }
         'm' => {
             let dest_str = rest.trim();
             let dest = parse_destination_address(dest_str, 'm')?;
@@ -235,21 +205,14 @@ where
         }
         'g' => parse_global(rest, false, read_text),
         'v' => parse_global(rest, true, read_text),
-        '>' => {
-            let levels = parse_optional_usize(rest)?;
-            Ok((Subcommand::Indent { levels }, ""))
-        }
-        '<' => {
-            let levels = parse_optional_usize(rest)?;
-            Ok((Subcommand::Dedent { levels }, ""))
-        }
+        '>' => { let levels = parse_optional_usize(rest)?; Ok((Subcommand::Indent { levels }, "")) }
+        '<' => { let levels = parse_optional_usize(rest)?; Ok((Subcommand::Dedent { levels }, "")) }
         _ => Err(EditError::new(format!("unknown command: {c}"))),
     }
 }
-fn parse_text_command<'a, F>(rest: &'a str, read_text: &mut F) -> Result<(Vec<String>, &'a str), EditError>
-where
-    F: FnMut() -> Result<Vec<String>, EditError>,
-{ if rest.is_empty() { Ok((read_text()?, "")) } else { Ok((split_text_payload(rest), "")) } }
+fn parse_text_command<'a, F>(rest: &'a str, read_text: &mut F) -> Result<(Vec<String>, &'a str), EditError> where F: FnMut() -> Result<Vec<String>, EditError> {
+    if rest.is_empty() { Ok((read_text()?, "")) } else { Ok((split_text_payload(rest), "")) }
+}
 
 pub fn parse_optional_usize(s: &str) -> Result<usize, EditError> {
     let s = s.trim();
@@ -257,10 +220,8 @@ pub fn parse_optional_usize(s: &str) -> Result<usize, EditError> {
     s.parse::<usize>().map_err(|_| EditError::new(format!("invalid number: {s:?}")))
 }
 
-fn parse_global<'a, F>(rest: &'a str, invert: bool, read_text: &mut F) -> Result<(Subcommand, &'a str), EditError>
-where
-    F: FnMut() -> Result<Vec<String>, EditError>,
-{
+fn parse_global<'a, F>(rest: &'a str, invert: bool, read_text: &mut F) -> Result<(Subcommand, &'a str), EditError> where
+    F: FnMut() -> Result<Vec<String>, EditError> {
     let rest = rest.trim_start();
     let delim = rest.chars().next().ok_or_else(|| EditError::new("global requires <delim>pat<delim>cmd"))?;
     if delim.is_alphanumeric() || delim == '\\' { return Err(EditError::new("global delimiter must not be alphanumeric or backslash")); }
@@ -319,10 +280,7 @@ pub fn translit_from_parts(source: String, dest: String) -> Result<(String, Stri
 /// Parse a delimited field from the start of `input`, which begins with `delim`. Returns the field and the rest after its closing `delim`.
 fn parse_delimited(input: &str, delim: char) -> Result<(String, &str), EditError> {
     let rest = input.strip_prefix(delim).ok_or_else(|| EditError::new("missing delimiter"))?;
-    match scan_to_delim(rest, delim) {
-        (field, Some(rest)) => Ok((field, rest)),
-        (_, None) => Err(EditError::new("unterminated delimited string")),
-    }
+    match scan_to_delim(rest, delim) { (field, Some(rest)) => Ok((field, rest)), (_, None) => Err(EditError::new("unterminated delimited string")) }
 }
 
 /// Scan `input` up to the next unescaped `delim`. Returns the field and the rest after the closing `delim`. The rest is `None` when the field has no closing `delim`. A backslash escapes only `delim`.
@@ -334,13 +292,9 @@ fn scan_to_delim(input: &str, delim: char) -> (String, Option<&str>) {
             if ch != delim { out.push('\\'); }
             out.push(ch);
             escaped = false;
-        } else if ch == '\\' {
-            escaped = true;
-        } else if ch == delim {
-            return (out, Some(&input[i + ch.len_utf8()..]));
-        } else {
-            out.push(ch);
-        }
+        } else if ch == '\\' { escaped = true; }
+        else if ch == delim { return (out, Some(&input[i + ch.len_utf8()..])); }
+        else { out.push(ch); }
     }
     if escaped { out.push('\\'); }
     (out, None)
@@ -354,10 +308,7 @@ fn read_text_block_from_bufread(stdin: &mut impl BufRead) -> Result<Vec<String>,
         let n = stdin.read_line(&mut buf).map_err(|e| EditError::new(format!("failed to read stdin: {e}")))?;
         if n == 0 { break; }
         // Trim \n, then optional \r.
-        if buf.ends_with('\n') {
-            buf.pop();
-            if buf.ends_with('\r') { buf.pop(); }
-        }
+        if buf.ends_with('\n') { buf.pop(); if buf.ends_with('\r') { buf.pop(); } }
         out.push(buf.clone());
     }
     Ok(out)

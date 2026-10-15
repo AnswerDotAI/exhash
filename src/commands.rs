@@ -26,10 +26,9 @@ pub fn buffer_command_from_fields(fields: &[CommandField]) -> Result<Command, Ed
 }
 
 fn str_fields<'a>(op: &str, fields: &'a [CommandField]) -> Result<Vec<&'a str>, EditError> {
-    fields
-        .iter()
-        .map(|f| match f { CommandField::Str(s) => Ok(s.as_str()), CommandField::Seq(_) => Err(EditError::new(format!("{op} fields must be strings"))) })
-        .collect()
+    fields.iter().map(|f| match f {
+        CommandField::Str(s) => Ok(s.as_str()), CommandField::Seq(_) => Err(EditError::new(format!("{op} fields must be strings")))
+    }).collect()
 }
 
 fn subcommand_from_fields(op: &str, fields: &[CommandField]) -> Result<Subcommand, EditError> {

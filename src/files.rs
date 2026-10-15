@@ -7,20 +7,10 @@ use serde_json::Value;
 use std::{collections::BTreeMap, fs, io, path::Path, sync::LazyLock};
 
 #[derive(Debug)]
-pub enum FileError {
-    Io(io::Error),
-    Edit(EditError),
-    Cell(String),
-    Json(serde_json::Error),
-}
+pub enum FileError { Io(io::Error), Edit(EditError), Cell(String), Json(serde_json::Error) }
 impl std::fmt::Display for FileError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Io(e) => e.fmt(f),
-            Self::Edit(e) => e.fmt(f),
-            Self::Cell(e) => e.fmt(f),
-            Self::Json(e) => e.fmt(f),
-        }
+        match self { Self::Io(e) => e.fmt(f), Self::Edit(e) => e.fmt(f), Self::Cell(e) => e.fmt(f), Self::Json(e) => e.fmt(f) }
     }
 }
 impl std::error::Error for FileError {}
@@ -51,15 +41,14 @@ fn missing(message: String) -> FileError { io::Error::new(io::ErrorKind::NotFoun
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Target { path: String, cell: Option<String> }
-impl Target { fn key(&self) -> String { match &self.cell { Some(id) => format!("{}:{id}", self.path), None => self.path.clone() } } }
+impl Target {
+    fn key(&self) -> String { match &self.cell { Some(id) => format!("{}:{id}", self.path), None => self.path.clone() } }
+}
 fn unescape(path: &str) -> String {
     let mut out = String::new();
     let mut chars = path.chars();
     while let Some(c) = chars.next() {
-        if c != '\\' {
-            out.push(c);
-            continue;
-        }
+        if c != '\\' { out.push(c); continue; }
         if let Some(next) = chars.next() {
             if next != ':' && next != '\\' { out.push('\\'); }
             out.push(next);
@@ -77,14 +66,8 @@ fn address(input: &str, default: &Target) -> Result<(Target, String, String)> {
     if !ADDR.is_match(input) {
         let mut escaped = false;
         for (i, c) in input.char_indices() {
-            if escaped {
-                escaped = false;
-                continue;
-            }
-            if c == '\\' {
-                escaped = true;
-                continue;
-            }
+            if escaped { escaped = false; continue; }
+            if c == '\\' { escaped = true; continue; }
             if c != ':' || !ADDR.is_match(&input[i + 1..]) { continue; }
             if i == 0 { return Err(invalid("empty filename prefix")); }
             let path = normalize_path(&unescape(&input[..i]))?;
@@ -93,7 +76,8 @@ fn address(input: &str, default: &Target) -> Result<(Target, String, String)> {
             break;
         }
     }
-    let m = ADDR.captures(rest).and_then(|c| c.get(1).or(c.get(2))).ok_or_else(|| invalid(format!("expected exhash address near {:?}", input.chars().take(40).collect::<String>())))?;
+    let m = ADDR.captures(rest).and_then(|c| c.get(1).or(c.get(2)))
+        .ok_or_else(|| invalid(format!("expected exhash address near {:?}", input.chars().take(40).collect::<String>())))?;
     Ok((target, m.as_str().into(), rest[m.end()..].into()))
 }
 
@@ -103,9 +87,8 @@ fn cell_index(nb: &Value, id: &str, path: &str) -> Result<usize> {
     let matches: Vec<_> = cells.iter().enumerate().filter(|(_, c)| c.get("id").and_then(Value::as_str).unwrap_or("").starts_with(id)).collect();
     if let Some((i, _)) = matches.iter().find(|(_, c)| c.get("id").and_then(Value::as_str) == Some(id)) { return Ok(*i); }
     match matches.as_slice() {
-        [(i, _)] => Ok(*i),
-        [] => Err(FileError::Cell(format!("no cell with id {id:?} in {path}"))),
-        _ => Err(FileError::Cell(format!("cell id prefix {id:?} is ambiguous in {path}"))),
+        [(i, _)] => Ok(*i), [] => Err(FileError::Cell(format!("no cell with id {id:?} in {path}"))),
+        _ => Err(FileError::Cell(format!("cell id prefix {id:?} is ambiguous in {path}")))
     }
 }
 fn cell_text(cell: &Value) -> Result<String> {
@@ -170,12 +153,7 @@ pub fn view_cells(path: &str, ids: &[String], start: Option<usize>, end: Option<
 
 /// The edited state of one file or cell. `path` is its resolved target key.
 #[derive(Debug)]
-pub struct FileEdit {
-    pub path: String,
-    pub cell: Option<String>,
-    pub original_text: String,
-    pub result: EditResult,
-}
+pub struct FileEdit { pub path: String, pub cell: Option<String>, pub original_text: String, pub result: EditResult }
 impl FileEdit {
     pub fn changed(&self) -> bool { self.original_text.lines().ne(self.result.lines.iter().map(String::as_str)) }
     fn original_lines(&self) -> Vec<&str> { self.original_text.lines().collect() }
@@ -194,13 +172,10 @@ impl FileEdit {
 /// Each changed or printing target's `report`, in order. A printed-only target gets its `header` when several targets show.
 pub fn render(edits: &[FileEdit], context: usize, trunc: bool) -> String {
     let shown: Vec<_> = edits.iter().filter(|e| e.changed() || !e.result.printed.is_empty()).collect();
-    shown
-        .iter()
-        .map(|e| {
-            let report = e.report(context, trunc);
-            if e.changed() || shown.len() == 1 { report } else { format!("{}\n{report}", e.header()) }
-        })
-        .collect()
+    shown.iter().map(|e| {
+        let report = e.report(context, trunc);
+        if e.changed() || shown.len() == 1 { report } else { format!("{}\n{report}", e.header()) }
+    }).collect()
 }
 struct Buffer { target: Target, text: String, cell_index: Option<usize> }
 #[derive(Default)]
@@ -263,10 +238,7 @@ pub fn edit_files(path: &str, commands: &[Vec<CommandField>], sw: usize, inplace
             if !tail.trim().is_empty() { return Err(invalid(format!("unexpected trailing characters after destination: {tail:?}"))); }
             local.push(CommandField::Str(dest_addr.clone()));
             (Some(dest), Some(dest_addr))
-        } else {
-            local.extend_from_slice(rest);
-            (None, None)
-        };
+        } else { local.extend_from_slice(rest); (None, None) };
         let command = buffer_command_from_fields(&local)?;
         let target = files.load(src, addr1 == "0|AA|" && matches!(op.as_str(), "a" | "i"))?;
         let destination = dest.map(|d| files.load(d, dest_addr.as_deref() == Some("0|AA|"))).transpose()?;
@@ -298,13 +270,7 @@ pub fn edit_cell(path: &str, id: &str, commands: &[Command], sw: usize, inplace:
 }
 
 pub(crate) fn edit_cell_with_writer(
-    path: &str,
-    id: &str,
-    commands: &[Command],
-    sw: usize,
-    inplace: bool,
-    write: impl FnOnce(&str, &[u8]) -> io::Result<()>,
-) -> Result<FileEdit> {
+    path: &str, id: &str, commands: &[Command], sw: usize, inplace: bool, write: impl FnOnce(&str, &[u8]) -> io::Result<()>) -> Result<FileEdit> {
     let path = normalize_path(path)?;
     let mut nb = read_notebook(&path)?;
     let index = cell_index(&nb, id, &path)?;
@@ -329,9 +295,7 @@ pub(crate) fn atomic_write(path: &str, content: &[u8]) -> io::Result<()> {
     let mut temp = tempfile::NamedTempFile::new_in(parent)?;
     temp.write_all(content)?;
     match fs::metadata(path) {
-        Ok(meta) => temp.as_file().set_permissions(meta.permissions())?,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => (),
-        Err(e) => return Err(e),
+        Ok(meta) => temp.as_file().set_permissions(meta.permissions())?, Err(e) if e.kind() == io::ErrorKind::NotFound => (), Err(e) => return Err(e)
     }
     temp.persist(path).map_err(|e| e.error)?;
     Ok(())
