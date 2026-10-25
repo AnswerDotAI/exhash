@@ -92,7 +92,7 @@ For CLI multiline `a/i/c` commands, omit inline text and provide the text block 
 printf "new line 1\nnew line 2\n" | exhash file.txt "2|7v|a"
 ```
 
-If the file does not exist and the command set is valid on empty input, exhash treats it as an empty file and writes the result. For example, `0|AA|a` can create a new file.
+If the file does not exist and the command set is valid on empty input, exhash treats it as an empty file and writes the result. For example, `0|AA|a` can create a new file. Creating a file also creates its missing parent directories.
 
 ### Stdin filter mode
 

@@ -34,6 +34,10 @@ def test_inplace_substitute(tmp_path):
     assert out.returncode == 0
     assert out.stdout == diff(f"{dele(1, 'foo')}\n{add(1, 'baz')}\n{ctx(2, 'bar')}\n")
     assert f.read_text() == "baz\nbar\n"
+    link = tmp_path / "link.txt"
+    link.symlink_to(f)
+    assert run([str(link), f"{lnhash(1, 'baz')}s/baz/qux/"]).returncode == 0
+    assert link.is_symlink() and f.read_text() == "qux\nbar\n"
 
 def test_inplace_transliterate(tmp_path):
     f = tmp_path / "f.txt"

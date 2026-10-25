@@ -579,10 +579,10 @@ impl Engine {
         let (s, e) = self.resolve_range(start, end)?;
         if levels == 0 || self.sw == 0 { return Ok(()); }
         let prefix = " ".repeat(self.sw * levels);
-        for idx in s..=e {
-            let new = format!("{}{}", prefix, self.lines[idx].text);
-            self.lines[idx].text = new;
-            self.lines[idx].modified = true;
+        for line in &mut self.lines[s..=e] {
+            if line.text.trim().is_empty() { continue; }
+            line.text = format!("{prefix}{}", line.text);
+            line.modified = true;
         }
         Ok(())
     }

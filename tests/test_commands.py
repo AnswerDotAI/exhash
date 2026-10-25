@@ -95,6 +95,9 @@ def test_indent_and_dedent():
     res = exhash(text, [(a1, ">", "2"), (a2, "<", "1")])
     assert res["lines"] == ["        a", "b"]
     assert res["modified"] == [1, 2]
+    res = exhash("a\n\nb\n", [(f"{lnhash(1, 'a')},{lnhash(3, 'b')}", ">")])
+    assert res["lines"] == ["    a", "", "    b"]
+    assert res["modified"] == [1, 3]
 
 def test_call_start_hashes_for_stacked_single_line_commands():
     text, addr = "abc def\nnext\n", lnhash(1, "abc def")

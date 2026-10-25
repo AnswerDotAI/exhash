@@ -221,7 +221,8 @@ def file_exhash(path:str, *cmds:tuple, sw:int=4, inplace:bool=True):
     destination too. Escape literal colons in filenames as ``\:`` and literal
     backslashes as ``\\``. Missing files are treated as empty only for commands
     valid against an empty buffer (``0|AA|`` with ``a``/``i``, or as an
-    ``m``/``t`` destination); cells are never created: a cell target must
+    ``m``/``t`` destination). Creating a file also creates its missing parent
+    directories. Cells are never created: a cell target must
     already exist, or the command raises ``KeyError``.
 
     By default (``inplace=True``) write changed files only after every command succeeds.

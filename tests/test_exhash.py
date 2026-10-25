@@ -472,14 +472,16 @@ def test_file_exhash_rejects_missing_file_without_creation_address(tmp_path):
     assert not missing.exists()
 
 
-def test_file_exhash_rejects_missing_destination_parent_before_writing_source(tmp_path):
+def test_file_exhash_move_creates_missing_destination_parent(tmp_path):
     a = tmp_path / "a.txt"
     dest = tmp_path / "missing" / "new.txt"
     a.write_text("one\ntwo\n")
     cmd = (f"{a}:{lnhash(2, 'two')}", "m", f"{dest}:0|AA|")
-    with pytest.raises(FileNotFoundError): file_exhash(str(a), cmd, inplace=True)
-    assert a.read_text() == "one\ntwo\n"
-    assert not dest.exists()
+    file_exhash(str(a), cmd, inplace=False)
+    assert not dest.parent.exists()
+    file_exhash(str(a), cmd)
+    assert a.read_text() == "one\n"
+    assert dest.read_text() == "two\n"
 
 
 def test_file_exhash_accepts_escaped_colon_in_file_prefix(tmp_path):
@@ -557,8 +559,8 @@ def test_tilde_expansion(tmp_path, monkeypatch):
     assert "foo" in lnhashview_file("~/f.txt")[0]
     file_exhash("~/f.txt", (lnhash(1, "foo"), "s", "foo", "baz"))
     assert (tmp_path / "f.txt").read_text() == "baz\nbar\n"
-    file_exhash("~/f.txt", (r"~/g.txt:0|AA|", "a", "hi"))
-    assert (tmp_path / "g.txt").read_text() == "hi\n"
+    file_exhash("~/f.txt", (r"~/new/dir/g.txt:0|AA|", "a", "hi"))
+    assert (tmp_path / "new/dir/g.txt").read_text() == "hi\n"
     nb = dict(cells=[dict(id="abc", cell_type="code", source="x=1\n", metadata={})], metadata={}, nbformat=4, nbformat_minor=5)
     (tmp_path / "nb.ipynb").write_text(json.dumps(nb))
     assert "x=1" in lnhashview_cell("~/nb.ipynb", "abc")[0]
@@ -567,8 +569,6 @@ def test_tilde_expansion(tmp_path, monkeypatch):
 
 
 def test_missing_path_error_messages(tmp_path):
-    with pytest.raises(FileNotFoundError, match=r'parent directory .* does not exist'):
-        file_exhash(str(tmp_path/'nodir'/'new.txt'), ("0|AA|", "a", "hi"))
     with pytest.raises(FileNotFoundError, match=r'0\|AA\|'): file_exhash(str(tmp_path/'absent.txt'), ("%", "s", "foo", "bar"))
     with pytest.raises(FileNotFoundError, match='notebook'): cell_exhash(str(tmp_path/'absent.ipynb'), 'ab12', ("1|vN|", "c", "hi"))
 
@@ -579,7 +579,7 @@ def test_unexpanded_ipython_variable_is_named_in_path_errors(tmp_path):
     with pytest.raises(FileNotFoundError, match='unexpanded IPython variable'):
         cell_exhash('{nbdir}/nb.ipynb', 'ab12', ("1|vN|", "c", "hi"))
     with pytest.raises(FileNotFoundError) as e:   # an ordinary missing path keeps the plain message
-        file_exhash(str(tmp_path/'nodir'/'new.txt'), ("0|AA|", "a", "hi"))
+        file_exhash(str(tmp_path/'absent.txt'), ("%", "s", "foo", "bar"))
     assert 'unexpanded IPython variable' not in str(e.value)
 
 def test_truncate_diff():

@@ -52,7 +52,7 @@ The Python API/CLI suite exercises the shared Rust file/cell implementation. Bar
 The `$` (last line) and `%` (whole file) address forms are resolved against the current buffer and do not require hashes.
 A bare line number (`Address::Line`) also needs no hash. `build_command` accepts it only for `p`, or for `g`/`g!`/`v` with a `p` subcommand. `m` and `t` destinations reject it. In `files.rs`, a bare number counts as an address only when it ends the field or precedes `,`. This stops a cell ID that starts with a digit, such as `9f8e` in `nb.ipynb:9f8e:12`, from reading as line 9.
 `edit_text_with_sw` exposes configurable shift width for `<` and `>`; `edit_text` defaults to `sw=4`.
-In CLI and Python file-helper flows, a missing file is treated as empty input only when the parsed command set is valid against an empty buffer (for example `0|AA|a`); otherwise the original file-not-found error is preserved.
+In CLI and Python file-helper flows, a missing file is treated as empty input only when the parsed command set is valid against an empty buffer (for example `0|AA|a`); otherwise the original file-not-found error is preserved. Creating a file also creates its missing parent directories.
 Rust `edit_files` resolves optional `path:` and notebook-cell prefixes, loads every
 referenced buffer, and calls `edit_buffers_with_sw` once. Rust owns validation,
 transfers, diffs, and file/notebook writes. Every command succeeds before writes
@@ -94,7 +94,7 @@ No local build is required for release; CI runs the release build, creates a Git
 ## How the CLIs work
 
 The commands are Python console scripts declared in `[project.scripts]` (`python/exhash/_cli.py`). `exhash` and `exhash-cell` handle argument parsing and delegate compact parsing,
-editing, notebook serialization, and atomic replacement to the extension. `lnhashview` and `lnhashview-cell` provide the corresponding address views. `exhash-open` is a fastcore `call_parse` wrapper over the document outline API.
+editing, notebook serialization, and file writes to the extension. `lnhashview` and `lnhashview-cell` provide the corresponding address views. `exhash-open` is a fastcore `call_parse` wrapper over the document outline API.
 
 ## Command parsing modes
 

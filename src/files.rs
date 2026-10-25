@@ -199,8 +199,9 @@ impl Files {
                         return Err(missing(format!("file not found: {path}{} (a new file can only be created with a 0|AA| a/i command)", unexpanded(path))));
                     }
                     let parent = Path::new(path).parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
-                    if !parent.exists() {
-                        return Err(missing(format!("cannot create {path}: parent directory {} does not exist{}", parent.display(), unexpanded(path))));
+                    let note = unexpanded(path);
+                    if !parent.exists() && !note.is_empty() {
+                        return Err(missing(format!("cannot create {path}: parent directory {} does not exist{note}", parent.display())));
                     }
                     String::new()
                 }
@@ -256,7 +257,7 @@ pub fn edit_files(path: &str, commands: &[Vec<CommandField>], sw: usize, inplace
                 let cell = &mut files.notebooks.get_mut(&buffer.target.path).unwrap()["cells"][index];
                 set_source(cell, output_text(&result.result.lines, buffer.text.ends_with('\n')));
                 changed_notebooks.insert(buffer.target.path.clone());
-            } else { fs::write(&buffer.target.path, output_text(&result.result.lines, true))?; }
+            } else { write_file(&buffer.target.path, output_text(&result.result.lines, true).as_bytes())?; }
         }
         out.push(result);
     }
@@ -286,22 +287,14 @@ pub(crate) fn edit_cell_with_writer(
     Ok(FileEdit { path: format!("{path}:{resolved_id}"), cell: Some(resolved_id), original_text: text, result })
 }
 
-/// CLI replacement semantics: write a same-directory temporary file, preserve
-/// existing permissions, then rename. Python's in-place API keeps its write semantics.
-pub(crate) fn atomic_write(path: &str, content: &[u8]) -> io::Result<()> {
-    use io::Write;
-    let path = Path::new(path);
-    let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
-    let mut temp = tempfile::NamedTempFile::new_in(parent)?;
-    temp.write_all(content)?;
-    match fs::metadata(path) {
-        Ok(meta) => temp.as_file().set_permissions(meta.permissions())?, Err(e) if e.kind() == io::ErrorKind::NotFound => (), Err(e) => return Err(e)
-    }
-    temp.persist(path).map_err(|e| e.error)?;
-    Ok(())
+/// Write `content` to `path` in place, creating missing parent directories.
+pub(crate) fn write_file(path: &str, content: &[u8]) -> io::Result<()> {
+    let parent = Path::new(path).parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    fs::create_dir_all(parent)?;
+    fs::write(path, content)
 }
 
-/// Compact single-file CLI commands, with binary rejection and atomic replacement.
+/// Compact single-file CLI commands, with binary rejection.
 pub fn edit_file_argv(path: &str, args: &[String], text_block: &str, sw: usize, inplace: bool) -> Result<FileEdit> {
     let path = normalize_path(path)?;
     let text = match fs::read_to_string(&path) { Ok(t) => t, Err(e) if e.kind() == io::ErrorKind::NotFound => String::new(), Err(e) => return Err(e.into()) };
@@ -309,7 +302,7 @@ pub fn edit_file_argv(path: &str, args: &[String], text_block: &str, sw: usize, 
     let commands = crate::parse_commands_from_args(args, &mut io::Cursor::new(text_block.as_bytes()))?;
     let result = edit_text_with_sw(&text, &commands, sw)?;
     let edit = FileEdit { path, cell: None, original_text: text, result };
-    if inplace && edit.changed() { atomic_write(&edit.path, output_text(&edit.result.lines, true).as_bytes())?; }
+    if inplace && edit.changed() { write_file(&edit.path, output_text(&edit.result.lines, true).as_bytes())?; }
     Ok(edit)
 }
 

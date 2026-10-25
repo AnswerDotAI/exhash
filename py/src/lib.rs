@@ -16,7 +16,7 @@ fn guard<T>(what: &str, f: impl FnOnce() -> T) -> PyResult<T> {
 /// Wrap `s` in fastcore's `PrettyString` so bare display shows it verbatim.
 fn pretty_string(py: Python<'_>, s: String) -> PyResult<Py<PyAny>> { Ok(py.import("fastcore.basics")?.getattr("PrettyString")?.call1((s,))?.unbind()) }
 
-#[pyclass(skip_from_py_object)]
+#[pyclass]
 #[derive(Clone)]
 struct EditResultPy {
     /// The resolved target of a result from `edit_files`; None for text, cell and CLI results
