@@ -41,12 +41,18 @@ Transfer existing lines with `m`/`t`, not by retyping them:
 Transfers cannot create cells; use notebook/dialog structural APIs for whole-cell operations. A `0|AA|` destination can create a file; otherwise only `0|AA|` with `a`/`i` creates one. Creating a file also creates missing parent directories.
 
 For reflow: `j` a range, re-view, then one g-flagged substitution inserts breaks before chosen tokens: `(addr, "s", r", ('foo'|'bar'|'baz')", ",\n    $1", "g")`.
+
+## Edit journal
+
+`journal(path, author=None, since=None)` reads recorded edits oldest first; path is the journal directory or one author's file.
+Filter by author or epoch-seconds `since`. `j.stat()` shows per-file added/removed/net rows; `j.diff()` returns full recorded hunks.
+Only exhash file/cell writes are recorded when `EXHASH_JOURNAL` is set; `EXHASH_AUTHOR` identifies the writer.
 """
 
 from . import exhash, cell_exhash, file_exhash, line_hash, lnhash, lnhashview, lnhashview_cell, lnhashview_cells, lnhashview_file, magic
-from . import open_doc, Section, Sections, SearchHit, SearchHits, Link, Links
+from . import open_doc, Section, Sections, SearchHit, SearchHits, Link, Links, journal
 
-__all__ = ["line_hash", "lnhash", "lnhashview", "lnhashview_file", "lnhashview_cell", "lnhashview_cells", "exhash", "file_exhash", "cell_exhash", "open_doc", "Section", "Sections", "SearchHit", "SearchHits", "Link", "Links"]
+__all__ = ["line_hash", "lnhash", "lnhashview", "lnhashview_file", "lnhashview_cell", "lnhashview_cells", "exhash", "file_exhash", "cell_exhash", "open_doc", "Section", "Sections", "SearchHit", "SearchHits", "Link", "Links", "journal"]
 
 import sys
 if 'IPython' in sys.modules:

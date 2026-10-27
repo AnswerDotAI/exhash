@@ -239,6 +239,19 @@ A file prefix is separated from the address with `:`. Escape literal colons in f
 
 `lnhashview_cell(path, cell_id, ...)` returns a normal lnhash view for one cell. `lnhashview_cells(path, *cell_ids, ...)` returns the requested cells in order, using `# cell <id>` headers before each cell's normal `lineno|hash|content` lines. `cell_exhash(path, cell_id, *cmds, sw=4, inplace=True)` edits one cell; pass each command as its own tuple argument. Like `file_exhash` it writes and returns a diff by default, and `inplace=False` previews the `EditResult` without touching the file.
 
+### Edit journal
+
+When the `EXHASH_JOURNAL` environment variable names a directory, every write by `file_exhash`, `cell_exhash`, the `%%exhash` magic and the CLI first appends a record of each changed file or cell to that directory. `EXHASH_AUTHOR` names the writer, `unknown` by default. Each author appends to its own `<author>.jsonl`. Concurrent writers, such as several agents editing one tree, never share a file. A record holds `time` in seconds since the epoch, `author`, the absolute `path`, the `cell` id or `null`, the `added` and `removed` diff row counts, and the full `diff` with no context lines. An edit whose record can't be written fails before it writes anything.
+
+`journal(path, author=None, since=None)` reads the records back, oldest first, from the directory or from one author's file:
+
+```py
+from exhash import journal
+j = journal("/tmp/edits", author="agent-1")
+j.stat()   # added, removed and net rows for each file, with their total
+j.diff()   # every recorded hunk in full
+```
+
 ### The `%%exhash` cell magic
 
 Importing `exhash.skill` under IPython or Jupyter registers the `%%exhash` cell magic - the standard way to apply `a`/`i`/`c` payload commands interactively. The magic line is `%%exhash <path> [<cell_id>] <address> <a|i|c>`; the payload is everything below it, taken verbatim. Nothing in the payload is parsed as Python, so there is no quoting or escaping at all:

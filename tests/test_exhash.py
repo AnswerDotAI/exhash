@@ -710,3 +710,34 @@ def test_file_exhash_print_takes_bare_line_numbers_in_qualified_addresses(tmp_pa
     # the cell ID starts with a digit, so `9` must not be read as the address
     out = str(file_exhash(str(a), ("2", "p"), (f"{p}:9f8e:2,3", "p")))
     assert out == f"# file {a}\n{lnhash(2, 'beta')}beta\n# cell 9f8e\n{lnhash(2, 'y = 2')}y = 2\n{lnhash(3, 'z = 3')}z = 3\n"
+
+
+def test_journal_records_each_write(tmp_path, monkeypatch):
+    "With `EXHASH_JOURNAL` set, each write records its changed files and cells in its author's file, before writing."
+    import json
+    from exhash import journal
+    jdir, f = tmp_path/'journal', tmp_path/'t.py'
+    f.write_text('a\nb\nc\n')
+    file_exhash(str(f), (lnhash(2, 'b'), 'c', 'B'))
+    assert not jdir.exists(), 'nothing is recorded without EXHASH_JOURNAL'
+    monkeypatch.setenv('EXHASH_JOURNAL', str(jdir))
+    monkeypatch.setenv('EXHASH_AUTHOR', 'fork/1')
+    file_exhash(str(f), (lnhash(3, 'c'), 'a', 'd\ne'), (lnhash(1, 'a'), 'd'))
+    nb = tmp_path/'nb.ipynb'
+    nb.write_text(json.dumps(dict(cells=[dict(id='abc', cell_type='code', source='x=1\n', metadata={})], metadata={}, nbformat=4, nbformat_minor=5)))
+    cell_exhash(str(nb), 'abc', (lnhash(1, 'x=1'), 's', 'x=1', 'x=2'))
+    file_exhash(str(f), ('%', 'p'))
+    monkeypatch.setenv('EXHASH_AUTHOR', 'main')
+    file_exhash(str(f), ('$', 'd'))
+    assert sorted(p.name for p in jdir.iterdir()) == ['fork_1.jsonl', 'main.jsonl']
+    j = journal(jdir, author='fork/1')
+    assert [(r['path'], r['cell'], r['added'], r['removed']) for r in j] == [(str(f), None, 2, 1), (str(nb), 'abc', 1, 1)]
+    assert [l[:2] for l in j[0]['diff'].splitlines()[2:]] == ['-1', '--', '+3', '+4']
+    assert j.stat() == {str(f): (2, 1), str(nb): (1, 1)} and j.stat().total == (3, 2)
+    assert journal(jdir).stat().total == (3, 3) and len(journal(jdir, since=float('inf'))) == 0
+    bad = tmp_path/'notadir'
+    bad.write_text('')
+    monkeypatch.setenv('EXHASH_JOURNAL', str(bad))
+    with pytest.raises(OSError): file_exhash(str(f), ('$', 'd'))
+    assert f.read_text() == 'B\nc\nd\n', 'a journal that cannot be written stops the edit'
+

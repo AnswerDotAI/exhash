@@ -4,7 +4,7 @@ use crate::commands::buffer_command_from_fields;
 use crate::{BufferCommand, Command, CommandField, EditError, EditResult, edit_buffers_with_sw, edit_text_with_sw};
 use regex::Regex;
 use serde_json::Value;
-use std::{collections::BTreeMap, fs, io, path::Path, sync::LazyLock};
+use std::{collections::BTreeMap, fs, io::{self, Write}, path::Path, sync::LazyLock, time::{SystemTime, UNIX_EPOCH}};
 
 #[derive(Debug)]
 pub enum FileError { Io(io::Error), Edit(EditError), Cell(String), Json(serde_json::Error) }
@@ -248,18 +248,18 @@ pub fn edit_files(path: &str, commands: &[Vec<CommandField>], sw: usize, inplace
     if files.buffers.is_empty() { files.load(default, false)?; }
     let buffers = files.buffers.iter().map(|b| (b.target.key(), output_text(&b.text.lines().map(str::to_owned).collect::<Vec<_>>(), true))).collect();
     let results = edit_buffers_with_sw(buffers, parsed, sw)?;
-    let mut out = vec![];
+    let out: Vec<FileEdit> = files.buffers.iter().zip(results)
+        .map(|(buffer, edited)| FileEdit { path: edited.target, cell: buffer.target.cell.clone(), original_text: edited.original_text, result: edited.result })
+        .collect();
+    if !inplace { return Ok(out); }
+    journal(&out)?;
     let mut changed_notebooks = std::collections::BTreeSet::new();
-    for (buffer, edited) in files.buffers.iter().zip(results) {
-        let result = FileEdit { path: edited.target, cell: buffer.target.cell.clone(), original_text: edited.original_text, result: edited.result };
-        if inplace && result.changed() {
-            if let Some(index) = buffer.cell_index {
-                let cell = &mut files.notebooks.get_mut(&buffer.target.path).unwrap()["cells"][index];
-                set_source(cell, output_text(&result.result.lines, buffer.text.ends_with('\n')));
-                changed_notebooks.insert(buffer.target.path.clone());
-            } else { write_file(&buffer.target.path, output_text(&result.result.lines, true).as_bytes())?; }
-        }
-        out.push(result);
+    for (buffer, result) in files.buffers.iter().zip(&out).filter(|(_, r)| r.changed()) {
+        if let Some(index) = buffer.cell_index {
+            let cell = &mut files.notebooks.get_mut(&buffer.target.path).unwrap()["cells"][index];
+            set_source(cell, output_text(&result.result.lines, buffer.text.ends_with('\n')));
+            changed_notebooks.insert(buffer.target.path.clone());
+        } else { write_file(&buffer.target.path, output_text(&result.result.lines, true).as_bytes())?; }
     }
     for path in changed_notebooks { fs::write(&path, notebook_text(&files.notebooks[&path])?)?; }
     Ok(out)
@@ -280,11 +280,13 @@ pub(crate) fn edit_cell_with_writer(
     let result = edit_text_with_sw(&text, commands, sw)?;
     let resolved_id = cell["id"].as_str().unwrap_or(id).to_owned();
     let new = output_text(&result.lines, text.ends_with('\n'));
-    if inplace && new != text {
+    let edit = FileEdit { path: format!("{path}:{resolved_id}"), cell: Some(resolved_id), original_text: text, result };
+    if inplace && new != edit.original_text {
+        journal([&edit])?;
         set_source(cell, new);
         write(&path, &notebook_text(&nb)?)?;
     }
-    Ok(FileEdit { path: format!("{path}:{resolved_id}"), cell: Some(resolved_id), original_text: text, result })
+    Ok(edit)
 }
 
 /// Write `content` to `path` in place, creating missing parent directories.
@@ -292,6 +294,32 @@ pub(crate) fn write_file(path: &str, content: &[u8]) -> io::Result<()> {
     let parent = Path::new(path).parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
     fs::create_dir_all(parent)?;
     fs::write(path, content)
+}
+
+/// Append a record of each changed target in `edits` to the edit journal, where `EXHASH_JOURNAL` names a directory.
+/// Each author, named by `EXHASH_AUTHOR` (default `unknown`), appends to its own `<author>.jsonl` there, one JSON line
+/// per target. Concurrent writers never share a file. A record holds `time` in seconds since the epoch, `author`, the
+/// absolute `path`, the `cell` id or null, the `added` and `removed` diff rows, and the full `diff` with no context
+/// lines. Callers record before they write. A journal that can't be written stops the edit.
+fn journal<'a>(edits: impl IntoIterator<Item = &'a FileEdit>) -> io::Result<()> {
+    let Some(dir) = std::env::var_os("EXHASH_JOURNAL").filter(|d| !d.is_empty()) else { return Ok(()) };
+    let author = std::env::var("EXHASH_AUTHOR").ok().filter(|a| !a.is_empty()).unwrap_or_else(|| "unknown".into());
+    let time = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
+    let mut records = String::new();
+    for e in edits.into_iter().filter(|e| e.changed()) {
+        let diff = e.format_diff(0);
+        // A bare `---` row separates hunks. Every other row starts with its marker and a line number.
+        let rows = diff.lines().skip(2).filter(|l| *l != "---");
+        let (added, removed) = rows.fold((0, 0), |(a, r), l| match l.as_bytes().first() { Some(b'+') => (a + 1, r), Some(b'-') => (a, r + 1), _ => (a, r) });
+        let file = e.cell.as_ref().and_then(|id| e.path.strip_suffix(&format!(":{id}"))).unwrap_or(&e.path);
+        let path = std::path::absolute(file).map_or_else(|_| file.to_owned(), |p| p.to_string_lossy().into_owned());
+        let record = serde_json::json!({"time": time, "author": author, "path": path, "cell": e.cell, "added": added, "removed": removed, "diff": diff});
+        records.push_str(&format!("{record}\n"));
+    }
+    if records.is_empty() { return Ok(()) }
+    fs::create_dir_all(&dir)?;
+    let name: String = author.chars().map(|c| if c.is_ascii_alphanumeric() || "._-".contains(c) { c } else { '_' }).collect();
+    fs::OpenOptions::new().create(true).append(true).open(Path::new(&dir).join(format!("{name}.jsonl")))?.write_all(records.as_bytes())
 }
 
 /// Compact single-file CLI commands, with binary rejection.
@@ -302,7 +330,7 @@ pub fn edit_file_argv(path: &str, args: &[String], text_block: &str, sw: usize, 
     let commands = crate::parse_commands_from_args(args, &mut io::Cursor::new(text_block.as_bytes()))?;
     let result = edit_text_with_sw(&text, &commands, sw)?;
     let edit = FileEdit { path, cell: None, original_text: text, result };
-    if inplace && edit.changed() { write_file(&edit.path, output_text(&edit.result.lines, true).as_bytes())?; }
+    if inplace && edit.changed() { journal([&edit])?; write_file(&edit.path, output_text(&edit.result.lines, true).as_bytes())?; }
     Ok(edit)
 }
 

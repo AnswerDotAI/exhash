@@ -6,7 +6,7 @@ from pathlib import Path
 from fastcore.basics import store_attr, humanize, PrettyString
 from .exhash import md_scan as _md_scan, code_scan as _code_scan
 from .exhash import lnhash as _lnhash, line_hash as _line_hash
-from . import MAXLEN
+from . import MAXLEN, _Verbatim
 
 __all__ = ['Link', 'Links', 'Section', 'Sections', 'SearchHit', 'SearchHits', 'open_doc']
 
@@ -35,13 +35,12 @@ class Link:
     def __repr__(self): return f'[{self.n}] {self.txt}' + (f': {self.tail}' if self.tail else '')
 
 
-class Links(list):
+class Links(_Verbatim, list):
     "A list of `Link` rows, displayed one per line"
     def __repr__(self): return '\n'.join(map(repr, self))
-    def _repr_pretty_(self, p, cycle): p.text('...' if cycle else repr(self))
 
 
-class Sections(list):
+class Sections(_Verbatim, list):
     "Sections listed as fixed-width `token title [size] preview` rows; each row is the live node. Code rows show the def line instead of a title"
     def __init__(self, items=None, width=MAXLEN):
         super().__init__(items or [])
@@ -54,7 +53,6 @@ class Sections(list):
         pre = ' '.join(x for x in parts if x)
         return _row(pre, n.preview(self.width), self.width)
     def __repr__(self): return '\n'.join(self._row(n) for n in self)
-    def _repr_pretty_(self, p, cycle): p.text('...' if cycle else repr(self))
 
 
 class SearchHit:
@@ -63,16 +61,15 @@ class SearchHit:
     def __repr__(self): return _row(f'{self.section.token} {self.address}', self.preview)
 
 
-class SearchHits(list):
+class SearchHits(_Verbatim, list):
     "Search hits in source order, displayed as `section-token line-address preview` rows within 180 characters"
     def __getitem__(self, k):
         res = list.__getitem__(self, k)
         return SearchHits(res) if isinstance(k, slice) else res
     def __repr__(self): return '\n'.join(map(repr, self))
-    def _repr_pretty_(self, p, cycle): p.text('...' if cycle else repr(self))
 
 
-class Section(dict):
+class Section(_Verbatim, dict):
     "One document section: numbered child sections, source span, and a verified address"
     title,addr,show_title = '','',True
     def __init__(self, src='', start_line=1):
@@ -232,7 +229,6 @@ class Section(dict):
             counted += sizes[depth] > 1
             if counted == 2: break
         return repr(Sections([self, *(n for n in nodes if seg(n.addr)-base <= depth)]))
-    def _repr_pretty_(self, p, cycle): p.text('...' if cycle else repr(self))
 
 
 class CodeSection(Section):
@@ -240,7 +236,7 @@ class CodeSection(Section):
     show_title = False
 
 
-class SectionViews(list):
+class SectionViews(_Verbatim, list):
     "Live sections from `view(*tokens)`, displayed as each section's view, under `# token` headers when more than one"
     def __init__(self, secs, tokens, nums=False, lnhashs=False):
         super().__init__(secs)
@@ -249,7 +245,6 @@ class SectionViews(list):
         bodies = [s.view(nums=self.nums, lnhashs=self.lnhashs) for s in self]
         if len(self) == 1: return bodies[0]
         return '\n\n'.join(f'# {t}\n{b}' for t,b in zip(self.tokens, bodies))
-    def _repr_pretty_(self, p, cycle): p.text('...' if cycle else repr(self))
 
 _LINK_RE = re.compile(r'(?<!\!)\[([^\]]*)\]\(([^)\s]+)\)')
 

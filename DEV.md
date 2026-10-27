@@ -62,6 +62,7 @@ trailing newlines are preserved; each notebook is read/written once. JSON uses
 arbitrary-precision numbers so unrelated notebook metadata cannot be rounded.
 Python `file_exhash` and `cell_exhash` are thin adapters over this core.
 The Rust `notebook_text` export supplies the same sorted, one-space-indented JSON serialization to embedding callers.
+When `EXHASH_JOURNAL` names a directory, `files.rs`'s `journal` records each changed target before any write, in `edit_files`, `edit_cell_with_writer` and `edit_file_argv`. One call's records go to the author's `<author>.jsonl` in a single append. The `added` and `removed` counts are the rows of the target's `format_diff(0)`, skipping the bare `---` rows that separate hunks. Python's `journal` reads the files back, one JSON object per line.
 File views and `file_exhash` normalize CR, CRLF, and LF line endings on read. Unicode separators remain line content, and Python result wrappers use the Rust engine's original lines so no-op detection and diffs agree. No-op file edits leave the original bytes untouched.
 `lnhashview` range requests clamp `end` past EOF to the last available line, while invalid `start` values still error.
 `EditResult::format_diff_with_maxlen` caps diff rows and chooses where a capped row of a changed pair starts. The Python reprs and the `file_exhash`/`cell_exhash` return values call it with `MAXLEN`. Python `truncate_diff` wraps the Rust line-count cap that `EditResult.__repr__` also uses.

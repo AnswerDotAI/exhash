@@ -1,5 +1,7 @@
 "Hash-verified line-addressed text editing. See `exhash.skill` for the workflow guide: view with `lnhashview_*` first, then edit with addresses taken from that view."
 
+import json
+from datetime import datetime
 from pathlib import Path
 from .exhash import line_hash as _line_hash, lnhash as _lnhash, lnhashview as _lnhashview, exhash as _exhash
 from .exhash import view_file as _view_file, view_cell as _view_cell, view_cells as _view_cells
@@ -17,10 +19,14 @@ def lnhash(lineno:int, line:str) -> str:
     'Return an lnhash address ``lineno|hash|`` for ``line`` at 1-based ``lineno``.'
     return _lnhash(lineno, line)
 
-class LnhashView(list):
+class _Verbatim:
+    "Displays its `str` verbatim in IPython"
+    def _repr_pretty_(self, p, cycle): p.text('...' if cycle else str(self))
+
+
+class LnhashView(_Verbatim, list):
     'List of ``lineno|hash|content`` lines, displayed verbatim one per line.'
     def __str__(self): return '\n'.join(self)
-    def _repr_pretty_(self, p, cycle): p.text('...' if cycle else str(self))
 
 
 
@@ -271,5 +277,46 @@ def cell_exhash(path:str, cell_id:str, *cmds:tuple, sw:int=4, inplace:bool=True)
     """
     res = _edit_cell(str(path), cell_id, _normalize_cmds(cmds), sw=sw, inplace=inplace)
     return _diff_out(res) if inplace else res
+
+
+class JournalStat(_Verbatim, dict):
+    "Added and removed diff rows by file path, with their sum over every path in `total`"
+    @property
+    def total(self): return tuple(map(sum, zip(*self.values()))) if self else (0, 0)
+    def __str__(self):
+        rows = [(a, r, p) for p,(a,r) in self.items()] + [(*self.total, 'total')]
+        return '\n'.join(['  added removed     net'] + [f'{a:7} {r:7} {a-r:+7}  {p}' for a,r,p in rows])
+
+
+class Journal(_Verbatim, list):
+    "Edit records, oldest first: dicts with `time`, `author`, `path`, `cell`, `added`, `removed` and `diff`, displayed one row each"
+    def __str__(self):
+        return '\n'.join(f"{datetime.fromtimestamp(r['time']):%H:%M:%S} {r['author']} {r['path']}{':'+r['cell'] if r['cell'] else ''} +{r['added']} -{r['removed']}" for r in self)
+
+    def stat(self)->JournalStat:
+        "Added and removed rows for each file, a notebook's cells together, with their net in the display"
+        res = JournalStat()
+        for r in self:
+            a, d = res.get(r['path'], (0, 0))
+            res[r['path']] = (a+r['added'], d+r['removed'])
+        return res
+
+    def diff(self)->PrettyString:
+        "Every recorded hunk in full, oldest first"
+        return PrettyString('\n'.join(r['diff'] for r in self))
+
+
+@fail_clean(*stdexcs)
+def journal(
+    path, # Journal directory, as `EXHASH_JOURNAL` names it, or one author's `.jsonl` file (expands `~`)
+    author:str=None, # Only this author's records
+    since:float=None, # Only records written at or after this time, in seconds since the epoch
+)->Journal:
+    "The edits recorded under `path` while `EXHASH_JOURNAL` named it, oldest first"
+    p = Path(path).expanduser()
+    files = [p] if p.is_file() else sorted(p.glob('*.jsonl'))
+    recs = [json.loads(l) for f in files for l in f.read_text().splitlines() if l]
+    recs = [r for r in recs if (author is None or r['author']==author) and (since is None or r['time']>=since)]
+    return Journal(sorted(recs, key=lambda r: r['time']))
 
 from .outline import *
