@@ -39,11 +39,18 @@ fn unexpanded(path: &str) -> String {
 }
 fn missing(message: String) -> FileError { io::Error::new(io::ErrorKind::NotFound, message).into() }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct Target { path: String, cell: Option<String> }
+/// A file or notebook cell that commands edit. Results report `path`, the file as the caller spelled it. Targets compare
+/// by `file`, the file itself (`identity`), so two spellings of one file edit one buffer.
+#[derive(Clone, Debug)]
+struct Target { path: String, cell: Option<String>, file: std::path::PathBuf }
+impl PartialEq for Target { fn eq(&self, other: &Self) -> bool { self.file == other.file && self.cell == other.cell } }
+impl Eq for Target {}
 impl Target {
+    fn new(path: String, cell: Option<String>) -> Self { let file = identity(&path); Self { path, cell, file } }
     fn key(&self) -> String { match &self.cell { Some(id) => format!("{}:{id}", self.path), None => self.path.clone() } }
 }
+/// The file that `path` names, however it's spelled. It's the canonical path where the file exists, and otherwise the absolute path.
+fn identity(path: &str) -> std::path::PathBuf { fs::canonicalize(path).or_else(|_| std::path::absolute(path)).unwrap_or_else(|_| path.into()) }
 fn unescape(path: &str) -> String {
     let mut out = String::new();
     let mut chars = path.chars();
@@ -71,7 +78,7 @@ fn address(input: &str, default: &Target) -> Result<(Target, String, String)> {
             if c != ':' || !ADDR.is_match(&input[i + 1..]) { continue; }
             if i == 0 { return Err(invalid("empty filename prefix")); }
             let path = normalize_path(&unescape(&input[..i]))?;
-            target = match CELL.captures(&path) { Some(m) => Target { path: m[1].into(), cell: Some(m[2].into()) }, None => Target { path, cell: None } };
+            target = match CELL.captures(&path) { Some(m) => Target::new(m[1].into(), Some(m[2].into())), None => Target::new(path, None) };
             rest = &input[i + 1..];
             break;
         }
@@ -179,18 +186,18 @@ pub fn render(edits: &[FileEdit], context: usize, trunc: bool) -> String {
 }
 struct Buffer { target: Target, text: String, cell_index: Option<usize> }
 #[derive(Default)]
-struct Files { buffers: Vec<Buffer>, notebooks: BTreeMap<String, Value> }
+struct Files { buffers: Vec<Buffer>, notebooks: BTreeMap<std::path::PathBuf, Value> }
 impl Files {
     fn load(&mut self, mut target: Target, missing_ok: bool) -> Result<String> {
         let (text, index) = if let Some(id) = &target.cell {
-            if !self.notebooks.contains_key(&target.path) { self.notebooks.insert(target.path.clone(), read_notebook(&target.path)?); }
-            let nb = &self.notebooks[&target.path];
+            if !self.notebooks.contains_key(&target.file) { self.notebooks.insert(target.file.clone(), read_notebook(&target.path)?); }
+            let nb = &self.notebooks[&target.file];
             let index = cell_index(nb, id, &target.path)?;
             let cell = &nb["cells"][index];
             target.cell = Some(cell["id"].as_str().ok_or_else(|| invalid("cell id must be a string"))?.into());
             (cell_text(cell)?, Some(index))
         } else {
-            if self.buffers.iter().any(|b| b.target == target) { return Ok(target.key()); }
+            if let Some(b) = self.buffers.iter().find(|b| b.target == target) { return Ok(b.target.key()); }
             let text = match read_text(&target.path) {
                 Ok(text) => text,
                 Err(e) if e.kind() == io::ErrorKind::NotFound => {
@@ -209,8 +216,9 @@ impl Files {
             };
             (text, None)
         };
+        if let Some(b) = self.buffers.iter().find(|b| b.target == target) { return Ok(b.target.key()); }
         let key = target.key();
-        if !self.buffers.iter().any(|b| b.target == target) { self.buffers.push(Buffer { target, text, cell_index: index }); }
+        self.buffers.push(Buffer { target, text, cell_index: index });
         Ok(key)
     }
 }
@@ -218,7 +226,7 @@ impl Files {
 /// Apply structured file-aware commands, optionally writing changed files/cells.
 /// Cell ID prefixes are resolved once; each notebook is read/written only once.
 pub fn edit_files(path: &str, commands: &[Vec<CommandField>], sw: usize, inplace: bool) -> Result<Vec<FileEdit>> {
-    let default = Target { path: normalize_path(path)?, cell: None };
+    let default = Target::new(normalize_path(path)?, None);
     let mut files = Files::default();
     let mut parsed = vec![];
     for fields in commands {
@@ -256,9 +264,9 @@ pub fn edit_files(path: &str, commands: &[Vec<CommandField>], sw: usize, inplace
     let mut changed_notebooks = std::collections::BTreeSet::new();
     for (buffer, result) in files.buffers.iter().zip(&out).filter(|(_, r)| r.changed()) {
         if let Some(index) = buffer.cell_index {
-            let cell = &mut files.notebooks.get_mut(&buffer.target.path).unwrap()["cells"][index];
+            let cell = &mut files.notebooks.get_mut(&buffer.target.file).unwrap()["cells"][index];
             set_source(cell, output_text(&result.result.lines, buffer.text.ends_with('\n')));
-            changed_notebooks.insert(buffer.target.path.clone());
+            changed_notebooks.insert(buffer.target.file.clone());
         } else { write_file(&buffer.target.path, output_text(&result.result.lines, true).as_bytes())?; }
     }
     for path in changed_notebooks { fs::write(&path, notebook_text(&files.notebooks[&path])?)?; }

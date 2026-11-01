@@ -100,6 +100,7 @@ impl EditResult {
     /// surround each hunk (default 1). Non-empty diffs start with `--- original` and `+++ modified`
     /// headers. A result that changed nothing gives an empty string. Lines addressed by `p` are
     /// not part of the diff. `format_printed` renders them.
+    /// A line that a command moved, as `m` and `sort` do, shows as removed where it stood and added where it stands.
     pub fn format_diff(&self, original_lines: &[&str], context: usize) -> String { self.format_diff_with_maxlen(original_lines, context, None) }
 
     /// `format_diff`, capping each row at `maxlen` chars plus a closing `…`.
@@ -112,41 +113,39 @@ impl EditResult {
         if self.lines.len() == original_lines.len() && self.lines.iter().zip(original_lines).all(|(new, old)| new == old) { return String::new(); }
         if mod_set.is_empty() && del_set.is_empty() { return String::new(); }
 
-        // Build interleaved sequence of (tag, lnhash, text) where tag is ' ', '+', '-'
-        // Walk new lines, inserting deleted old lines at the right positions.
+        // Walk new lines, emitting (tag, lnhash, text) with tag ' ', '+' or '-'. An anchored line (`anchored`) keeps its
+        // place. Every other line is added where it now stands. An old line is removed where it stood if a command
+        // deleted or moved it.
+        let anchored = anchored(&self.origins, &mod_set, original_lines.len());
+        let moved: BTreeSet<usize> = self.origins.iter().enumerate().filter(|(i, _)| !anchored.contains(i)).filter_map(|(_, o)| *o).collect();
+        let removed = |old: usize| del_set.contains(&old) || moved.contains(&old);
         let mut events: Vec<(char, String, &str)> = Vec::new();
         let mut next_old = 1usize; // next original line we expect
 
         for (new_idx, line) in self.lines.iter().enumerate() {
-            let new_lineno = new_idx + 1;
-            let origin = self.origins[new_idx];
-
-            // Emit any deleted old lines that came before this line's origin
-            if let Some(orig) = origin {
-                while next_old < orig {
-                    if del_set.contains(&next_old) {
-                        let old_line = original_lines[next_old - 1];
-                        events.push(('-', format_lnhash(next_old, old_line), old_line));
-                    }
-                    next_old += 1;
-                }
-                next_old = orig + 1;
-            }
-
-            if mod_set.contains(&new_lineno) {
-                // Show the old line as deleted if this was a modification (not insertion)
-                if let Some(orig) = origin {
-                    let old_line = original_lines[orig - 1];
-                    if old_line != line.as_str() { events.push(('-', format_lnhash(orig, old_line), old_line)); }
-                }
+            let Some(orig) = self.origins[new_idx].filter(|_| anchored.contains(&new_idx)) else {
                 events.push(('+', self.hashes[new_idx].clone(), line.as_str()));
-            } else { events.push((' ', self.hashes[new_idx].clone(), line.as_str())); }
+                continue;
+            };
+            // Emit the removed old lines that came before this line's origin
+            while next_old < orig {
+                if removed(next_old) {
+                    let old_line = original_lines[next_old - 1];
+                    events.push(('-', format_lnhash(next_old, old_line), old_line));
+                }
+                next_old += 1;
+            }
+            next_old = orig + 1;
+            let old_line = original_lines[orig - 1];
+            if old_line == line.as_str() { events.push((' ', self.hashes[new_idx].clone(), line.as_str())); continue; }
+            events.push(('-', format_lnhash(orig, old_line), old_line));
+            events.push(('+', self.hashes[new_idx].clone(), line.as_str()));
         }
 
-        // Emit any remaining deleted lines at the end
+        // Emit the removed old lines after the last anchored line
         let old_len = original_lines.len();
         while next_old <= old_len {
-            if del_set.contains(&next_old) {
+            if removed(next_old) {
                 let old_line = original_lines[next_old - 1];
                 events.push(('-', format_lnhash(next_old, old_line), old_line));
             }
@@ -202,6 +201,29 @@ fn pair_skips(events: &[(char, String, &str)]) -> Vec<usize> {
         off += run.len();
     }
     skips
+}
+
+/// The new lines, by index, that keep their place in a diff. They are the run of lines with rising origins that holds
+/// the most lines no command changed, and then the most lines. A diff shows each other line that has an origin as
+/// removed where it stood and added where it stands, as it shows a line moved from another file.
+fn anchored(origins: &[Option<usize>], modified: &BTreeSet<usize>, old_len: usize) -> BTreeSet<usize> {
+    // The heaviest run ending at each line, as (unchanged lines, lines), and the line before it in that run.
+    // A Fenwick tree over origins gives the heaviest run that ends below an origin.
+    let mut best = vec![((0, 0), None); origins.len()];
+    let mut tree: Vec<((usize, usize), Option<usize>)> = vec![((0, 0), None); old_len + 1];
+    for (i, &origin) in origins.iter().enumerate() {
+        let Some(o) = origin else { continue };
+        let (mut below, mut k) = (((0, 0), None), o - 1);
+        while k > 0 { if tree[k].0 > below.0 { below = tree[k]; } k &= k - 1; }
+        let weight = (below.0.0 + usize::from(!modified.contains(&(i + 1))), below.0.1 + 1);
+        best[i] = (weight, below.1);
+        let mut k = o;
+        while k <= old_len { if weight > tree[k].0 { tree[k] = (weight, Some(i)); } k += k & k.wrapping_neg(); }
+    }
+    let mut kept = BTreeSet::new();
+    let mut at = (0..origins.len()).filter(|&i| origins[i].is_some()).max_by_key(|&i| best[i].0);
+    while let Some(i) = at { kept.insert(i); at = best[i].1; }
+    kept
 }
 
 /// `prefix` then `text`, capped at `maxlen` chars plus a closing `…`.

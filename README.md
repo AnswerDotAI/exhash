@@ -223,7 +223,7 @@ diff = file_exhash("src/a.py",
     (r"src/a.py:5|Gq|", "s", r"from \.b import old", r"from \.b import helper"))
 ```
 
-A file prefix is separated from the address with `:`. Escape literal colons in filenames as `\:` and literal backslashes as `\\`.
+A file prefix is separated from the address with `:`. Escape literal colons in filenames as `\:` and literal backslashes as `\\`. Two spellings of one file, such as a relative path and an absolute one, name one target. Results report it by its first spelling.
 
 `file_exhash(..., inplace=False)` returns a `FileSetEditResult`:
 
@@ -287,7 +287,7 @@ The package registers `exhash.skill` as a pyskill exposing the primary Python AP
 
 Lines addressed by `p` are not part of the diff. `res.format_printed()` returns them as a bare `lnhashview` with no headers. It never caps or truncates its rows. `str(res)` and the repr show the diff, then a `# printed` header, then the printed lines. A result that changed nothing shows the printed lines alone, with no header. `file_exhash` and `cell_exhash` return the same output. A `p`-only call writes nothing and returns the bare view. A call that changes and prints nothing returns `none: No changes.`, as `fastcore`'s editors do. When more than one target is reported, a target with only printed lines is headed by `# file <path>` or `# cell <id>`.
 
-`res.format_diff(context=1)` returns a unified-diff-style summary showing only changed lines with context. Each contiguous changed block shows all removed lines before all added lines:
+`res.format_diff(context=1)` returns a unified-diff-style summary showing only changed lines with context. A line that a command moved, as `m` and `sort` do, shows as removed where it stood and added where it stands. Each contiguous changed block shows all removed lines before all added lines:
 
 ```py
 res = exhash(text, [(addr, "s", "foo", "baz")])

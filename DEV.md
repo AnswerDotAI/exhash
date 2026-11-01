@@ -54,7 +54,7 @@ A bare line number (`Address::Line`) also needs no hash. `build_command` accepts
 `edit_text_with_sw` exposes configurable shift width for `<` and `>`; `edit_text` defaults to `sw=4`.
 In CLI and Python file-helper flows, a missing file is treated as empty input only when the parsed command set is valid against an empty buffer (for example `0|AA|a`); otherwise the original file-not-found error is preserved. Creating a file also creates its missing parent directories.
 Rust `edit_files` resolves optional `path:` and notebook-cell prefixes, loads every
-referenced buffer, and calls `edit_buffers_with_sw` once. Rust owns validation,
+referenced buffer, and calls `edit_buffers_with_sw` once. Targets compare by the canonical path of the file each names, or by its absolute path where the file doesn't exist yet. Two spellings of one file load one buffer. Results report it by its first spelling. Rust owns validation,
 transfers, diffs, and file/notebook writes. Every command succeeds before writes
 begin, but this is not an atomic multi-file transaction: an OS write failure can
 leave earlier writes completed. Notebook source form, metadata, outputs, and

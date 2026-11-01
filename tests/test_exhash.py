@@ -252,6 +252,12 @@ def test_diff_groups_contiguous_changes():
     assert [r.split("|", 2)[2] for r in rows] == ["a", "b", "    a", "    b", "keep", "c", "d", "    c", "    d"]
     res = exhash("a\nb\n", [("%", "c", "x\ny\nz")])
     assert [r[0] for r in res.format_diff().splitlines()[2:]] == list("--+++")
+    # A moved line shows as removed where it stood and added where it stands, from `m` and from `sort` alike.
+    res = exhash("a\nb\nc\nd\ne\nf\n", [(f"{lnhash(4, 'd')},{lnhash(5, 'e')}", "m", lnhash(1, "a"))])
+    rows = res.format_diff().splitlines()[2:]
+    assert [r[0] + r.split("|", 2)[2] for r in rows] == [" a", "+d", "+e", " b", " c", "-d", "-e", " f"]
+    rows = exhash("c\na\nb\n", [("%", "sort")]).format_diff().splitlines()[2:]
+    assert [r[0] + r.split("|", 2)[2] for r in rows] == ["-c", " a", " b", "+c"]
 
 
 def test_exhash_view():
@@ -453,6 +459,14 @@ def test_file_exhash_moves_to_missing_file(tmp_path):
     assert new.read_text() == "two\n"
     assert f"--- {a}" in diff
     assert f"+++ {new}" in diff
+
+def test_file_exhash_two_spellings_of_one_file_edit_one_buffer(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    a = tmp_path / "a.txt"
+    a.write_text("one\ntwo\nthree\n")
+    # The default path is absolute. The move's destination names the same file relative to the working directory.
+    file_exhash(str(a), (lnhash(3, "three"), "m", f"a.txt:{lnhash(1, 'one')}"), (lnhash(1, "one"), "s", "one", "ONE"))
+    assert a.read_text() == "ONE\nthree\ntwo\n"
 
 
 def test_file_exhash_writes_nothing_if_later_command_fails(tmp_path):
