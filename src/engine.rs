@@ -1,3 +1,4 @@
+use crate::LnHash;
 use std::collections::{BTreeSet, HashMap};
 
 use fancy_regex::{Regex, RegexBuilder};
@@ -214,15 +215,24 @@ fn anchored(origins: &[Option<usize>], modified: &BTreeSet<usize>, old_len: usiz
     for (i, &origin) in origins.iter().enumerate() {
         let Some(o) = origin else { continue };
         let (mut below, mut k) = (((0, 0), None), o - 1);
-        while k > 0 { if tree[k].0 > below.0 { below = tree[k]; } k &= k - 1; }
+        while k > 0 {
+            if tree[k].0 > below.0 { below = tree[k]; }
+            k &= k - 1;
+        }
         let weight = (below.0.0 + usize::from(!modified.contains(&(i + 1))), below.0.1 + 1);
         best[i] = (weight, below.1);
         let mut k = o;
-        while k <= old_len { if weight > tree[k].0 { tree[k] = (weight, Some(i)); } k += k & k.wrapping_neg(); }
+        while k <= old_len {
+            if weight > tree[k].0 { tree[k] = (weight, Some(i)); }
+            k += k & k.wrapping_neg();
+        }
     }
     let mut kept = BTreeSet::new();
     let mut at = (0..origins.len()).filter(|&i| origins[i].is_some()).max_by_key(|&i| best[i].0);
-    while let Some(i) = at { kept.insert(i); at = best[i].1; }
+    while let Some(i) = at {
+        kept.insert(i);
+        at = best[i].1;
+    }
     kept
 }
 
@@ -294,7 +304,7 @@ impl Engine {
         }
     }
 
-    fn verify_lnhash(&self, addr: crate::LnHash, cmd: &Subcommand, allow_call_start: bool) -> Result<(), EditError> {
+    fn verify_lnhash(&self, addr: LnHash, cmd: &Subcommand, allow_call_start: bool) -> Result<(), EditError> {
         if addr.lineno == 0 {
             // Only valid for i/a, enforced by parser.
             if addr.hash != 0 { return Err(EditError::new("0|AA| must have hash AA")); }
@@ -302,7 +312,7 @@ impl Engine {
         } else { self.verify_lnhash_basic(addr, allow_call_start) }
     }
 
-    fn verify_lnhash_basic(&self, addr: crate::LnHash, allow_call_start: bool) -> Result<(), EditError> {
+    fn verify_lnhash_basic(&self, addr: LnHash, allow_call_start: bool) -> Result<(), EditError> {
         if addr.lineno == 0 { return Err(EditError::new("address 0 is not allowed here")); }
         if addr.lineno > self.lines.len() { return Err(EditError::new(format!("address out of range: {} > {}", addr.lineno, self.lines.len()))); }
         let actual = line_hash_u16(&self.lines[addr.lineno - 1].text);

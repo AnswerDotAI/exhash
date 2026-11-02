@@ -1,10 +1,11 @@
+use ::exhash::{EditResult, FileEdit, FileError};
+use std::io::Cursor;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use pyo3::exceptions::{PyRuntimeError, PyUserWarning, PyValueError};
 use pyo3::prelude::*;
 
-use ::exhash::command_from_fields;
-use ::exhash::{Command, CommandField, Subcommand};
+use ::exhash::{Command, CommandField, Subcommand, command_from_fields};
 
 /// Run a panic-prone pure-Rust step, converting any panic into a clean
 /// `RuntimeError` instead of surfacing pyo3's `BaseException`-derived
@@ -41,14 +42,14 @@ struct EditResultPy {
 }
 
 impl EditResultPy {
-    fn result(&self) -> ::exhash::EditResult {
-        ::exhash::EditResult { lines: self.lines.clone(), hashes: self.hashes.clone(), modified: self.modified.clone(), deleted: self.deleted.clone(),
+    fn result(&self) -> EditResult {
+        EditResult { lines: self.lines.clone(), hashes: self.hashes.clone(), modified: self.modified.clone(), deleted: self.deleted.clone(),
             origins: self.origins.clone(), printed: self.printed.clone() }
     }
 
     /// The target-aware form of a result from `edit_files`; text, cell and CLI results have no path.
-    fn file_edit(&self) -> Option<::exhash::FileEdit> {
-        self.path.clone().map(|path| ::exhash::FileEdit { path, cell: self.cell.clone(), original_text: self.original_text.clone(), result: self.result() })
+    fn file_edit(&self) -> Option<FileEdit> {
+        self.path.clone().map(|path| FileEdit { path, cell: self.cell.clone(), original_text: self.original_text.clone(), result: self.result() })
     }
 
     fn diff_text(&self, context: usize, maxlen: Option<usize>) -> String {
@@ -65,7 +66,7 @@ impl EditResultPy {
     }
 }
 
-fn edit_result_py(path: Option<String>, cell: Option<String>, original_text: String, result: ::exhash::EditResult) -> EditResultPy {
+fn edit_result_py(path: Option<String>, cell: Option<String>, original_text: String, result: EditResult) -> EditResultPy {
     EditResultPy { path, cell, lines: result.lines, hashes: result.hashes, modified: result.modified, deleted: result.deleted, origins: result.origins,
         printed: result.printed, original_text }
 }
@@ -166,18 +167,17 @@ fn py_exhash(py: Python<'_>, text: &str, cmds: Vec<Vec<PyField>>, sw: usize) -> 
 #[pyfunction]
 #[pyo3(signature = (text, cmds, text_block="", sw=4))]
 fn exhash_argv(text: &str, cmds: Vec<String>, text_block: &str, sw: usize) -> PyResult<EditResultPy> {
-    let mut stream = std::io::Cursor::new(text_block.as_bytes());
+    let mut stream = Cursor::new(text_block.as_bytes());
     let parsed = guard("parsing commands", || ::exhash::parse_commands_from_args(&cmds, &mut stream))?.map_err(|e| PyValueError::new_err(e.to_string()))?;
     let res = guard("applying edits", || ::exhash::edit_text_with_sw(text, &parsed, sw))?.map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(edit_result_py(None, None, text.to_string(), res))
 }
 
-fn file_error(error: ::exhash::FileError) -> PyErr {
+fn file_error(error: FileError) -> PyErr {
     use pyo3::exceptions::{PyFileNotFoundError, PyKeyError, PyOSError};
     match error {
-        ::exhash::FileError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => PyFileNotFoundError::new_err(e.to_string()),
-        ::exhash::FileError::Io(e) => PyOSError::new_err(e.to_string()), ::exhash::FileError::Cell(e) => PyKeyError::new_err(e),
-        other => PyValueError::new_err(other.to_string())
+        FileError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => PyFileNotFoundError::new_err(e.to_string()),
+        FileError::Io(e) => PyOSError::new_err(e.to_string()), FileError::Cell(e) => PyKeyError::new_err(e), other => PyValueError::new_err(other.to_string())
     }
 }
 
@@ -231,8 +231,7 @@ fn edit_cell(py: Python<'_>, path: &str, cell_id: &str, commands: Vec<Vec<PyFiel
 #[pyfunction]
 #[pyo3(signature = (path, cell_id, cmds, text_block="", sw=4, inplace=true))]
 fn edit_cell_argv(path: &str, cell_id: &str, cmds: Vec<String>, text_block: &str, sw: usize, inplace: bool) -> PyResult<EditResultPy> {
-    let parsed =
-        ::exhash::parse_commands_from_args(&cmds, &mut std::io::Cursor::new(text_block.as_bytes())).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let parsed = ::exhash::parse_commands_from_args(&cmds, &mut Cursor::new(text_block.as_bytes())).map_err(|e| PyValueError::new_err(e.to_string()))?;
     let r = guard("editing a cell", || ::exhash::edit_cell(path, cell_id, &parsed, sw, inplace))?.map_err(file_error)?;
     Ok(edit_result_py(None, None, r.original_text, r.result))
 }

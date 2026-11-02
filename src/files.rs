@@ -2,8 +2,10 @@
 //! validated/applied in memory before any writes; this is not a multi-file transaction.
 use crate::commands::buffer_command_from_fields;
 use crate::{BufferCommand, Command, CommandField, EditError, EditResult, edit_buffers_with_sw, edit_text_with_sw};
+use io::ErrorKind;
 use regex::Regex;
 use serde_json::Value;
+use std::path::PathBuf;
 use std::{collections::BTreeMap, fs, io::{self, Write}, path::Path, sync::LazyLock, time::{SystemTime, UNIX_EPOCH}};
 
 #[derive(Debug)]
@@ -27,7 +29,7 @@ pub fn normalize_path(path: &str) -> Result<String> {
         let home = std::env::var("HOME").map_err(|_| invalid("cannot expand ~: HOME is not set"))?;
         format!("{home}{}", &path[1..])
     } else { path.to_owned() };
-    let normalized: std::path::PathBuf = Path::new(&expanded).components().filter(|c| !matches!(c, std::path::Component::CurDir)).collect();
+    let normalized: PathBuf = Path::new(&expanded).components().filter(|c| !matches!(c, std::path::Component::CurDir)).collect();
     Ok(if normalized.as_os_str().is_empty() { ".".into() } else { normalized.to_string_lossy().into_owned() })
 }
 
@@ -37,12 +39,12 @@ fn unexpanded(path: &str) -> String {
         .map(|m| format!(" -- note: {:?} looks like an unexpanded IPython variable (undefined names in a magic line are passed through literally)", m.as_str()))
         .unwrap_or_default()
 }
-fn missing(message: String) -> FileError { io::Error::new(io::ErrorKind::NotFound, message).into() }
+fn missing(message: String) -> FileError { io::Error::new(ErrorKind::NotFound, message).into() }
 
 /// A file or notebook cell that commands edit. Results report `path`, the file as the caller spelled it. Targets compare
 /// by `file`, the file itself (`identity`), so two spellings of one file edit one buffer.
 #[derive(Clone, Debug)]
-struct Target { path: String, cell: Option<String>, file: std::path::PathBuf }
+struct Target { path: String, cell: Option<String>, file: PathBuf }
 impl PartialEq for Target { fn eq(&self, other: &Self) -> bool { self.file == other.file && self.cell == other.cell } }
 impl Eq for Target {}
 impl Target {
@@ -50,7 +52,7 @@ impl Target {
     fn key(&self) -> String { match &self.cell { Some(id) => format!("{}:{id}", self.path), None => self.path.clone() } }
 }
 /// The file that `path` names, however it's spelled. It's the canonical path where the file exists, and otherwise the absolute path.
-fn identity(path: &str) -> std::path::PathBuf { fs::canonicalize(path).or_else(|_| std::path::absolute(path)).unwrap_or_else(|_| path.into()) }
+fn identity(path: &str) -> PathBuf { fs::canonicalize(path).or_else(|_| std::path::absolute(path)).unwrap_or_else(|_| path.into()) }
 fn unescape(path: &str) -> String {
     let mut out = String::new();
     let mut chars = path.chars();
@@ -109,7 +111,7 @@ fn cell_text(cell: &Value) -> Result<String> {
 }
 fn read_notebook(path: &str) -> Result<Value> {
     let text = fs::read_to_string(path)
-        .map_err(|e| if e.kind() == io::ErrorKind::NotFound { missing(format!("notebook not found: {path}{}", unexpanded(path))) } else { e.into() })?;
+        .map_err(|e| if e.kind() == ErrorKind::NotFound { missing(format!("notebook not found: {path}{}", unexpanded(path))) } else { e.into() })?;
     Ok(serde_json::from_str(&text)?)
 }
 fn set_source(cell: &mut Value, text: String) {
@@ -186,7 +188,7 @@ pub fn render(edits: &[FileEdit], context: usize, trunc: bool) -> String {
 }
 struct Buffer { target: Target, text: String, cell_index: Option<usize> }
 #[derive(Default)]
-struct Files { buffers: Vec<Buffer>, notebooks: BTreeMap<std::path::PathBuf, Value> }
+struct Files { buffers: Vec<Buffer>, notebooks: BTreeMap<PathBuf, Value> }
 impl Files {
     fn load(&mut self, mut target: Target, missing_ok: bool) -> Result<String> {
         let (text, index) = if let Some(id) = &target.cell {
@@ -200,7 +202,7 @@ impl Files {
             if let Some(b) = self.buffers.iter().find(|b| b.target == target) { return Ok(b.target.key()); }
             let text = match read_text(&target.path) {
                 Ok(text) => text,
-                Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                Err(e) if e.kind() == ErrorKind::NotFound => {
                     let path = &target.path;
                     if !missing_ok {
                         return Err(missing(format!("file not found: {path}{} (a new file can only be created with a 0|AA| a/i command)", unexpanded(path))));
@@ -324,7 +326,7 @@ fn journal<'a>(edits: impl IntoIterator<Item = &'a FileEdit>) -> io::Result<()> 
         let record = serde_json::json!({"time": time, "author": author, "path": path, "cell": e.cell, "added": added, "removed": removed, "diff": diff});
         records.push_str(&format!("{record}\n"));
     }
-    if records.is_empty() { return Ok(()) }
+    if records.is_empty() { return Ok(()); }
     fs::create_dir_all(&dir)?;
     let name: String = author.chars().map(|c| if c.is_ascii_alphanumeric() || "._-".contains(c) { c } else { '_' }).collect();
     fs::OpenOptions::new().create(true).append(true).open(Path::new(&dir).join(format!("{name}.jsonl")))?.write_all(records.as_bytes())
@@ -333,12 +335,15 @@ fn journal<'a>(edits: impl IntoIterator<Item = &'a FileEdit>) -> io::Result<()> 
 /// Compact single-file CLI commands, with binary rejection.
 pub fn edit_file_argv(path: &str, args: &[String], text_block: &str, sw: usize, inplace: bool) -> Result<FileEdit> {
     let path = normalize_path(path)?;
-    let text = match fs::read_to_string(&path) { Ok(t) => t, Err(e) if e.kind() == io::ErrorKind::NotFound => String::new(), Err(e) => return Err(e.into()) };
+    let text = match fs::read_to_string(&path) { Ok(t) => t, Err(e) if e.kind() == ErrorKind::NotFound => String::new(), Err(e) => return Err(e.into()) };
     if text.contains('\0') { return Err(invalid("binary file rejected (NUL byte found)")); }
     let commands = crate::parse_commands_from_args(args, &mut io::Cursor::new(text_block.as_bytes()))?;
     let result = edit_text_with_sw(&text, &commands, sw)?;
     let edit = FileEdit { path, cell: None, original_text: text, result };
-    if inplace && edit.changed() { journal([&edit])?; write_file(&edit.path, output_text(&edit.result.lines, true).as_bytes())?; }
+    if inplace && edit.changed() {
+        journal([&edit])?;
+        write_file(&edit.path, output_text(&edit.result.lines, true).as_bytes())?;
+    }
     Ok(edit)
 }
 
