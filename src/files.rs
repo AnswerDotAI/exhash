@@ -6,7 +6,7 @@ use io::ErrorKind;
 use regex::Regex;
 use serde_json::Value;
 use std::path::PathBuf;
-use std::{collections::BTreeMap, fs, io::{self, Write}, path::Path, sync::LazyLock, time::{SystemTime, UNIX_EPOCH}};
+use std::{collections::BTreeMap, env, fs, io::{self, Write}, path, path::Path, sync::LazyLock, time::{SystemTime, UNIX_EPOCH}};
 
 #[derive(Debug)]
 pub enum FileError { Io(io::Error), Edit(EditError), Cell(String), Json(serde_json::Error) }
@@ -26,7 +26,7 @@ fn invalid(message: impl Into<String>) -> FileError { EditError::new(message).in
 /// without resolving symlinks or making a relative path absolute.
 pub fn normalize_path(path: &str) -> Result<String> {
     let expanded = if path == "~" || path.starts_with("~/") {
-        let home = std::env::var("HOME").map_err(|_| invalid("cannot expand ~: HOME is not set"))?;
+        let home = env::var("HOME").map_err(|_| invalid("cannot expand ~: HOME is not set"))?;
         format!("{home}{}", &path[1..])
     } else { path.to_owned() };
     let normalized: PathBuf = Path::new(&expanded).components().filter(|c| !matches!(c, std::path::Component::CurDir)).collect();
@@ -52,7 +52,7 @@ impl Target {
     fn key(&self) -> String { match &self.cell { Some(id) => format!("{}:{id}", self.path), None => self.path.clone() } }
 }
 /// The file that `path` names, however it's spelled. It's the canonical path where the file exists, and otherwise the absolute path.
-fn identity(path: &str) -> PathBuf { fs::canonicalize(path).or_else(|_| std::path::absolute(path)).unwrap_or_else(|_| path.into()) }
+fn identity(path: &str) -> PathBuf { fs::canonicalize(path).or_else(|_| path::absolute(path)).unwrap_or_else(|_| path.into()) }
 fn unescape(path: &str) -> String {
     let mut out = String::new();
     let mut chars = path.chars();
@@ -312,8 +312,8 @@ pub(crate) fn write_file(path: &str, content: &[u8]) -> io::Result<()> {
 /// absolute `path`, the `cell` id or null, the `added` and `removed` diff rows, and the full `diff` with no context
 /// lines. Callers record before they write. A journal that can't be written stops the edit.
 fn journal<'a>(edits: impl IntoIterator<Item = &'a FileEdit>) -> io::Result<()> {
-    let Some(dir) = std::env::var_os("EXHASH_JOURNAL").filter(|d| !d.is_empty()) else { return Ok(()) };
-    let author = std::env::var("EXHASH_AUTHOR").ok().filter(|a| !a.is_empty()).unwrap_or_else(|| "unknown".into());
+    let Some(dir) = env::var_os("EXHASH_JOURNAL").filter(|d| !d.is_empty()) else { return Ok(()) };
+    let author = env::var("EXHASH_AUTHOR").ok().filter(|a| !a.is_empty()).unwrap_or_else(|| "unknown".into());
     let time = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
     let mut records = String::new();
     for e in edits.into_iter().filter(|e| e.changed()) {
@@ -322,7 +322,7 @@ fn journal<'a>(edits: impl IntoIterator<Item = &'a FileEdit>) -> io::Result<()> 
         let rows = diff.lines().skip(2).filter(|l| *l != "---");
         let (added, removed) = rows.fold((0, 0), |(a, r), l| match l.as_bytes().first() { Some(b'+') => (a + 1, r), Some(b'-') => (a, r + 1), _ => (a, r) });
         let file = e.cell.as_ref().and_then(|id| e.path.strip_suffix(&format!(":{id}"))).unwrap_or(&e.path);
-        let path = std::path::absolute(file).map_or_else(|_| file.to_owned(), |p| p.to_string_lossy().into_owned());
+        let path = path::absolute(file).map_or_else(|_| file.to_owned(), |p| p.to_string_lossy().into_owned());
         let record = serde_json::json!({"time": time, "author": author, "path": path, "cell": e.cell, "added": added, "removed": removed, "diff": diff});
         records.push_str(&format!("{record}\n"));
     }
