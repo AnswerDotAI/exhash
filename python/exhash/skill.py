@@ -1,14 +1,16 @@
 r"""Read, navigate and precisely edit files and notebook cells using hash-verified addresses; transfer text between files/cells, read large files, and navigate Markdown, code, notebook and linked-document hierarchies.
 
-Prefer exhash to ad hoc patching. You MUST open a file with `open_doc` before reading or searching it, and always first display the result bare. `doc(open_doc)` gives the workflow.
+Prefer exhash to ad hoc patching. You MUST open a file with `open_doc` before reading or searching it, and always first display the result bare. `doc(open_doc)` gives the workflow. Don't create ad-hoc edit token systems or require one session per file; let exhash protect conflicts automatically for you.
 
 ## Verified editing
 
 1. Whenever an edit may follow, view with `lnhashview_file`/`lnhashview_cell`/`lnhashview_cells` (`# cell <id>` headers), `rg(..., lnhashs=True)`, or verified outline views. Rows are `lineno|hash|text`: space-padded line numbers, 2-char Base64url hash. Display views bare, never joined, printed, or reformatted.
 2. Copy addresses from that view. Never guess line numbers, derive addresses by text search, or compute hashes.
-3. Apply tuple commands with `file_exhash(path, *cmds)` or `cell_exhash(path, cell_id, *cmds)`, never compact CLI strings. Unqualified addresses use the call's file/cell. Each command's hashes are checked just before it runs; any failure writes nothing.
-4. Read the returned diff as verification. Rows and lines are capped; add `p` for lines needed in full.
-5. Re-view before building more commands, including after a stale-hash error.
+3. For non-trivial edits, create a list `cmds = [...]` instead of passing directly, to avoid rewriting them on failure.
+4. Apply tuple commands with `file_exhash(path, *cmds)` or `cell_exhash(path, cell_id, *cmds)`, never compact CLI strings. Unqualified addresses use the call's file/cell. Each command's hashes are checked just before it runs; any failure writes nothing.
+5. If the edit failed, for non-trivial edits update `cmd` and retry; otherwise write the inline cmds again.
+6. Read the returned diff as verification. Rows and lines are capped; add `p` for lines needed in full.
+7. Re-view before building more commands, including after a stale-hash error.
 
 Commands run in order. A single-line address may match current or call-start content, so commands can stack on one line; structural edits shift later lines, so apply them bottom-to-top. `doc(file_exhash)` covers `inplace=False` previews, missing files and unqualified `m`/`t` destinations. `exhash(text, cmds)` is the in-memory engine; its docstring lists result fields.
 
@@ -45,7 +47,7 @@ For reflow: `j` a range, re-view, then one g-flagged substitution inserts breaks
 ## Edit journal
 
 `journal(path, author=None, since=None)` reads recorded edits oldest first; path is the journal directory or one author's file.
-Filter by author or epoch-seconds `since`. `j.stat()` shows per-file added/removed/net rows; `j.diff()` returns full recorded hunks.
+Filter by author or epoch-seconds `since`. `j.stat()` shows per-file added/removed/net rows; `j.stat(count=f)` counts each hunk's added and removed lines through `f`, such as `fastws.integrate.code_count` for Rust code lines; `j.diff()` returns full recorded hunks.
 Only exhash file/cell writes are recorded when `EXHASH_JOURNAL` is set; `EXHASH_AUTHOR` identifies the writer.
 """
 

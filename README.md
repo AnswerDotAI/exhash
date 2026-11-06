@@ -252,6 +252,8 @@ j.stat()   # added, removed and net rows for each file, with their total
 j.diff()   # every recorded hunk in full
 ```
 
+With `count=f`, `stat` counts the number that `f` returns for each hunk's added lines and for its removed lines. `fastws.integrate.code_count` returns the Rust code lines among them, leaving out blanks and comments.
+
 ### The `%%exhash` cell magic
 
 Importing `exhash.skill` under IPython or Jupyter registers the `%%exhash` cell magic - the standard way to apply `a`/`i`/`c` payload commands interactively. The magic line is `%%exhash <path> [<cell_id>] <address> <a|i|c>`; the payload is everything below it, taken verbatim. Nothing in the payload is parsed as Python, so there is no quoting or escaping at all:

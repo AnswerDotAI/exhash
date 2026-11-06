@@ -748,6 +748,7 @@ def test_journal_records_each_write(tmp_path, monkeypatch):
     assert [(r['path'], r['cell'], r['added'], r['removed']) for r in j] == [(str(f), None, 2, 1), (str(nb), 'abc', 1, 1)]
     assert [l[:2] for l in j[0]['diff'].splitlines()[2:]] == ['-1', '--', '+3', '+4']
     assert j.stat() == {str(f): (2, 1), str(nb): (1, 1)} and j.stat().total == (3, 2)
+    assert j.stat(count=len) == j.stat() and j.stat(count=lambda ls: sum(l in ('e', 'x=2') for l in ls)) == {str(f): (1, 0), str(nb): (1, 0)}
     assert journal(jdir).stat().total == (3, 3) and len(journal(jdir, since=float('inf'))) == 0
     bad = tmp_path/'notadir'
     bad.write_text('')

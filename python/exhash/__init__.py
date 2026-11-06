@@ -288,17 +288,30 @@ class JournalStat(_Verbatim, dict):
         return '\n'.join(['  added removed     net'] + [f'{a:7} {r:7} {a-r:+7}  {p}' for a,r,p in rows])
 
 
+def _counted(diff, count):
+    "What `count` gives for a recorded `diff`'s added lines and for its removed lines, summed over its hunks"
+    added, removed, totals = [], [], [0, 0]
+    for row in [*diff.splitlines()[2:], '---']:
+        if row != '---': (added if row[0] == '+' else removed).append(row.split('|', 2)[2])
+        else: totals, added, removed = [totals[0]+count(added), totals[1]+count(removed)], [], []
+    return tuple(totals)
+
+
 class Journal(_Verbatim, list):
     "Edit records, oldest first: dicts with `time`, `author`, `path`, `cell`, `added`, `removed` and `diff`, displayed one row each"
     def __str__(self):
         return '\n'.join(f"{datetime.fromtimestamp(r['time']):%H:%M:%S} {r['author']} {r['path']}{':'+r['cell'] if r['cell'] else ''} +{r['added']} -{r['removed']}" for r in self)
 
-    def stat(self)->JournalStat:
+    def stat(
+        self,
+        count=None, # Function of one hunk's added lines, or its removed lines, giving how many to count
+    )->JournalStat:
         "Added and removed rows for each file, a notebook's cells together, with their net in the display"
         res = JournalStat()
         for r in self:
             a, d = res.get(r['path'], (0, 0))
-            res[r['path']] = (a+r['added'], d+r['removed'])
+            added, removed = (r['added'], r['removed']) if count is None else _counted(r['diff'], count)
+            res[r['path']] = (a+added, d+removed)
         return res
 
     def diff(self)->PrettyString:
