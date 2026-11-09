@@ -3,6 +3,7 @@
 import json, re
 from collections import Counter
 from pathlib import Path
+from urllib.parse import urldefrag, urljoin
 from fastcore.basics import store_attr, humanize, PrettyString
 from .exhash import md_scan as _md_scan, code_scan as _code_scan
 from .exhash import lnhash as _lnhash, line_hash as _line_hash
@@ -195,8 +196,9 @@ class Section(_Verbatim, dict):
         base = getattr(self.root, 'base', None)
         if not re.match(r'https?://', url):
             if base is None: raise ValueError(f'{url!r} is relative and this document has no `base`')
-            if isinstance(base, Path): return open_doc(base.parent/url)
-            from urllib.parse import urljoin
+            if isinstance(base, Path):
+                path = urldefrag(url).url
+                return open_doc(base.parent/path if path else base)
             url = urljoin(str(base), url)
         return open_doc(url)
 

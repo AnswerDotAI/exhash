@@ -160,7 +160,7 @@ def test_view_tokens():
 
 def test_file_backed(tmp_path):
     p = tmp_path/'doc.md'
-    p.write_text(LINKS_MD)
+    p.write_text(LINKS_MD.replace('install.md', 'install.md#install') + '\n[local](#reference)')
     (tmp_path/'install.md').write_text('# Install\n\nRun the thing.\n')
     d = open_doc(p)
     assert d.path == p
@@ -170,6 +170,7 @@ def test_file_backed(tmp_path):
     assert v[0] == lnhash(sec.start_line, '## Reference') + '## Reference'
     inst = d.open(1)
     assert inst.title == '' and inst.find('Install').addr == '1'
+    assert d.open(3).path == p
     tok = d.find('Reference').token
     file_exhash(str(p), (tok.split('|', 1)[1], 'd'))   # delete the section via its own row range
     with pytest.raises(ValueError): d.refresh().at(tok)  # stale token fails loudly after refresh
