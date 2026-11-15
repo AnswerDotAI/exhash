@@ -19,7 +19,6 @@ jobs:
       - run: pytest -q
 
   build:
-    needs: test
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
@@ -50,7 +49,7 @@ jobs:
 
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, sdist]
+    needs: [test, build, sdist]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
