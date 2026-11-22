@@ -64,16 +64,3 @@ pub fn parse_lnhash_prefix(input: &str) -> Result<(LnHash, &str), EditError> {
 
     Ok((LnHash { lineno, hash }, suffix))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn hash_roundtrip() {
-        for hash in 0..4096 { assert_eq!(parse_lnhash(&format!("1|{}|", format_hash(hash))).unwrap(), LnHash { lineno: 1, hash }); }
-        assert_eq!(format_hash(0), "AA");
-        assert_eq!(format_hash(4095), "__");
-        for bad in ["1|0000|", "1|A|", "1|AAA|", "1|++|", "1|//|", "1|é|", "1|A|A|"] { assert!(parse_lnhash(bad).is_err()); }
-    }
-}

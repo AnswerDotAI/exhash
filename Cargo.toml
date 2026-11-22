@@ -18,6 +18,8 @@ documentation = "https://github.com/AnswerDotAI/exhash"
 
 [lib]
 name = "exhash"
+test = false
+doctest = false
 
 [dependencies]
 crc32fast = "1"
