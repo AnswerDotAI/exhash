@@ -17,7 +17,8 @@ classifiers = [
 dependencies = ["fastcore>=2.2.29", "httpx>=0.28.1"]
 
 [project.optional-dependencies]
-dev = ["fastws-cli>=0.0.20", "fastship>=0.0.11", "maturin>=1.0,<2.0", "pytest"]
+test = ["pytest"]
+dev = ["fastws-cli>=0.0.20", "fastship>=0.0.11", "maturin>=1.0,<2.0", "exhash[test]"]
 
 [project.urls]
 Homepage = "https://github.com/AnswerDotAI/exhash"
