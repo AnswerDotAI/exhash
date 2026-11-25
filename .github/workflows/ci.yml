@@ -19,6 +19,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
+      - run: cargo package -p exhash
       - run: uv pip install --system --config-settings-package exhash:metadata-only=1 -e '.[test]'
       - run: cargo develop
       - run: pytest -q
@@ -59,23 +60,32 @@ jobs:
           name: wheels-sdist
           path: dist
 
-  publish:
+  publish-crate:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+      - run: cargo publish -p exhash --no-verify
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+  publish-pypi:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [test, build, sdist]
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
       contents: write
+      id-token: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - id: crates-auth
-        uses: rust-lang/crates-io-auth-action@v1
-      - run: cargo publish -p exhash --no-verify
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}
       - uses: actions/download-artifact@v8
         with:
+          pattern: wheels-*
           path: dist
           merge-multiple: true
       - uses: softprops/action-gh-release@v3
