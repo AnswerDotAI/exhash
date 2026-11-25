@@ -19,7 +19,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
-      - run: uv pip install --system -e '.[test]'
+      - run: uv pip install --system --config-settings-package exhash:metadata-only=1 -e '.[test]'
+      - run: cargo develop
       - run: pytest -q
 
   build:
@@ -36,7 +37,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
-      - uses: PyO3/maturin-action@v1
+      - uses: AnswerDotAI/.github/actions/maturin-build@main
         with:
           args: --profile dist --out dist ${{ runner.os == 'Linux' && '--zig' || '' }}
           manylinux: '2_31'
@@ -49,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: PyO3/maturin-action@v1
+      - uses: AnswerDotAI/.github/actions/maturin-build@main
         with:
           command: sdist
           args: -o dist
